@@ -26,3 +26,9 @@ py -3.11 -m pytest tests/integration/test_mcp_tools.py tests/integration/test_to
 ```powershell
 py -3.11 -m pytest tests/unit/test_disease_risk.py tests/unit/test_measurement_analyzer.py tests/unit/test_safety.py tests/integration/test_mcp_tools.py
 ```
+
+C7/C8 局部检查：
+
+```powershell
+py -3.11 -m pytest tests/integration/test_rag_server_mcp_client.py -m "not rag_server"
+```
