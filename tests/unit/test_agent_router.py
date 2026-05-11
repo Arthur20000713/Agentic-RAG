@@ -1,0 +1,29 @@
+from __future__ import annotations
+
+from backend.app.agent.router import IntentRouter
+
+
+def test_router_detects_disease_consultation() -> None:
+    result = IntentRouter().route("犊牛腹泻两天，精神差，怎么办？")
+
+    assert result.intent == "disease_consultation"
+    assert result.confidence >= 0.8
+
+
+def test_router_detects_measurement_analysis() -> None:
+    result = IntentRouter().route("牦牛体高 114 cm，胸围 158 cm，帮我分析体尺")
+
+    assert result.intent == "measurement_analysis"
+
+
+def test_router_detects_general_qa() -> None:
+    result = IntentRouter().route("犊牛断奶后应该怎么饲养管理？")
+
+    assert result.intent == "general_qa"
+
+
+def test_router_detects_out_of_scope() -> None:
+    result = IntentRouter().route("帮我写一个股票交易策略")
+
+    assert result.intent == "out_of_scope"
+

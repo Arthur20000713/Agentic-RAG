@@ -17,3 +17,9 @@ V1 规划的应用层工具：
 - 已实现 `ToolCaller.call_with_timeout`，超时返回 `ToolResult(status="error")` 并可写入工具日志。
 - 已实现 `disease_risk_evaluator`，基于规则返回 `risk_level`、`need_vet`、`need_isolation`、`missing_info`。
 - 已实现 `body_measurement_analyzer`，异常结论必须带数值 evidence；无历史时不判断趋势。
+
+Agent Workflow 当前使用这些工具作为内部能力边界：
+
+- 普通问答：调用 `RagServerClient.query` 后由 `AnswerGenerator` 拼装引用。
+- 疾病问诊：先抽槽并追问，信息充分后调用疾病风险规则和 RAG 查询，最终经过 `FinalSafetyGuard`。
+- 体尺分析：调用 `BodyMeasurementAnalyzer`，异常项必须带 evidence。

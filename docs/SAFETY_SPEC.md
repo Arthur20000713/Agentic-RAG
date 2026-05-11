@@ -16,3 +16,9 @@ V1 输出边界：
 - `fabricated_tool_result`：拦截工具或检索失败后仍声称有检索结果的表达。
 
 `FinalSafetyGuard` 在发现违规时返回保守安全提示，不保留具体剂量或确定性诊断内容。
+
+Agent Workflow 要求：
+
+- 疾病问诊最终回答必须经过 `FinalSafetyGuard`。
+- Verifier-lite 会检查专业回答缺引用、剂量违规、体尺异常缺 evidence。
+- 追问分支不得调用 RAG，不得伪造引用。
