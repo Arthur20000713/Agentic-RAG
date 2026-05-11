@@ -1,0 +1,19 @@
+{
+  "query": "低置信问题",
+  "status": "low_confidence",
+  "answer_text": null,
+  "hits": [
+    {
+      "chunk_id": "doc_003_chunk_001",
+      "document_id": "doc_003",
+      "document_title": "畜牧资料摘录",
+      "content": "该片段与问题相关性较弱。",
+      "page": 1,
+      "section_title": "概述",
+      "score": 0.18,
+      "metadata": {}
+    }
+  ],
+  "citations": []
+}
+

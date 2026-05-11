@@ -1,0 +1,12 @@
+app:
+  name: Livestock Agentic RAG Test
+  environment: test
+  debug: true
+rag_server:
+  query_mode: fake
+  repo_path:
+  python_executable:
+  collection: test
+  timeout_seconds: 1
+database:
+  url: "sqlite:///:memory:"

@@ -1,0 +1,2 @@
+"""SQLite application data layer."""
+

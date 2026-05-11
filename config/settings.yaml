@@ -1,0 +1,12 @@
+app:
+  name: Livestock Agentic RAG
+  environment: local
+  debug: false
+rag_server:
+  query_mode: fake
+  repo_path:
+  python_executable:
+  collection: default
+  timeout_seconds: 5
+database:
+  url: "sqlite:///data/app.db"

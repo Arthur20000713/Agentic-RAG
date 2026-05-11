@@ -1,0 +1,10 @@
+{
+  "query": "失败问题",
+  "status": "error",
+  "answer_text": null,
+  "hits": [],
+  "citations": [],
+  "error_code": "RAG_INTERNAL_ERROR",
+  "error_message": "fake rag server error fixture"
+}
+

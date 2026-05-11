@@ -1,0 +1,15 @@
+.venv/
+.git/
+gitdir/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.tmp_tests/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+data/*.db
+data/app.db
+reports/

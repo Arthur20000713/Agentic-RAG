@@ -1,0 +1,50 @@
+{
+  "query": "犊牛腹泻怎么办",
+  "status": "success",
+  "answer_text": "犊牛腹泻需要结合持续时间、体温、采食和精神状态评估风险。",
+  "hits": [
+    {
+      "chunk_id": "doc_001_chunk_012",
+      "document_id": "doc_001",
+      "document_title": "犊牛腹泻防治技术手册",
+      "content": "犊牛腹泻常见原因包括饲养管理变化、细菌或病毒感染、寄生虫以及初乳摄入不足。",
+      "page": 12,
+      "section_title": "常见病因",
+      "score": 0.86,
+      "metadata": {
+        "domain": "disease",
+        "species": "cattle"
+      }
+    },
+    {
+      "chunk_id": "doc_002_chunk_004",
+      "document_id": "doc_002",
+      "document_title": "牛羊常见病防治",
+      "content": "持续腹泻并伴随精神沉郁、采食下降或高热时，应尽快进行人工检查并联系兽医。",
+      "page": 35,
+      "section_title": "腹泻处理原则",
+      "score": 0.79,
+      "metadata": {
+        "domain": "disease",
+        "species": "cattle"
+      }
+    }
+  ],
+  "citations": [
+    {
+      "source_id": "doc_001",
+      "title": "犊牛腹泻防治技术手册",
+      "page": 12,
+      "section_title": "常见病因",
+      "chunk_id": "doc_001_chunk_012"
+    },
+    {
+      "source_id": "doc_002",
+      "title": "牛羊常见病防治",
+      "page": 35,
+      "section_title": "腹泻处理原则",
+      "chunk_id": "doc_002_chunk_004"
+    }
+  ]
+}
+
