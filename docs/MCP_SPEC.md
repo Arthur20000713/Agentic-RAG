@@ -9,3 +9,10 @@ V1 规划的应用层工具：
 
 工具失败时必须返回明确错误，不得伪造 RAG 命中或引用。
 
+当前实现进度：
+
+- 已固定 4 个 V1 工具的 `input_schema`。
+- 已实现 `livestock_rag_search` wrapper，错误结果保留空 hits，不伪造 citations。
+- 已实现 `get_source_detail` wrapper。
+- 已实现 `ToolCaller.call_with_timeout`，超时返回 `ToolResult(status="error")` 并可写入工具日志。
+- `disease_risk_evaluator` 与 `body_measurement_analyzer` 的具体规则实现放在阶段 E。
