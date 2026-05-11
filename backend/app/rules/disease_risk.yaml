@@ -1,0 +1,24 @@
+required_slots:
+  - species
+  - symptoms
+  - temperature_c
+  - duration_days
+  - group_outbreak
+fever_threshold_c: 40.0
+high_duration_days: 2
+emergency_symptoms:
+  - sudden_death
+  - death
+  - convulsion
+  - breathing_difficulty
+  - 突然死亡
+  - 抽搐
+  - 呼吸困难
+high_risk_symptoms:
+  - diarrhea
+  - depression
+  - low_appetite
+  - 腹泻
+  - 精神沉郁
+  - 采食下降
+

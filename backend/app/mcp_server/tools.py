@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+from pydantic import ValidationError
+
+from backend.app.rules.disease_risk import DiseaseRiskEvaluator
+from backend.app.schemas.measurement import MeasurementInput
 from backend.app.integrations.rag_server.base import RagServerClient
 from backend.app.schemas.mcp import ToolResult
+from backend.app.services.measurement_service import BodyMeasurementAnalyzer
 
 
 TOOL_SCHEMAS = {
@@ -108,3 +113,50 @@ async def get_source_detail(
     summary = await client.get_document_summary(doc_id, collection=collection)
     return ToolResult.success("get_source_detail", summary.model_dump())
 
+
+def disease_risk_evaluator(
+    *,
+    species: str | None = None,
+    age_stage: str | None = None,
+    symptoms: list[str] | None = None,
+    temperature_c: float | None = None,
+    duration_days: float | None = None,
+    group_outbreak: bool | None = None,
+) -> ToolResult:
+    result = DiseaseRiskEvaluator().evaluate(
+        species=species,
+        age_stage=age_stage,
+        symptoms=symptoms,
+        temperature_c=temperature_c,
+        duration_days=duration_days,
+        group_outbreak=group_outbreak,
+    )
+    return ToolResult.success("disease_risk_evaluator", result.model_dump())
+
+
+def body_measurement_analyzer(
+    *,
+    animal_id: str,
+    current: dict,
+    history: list[dict] | None = None,
+    age_month: int | None = None,
+    confidence: float | None = None,
+    use_demo_history: bool = False,
+) -> ToolResult:
+    try:
+        measurement = MeasurementInput(
+            animal_id=animal_id,
+            age_month=age_month,
+            current=current,
+            history=history or [],
+            confidence=confidence,
+            use_demo_history=use_demo_history,
+        )
+    except ValidationError as exc:
+        return ToolResult.failure(
+            "body_measurement_analyzer",
+            "INVALID_MEASUREMENT_INPUT",
+            str(exc),
+        )
+    result = BodyMeasurementAnalyzer().analyze(measurement)
+    return ToolResult.success("body_measurement_analyzer", result.model_dump())

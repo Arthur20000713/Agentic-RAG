@@ -1,0 +1,14 @@
+blocked_categories:
+  dosage:
+    - '\d+(\.\d+)?\s*(mg/kg|mg|ml|g|kg|毫升|克|片)'
+  definitive_diagnosis:
+    - 确诊
+    - 确定诊断
+    - 可以确定诊断
+  prescription:
+    - 开具处方
+    - 处方药
+  fabricated_tool_result:
+    - 工具调用失败.*检索结果
+    - 检索失败.*资料显示
+

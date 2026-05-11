@@ -20,3 +20,9 @@ py -3.11 -m pytest -m "not rag_server"
 ```powershell
 py -3.11 -m pytest tests/integration/test_mcp_tools.py tests/integration/test_tool_timeout.py tests/unit/test_template_client.py tests/unit/test_answer_generator.py
 ```
+
+阶段 E 局部检查：
+
+```powershell
+py -3.11 -m pytest tests/unit/test_disease_risk.py tests/unit/test_measurement_analyzer.py tests/unit/test_safety.py tests/integration/test_mcp_tools.py
+```
