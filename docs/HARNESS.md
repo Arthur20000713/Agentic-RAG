@@ -57,3 +57,10 @@ Optional real RAG-SERVER smoke tests:
 $env:RAG_SERVER_PATH="C:\Users\DELL\PycharmProjects\PythonProject\RAG-SERVER"
 py -3.11 -m pytest tests/integration/test_rag_server_mcp_client.py tests/integration/test_rag_server_cli_gateway.py -m rag_server
 ```
+
+Phase I evaluation check:
+
+```powershell
+py -3.11 -m pytest tests/unit/test_golden_set_schema.py tests/unit/test_eval_metrics.py tests/integration/test_eval_runner.py
+py -3.11 scripts/run_eval.py
+```

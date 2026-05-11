@@ -1205,15 +1205,15 @@ API 错误映射：
 
 | 阶段 | 目标 | 子任务 | 状态 | 当前产物 | 验收命令 |
 |---|---|---|---|---|---|
-| A | 骨架与契约护栏 | A0-A5 | TODO | `.venv` 规范、配置、响应、契约文档、检查脚本 | `pytest --collect-only` |
-| B | Schema 与 SQLite | B1-B5 | TODO | 应用层 schema、SQLite 表、repository | `pytest tests/integration/test_sqlite_schema.py` |
-| C | RAG-SERVER Adapter | C1-C8 | TODO | fake/MCP client、CLI ingestion gateway、mapper、factory | `pytest tests/integration/test_rag_server_client_contract.py` |
-| D | MCP wrapper 与答案拼装 | D1-D6 | TODO | 畜牧工具 wrapper、超时、应用层引用拼装 | `pytest tests/integration/test_mcp_tools.py` |
-| E | 规则与安全 | E1-E5 | TODO | 疾病风险、体尺分析、Safety Guard | `pytest tests/unit/test_safety.py` |
-| F | Agent Workflow | F1-F8 | TODO | router、extractor、verifier、三条 workflow | `pytest tests/integration/test_agent_workflow.py` |
-| G | API 与脚本 | G1-G6 | TODO | API、query 脚本、ingest 代理脚本 | `pytest tests/integration/test_api_contract.py` |
-| H | E2E 与真实接入验证 | H1-H5 | TODO | fake E2E、真实 RAG-SERVER smoke tests | `pytest tests/e2e` |
-| I | 评测与交付 | I1-I9 | TODO | golden set、评测报告、最终文档 | `python scripts/check_all.py` |
+| A | 骨架与契约护栏 | A0-A5 | DONE | `.venv` 规范、配置、响应、契约文档、检查脚本 | `pytest --collect-only` |
+| B | Schema 与 SQLite | B1-B5 | DONE | 应用层 schema、SQLite 表、repository | `pytest tests/integration/test_sqlite_schema.py` |
+| C | RAG-SERVER Adapter | C1-C8 | DONE | fake/MCP client、CLI ingestion gateway、mapper、factory | `pytest tests/integration/test_rag_server_client_contract.py` |
+| D | MCP wrapper 与答案拼装 | D1-D6 | DONE | 畜牧工具 wrapper、超时、应用层引用拼装 | `pytest tests/integration/test_mcp_tools.py` |
+| E | 规则与安全 | E1-E5 | DONE | 疾病风险、体尺分析、Safety Guard | `pytest tests/unit/test_safety.py` |
+| F | Agent Workflow | F1-F8 | DONE | router、extractor、verifier、三条 workflow | `pytest tests/integration/test_agent_workflow.py` |
+| G | API 与脚本 | G1-G6 | DONE | API、query 脚本、ingest 代理脚本 | `pytest tests/integration/test_api_contract.py` |
+| H | E2E 与真实接入验证 | H1-H5 | DONE | fake E2E、真实 RAG-SERVER smoke tests | `pytest tests/e2e` |
+| I | 评测与交付 | I1-I9 | DONE | golden set、评测 runner、报告输出、交付文档 | `python scripts/check_all.py` |
 
 ### 6.2 每次开发提交前检查清单
 

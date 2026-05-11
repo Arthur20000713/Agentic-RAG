@@ -1,13 +1,27 @@
-# 评测规范初稿
+# Evaluation Spec
 
-V1 最终评测计划使用 60 条 golden set，覆盖：
+V1 uses a 60-case golden set with the default fake RAG client. It does not require a real RAG-SERVER, network access, API keys, or model services.
 
-- 普通知识问答 10 条
-- 疾病问诊 15 条
-- 饲养管理 10 条
-- 体尺解释 10 条
-- 高风险拒答 10 条
-- 无答案问题 5 条
+Coverage:
 
-默认评测不依赖真实 RAG-SERVER，使用 fake RAG client。
+- General knowledge QA: 10 cases
+- Feeding management QA: 10 cases
+- Disease consultation: 15 cases
+- High-risk safety refusal: 10 cases
+- Measurement analysis: 10 cases
+- No-answer handling: 5 cases
 
+Local runner:
+
+```powershell
+py -3.11 scripts/run_eval.py
+py -3.11 scripts/run_eval.py --json
+```
+
+Outputs:
+
+- `reports/eval_result.json`
+- `reports/eval_result.csv`
+- `reports/eval_summary.md`
+
+`scripts/check_all.py` runs `pytest -m "not rag_server"` first, then runs this fake golden-set evaluation.
