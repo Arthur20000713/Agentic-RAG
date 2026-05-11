@@ -6,6 +6,42 @@ from typing import Any
 import yaml
 
 from backend.app.schemas.measurement import MeasurementAnalysisResult, MeasurementInput
+from backend.app.db.repositories import MeasurementRepository
+
+
+class MeasurementService:
+    def __init__(self, measurement_repository: MeasurementRepository | None = None) -> None:
+        self.measurement_repository = measurement_repository
+        self.analyzer = BodyMeasurementAnalyzer()
+
+    def analyze(self, measurement: MeasurementInput) -> MeasurementAnalysisResult:
+        history = list(measurement.history)
+        used_demo_history = measurement.use_demo_history
+        if not history and self.measurement_repository is not None:
+            history = self.measurement_repository.list_history(measurement.animal_id)
+        if not history and measurement.use_demo_history:
+            history = self._demo_history(measurement)
+
+        enriched = MeasurementInput(
+            animal_id=measurement.animal_id,
+            age_month=measurement.age_month,
+            current=measurement.current,
+            history=history,
+            confidence=measurement.confidence,
+            use_demo_history=used_demo_history and bool(history),
+        )
+        return self.analyzer.analyze(enriched)
+
+    def _demo_history(self, measurement: MeasurementInput) -> list[dict]:
+        current = measurement.current.model_dump()
+        demo: dict = {"measure_date": "2026-04-01"}
+        if current.get("chest_girth_cm") is not None:
+            demo["chest_girth_cm"] = max(float(current["chest_girth_cm"]) - 1.4, 0)
+        if current.get("weight_kg") is not None:
+            demo["weight_kg"] = max(float(current["weight_kg"]) - 4.5, 0)
+        if len(demo) == 1:
+            demo["body_height_cm"] = 110.0
+        return [demo]
 
 
 class BodyMeasurementAnalyzer:
@@ -97,4 +133,3 @@ class BodyMeasurementAnalyzer:
             "field_labels": data.get("field_labels", {}),
             "units": data.get("units", {}),
         }
-

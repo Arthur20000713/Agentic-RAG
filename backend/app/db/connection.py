@@ -22,8 +22,7 @@ def _path_from_sqlite_url(database_url: str) -> str:
 
 def get_connection(database_url: str) -> sqlite3.Connection:
     path = _path_from_sqlite_url(database_url)
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
-

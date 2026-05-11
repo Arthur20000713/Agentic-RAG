@@ -38,3 +38,9 @@ py -3.11 -m pytest tests/integration/test_rag_server_mcp_client.py -m "not rag_s
 ```powershell
 py -3.11 -m pytest tests/unit/test_agent_router.py tests/unit/test_slot_extractor.py tests/unit/test_verifier.py tests/integration/test_agent_workflow.py tests/e2e/test_disease_consultation_flow.py tests/e2e/test_measurement_report_flow.py
 ```
+
+阶段 G 局部检查：
+
+```powershell
+py -3.11 -m pytest tests/integration/test_api_contract.py tests/integration/test_cli_scripts.py
+```
