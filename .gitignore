@@ -1,5 +1,6 @@
 .venv/
-.git/
+.git_broken_acl/
+gitdir_broken_acl/
 gitdir/
 __pycache__/
 *.py[cod]
