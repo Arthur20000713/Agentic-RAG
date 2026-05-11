@@ -44,3 +44,16 @@ py -3.11 -m pytest tests/unit/test_agent_router.py tests/unit/test_slot_extracto
 ```powershell
 py -3.11 -m pytest tests/integration/test_api_contract.py tests/integration/test_cli_scripts.py
 ```
+
+Phase H local E2E check:
+
+```powershell
+py -3.11 -m pytest tests/e2e/test_document_qa_flow.py tests/e2e/test_disease_consultation_flow.py tests/e2e/test_measurement_report_flow.py -m "not rag_server"
+```
+
+Optional real RAG-SERVER smoke tests:
+
+```powershell
+$env:RAG_SERVER_PATH="C:\Users\DELL\PycharmProjects\PythonProject\RAG-SERVER"
+py -3.11 -m pytest tests/integration/test_rag_server_mcp_client.py tests/integration/test_rag_server_cli_gateway.py -m rag_server
+```
