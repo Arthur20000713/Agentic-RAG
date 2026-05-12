@@ -349,3 +349,54 @@ class RagTraceRepository:
             (request_id,),
         ).fetchall()
         return [dict(row) for row in rows]
+
+
+class EvalRunRepository:
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self.conn = conn
+
+    def add(
+        self,
+        *,
+        run_id: str,
+        eval_type: str,
+        rag_mode: str,
+        total_cases: int,
+        passed_cases: int,
+        metrics: dict[str, Any] | None = None,
+        failure_summary: dict[str, Any] | None = None,
+        report_path: str | None = None,
+    ) -> int:
+        cursor = self.conn.execute(
+            """
+            INSERT INTO eval_run_log (
+                run_id, eval_type, rag_mode, total_cases, passed_cases,
+                metrics_json, failure_summary_json, report_path
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                run_id,
+                eval_type,
+                rag_mode,
+                total_cases,
+                passed_cases,
+                json.dumps(metrics or {}, ensure_ascii=False),
+                json.dumps(failure_summary or {}, ensure_ascii=False),
+                report_path,
+            ),
+        )
+        self.conn.commit()
+        return int(cursor.lastrowid)
+
+    def get(self, run_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            "SELECT * FROM eval_run_log WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        data = dict(row)
+        data["metrics"] = json.loads(data.pop("metrics_json") or "{}")
+        data["failure_summary"] = json.loads(data.pop("failure_summary_json") or "{}")
+        return data

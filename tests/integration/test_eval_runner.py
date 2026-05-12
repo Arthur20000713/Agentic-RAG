@@ -7,6 +7,9 @@ from uuid import uuid4
 
 from backend.app.evaluation.golden_runner import GoldenSetRunner
 from backend.app.evaluation.real_rag_runner import RealRagEvalRunner
+from backend.app.db.connection import get_connection
+from backend.app.db.migrations import init_db
+from backend.app.db.repositories import EvalRunRepository
 from backend.app.integrations.rag_server.mcp_stdio_client import RagServerMcpClient
 from scripts.run_eval import main as run_eval_main
 
@@ -90,3 +93,30 @@ def test_real_rag_runner_creates_mcp_client_when_path_is_configured(monkeypatch)
     assert isinstance(client, RagServerMcpClient)
     assert runner.settings.rag_server.query_mode == "real"
     assert runner.settings.rag_server.python_executable == sys.executable
+
+
+def test_eval_run_log_repository_persists_metrics_and_failure_summary() -> None:
+    conn = get_connection("sqlite:///:memory:")
+    init_db(conn)
+    repository = EvalRunRepository(conn)
+
+    row_id = repository.add(
+        run_id="eval_001",
+        eval_type="golden",
+        rag_mode="fake",
+        total_cases=60,
+        passed_cases=58,
+        metrics={"pass_rate": 0.9667},
+        failure_summary={"unsupported_claim": 2},
+        report_path="reports/eval_summary.md",
+    )
+    stored = repository.get("eval_001")
+
+    assert row_id > 0
+    assert stored is not None
+    assert stored["run_id"] == "eval_001"
+    assert stored["total_cases"] == 60
+    assert stored["passed_cases"] == 58
+    assert stored["metrics"] == {"pass_rate": 0.9667}
+    assert stored["failure_summary"] == {"unsupported_claim": 2}
+    assert stored["report_path"] == "reports/eval_summary.md"

@@ -13,6 +13,7 @@ APPLICATION_TABLES = {
     "agent_trace_log",
     "rag_trace_log",
     "session_context",
+    "eval_run_log",
 }
 
 
@@ -150,6 +151,19 @@ CREATE TABLE IF NOT EXISTS session_context (
     expires_at TEXT,
     status TEXT DEFAULT 'active',
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS eval_run_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT UNIQUE NOT NULL,
+    eval_type TEXT,
+    rag_mode TEXT,
+    total_cases INTEGER,
+    passed_cases INTEGER,
+    metrics_json TEXT,
+    failure_summary_json TEXT,
+    report_path TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 """
 

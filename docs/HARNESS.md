@@ -260,3 +260,9 @@ V2.4-D6 session reset check:
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/e2e/test_session_follow_up_flow.py -k reset
 ```
+
+V2.5-E1 eval run log check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/integration/test_eval_runner.py -k log
+```
