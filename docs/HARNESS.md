@@ -218,3 +218,9 @@ V2.3-C5 debug panel frontend contract check:
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/integration/test_frontend_contract.py -k debug
 ```
+
+V2.3-C6 frontend smoke check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/e2e/test_frontend_smoke.py
+```
