@@ -152,3 +152,9 @@ V2.2-B6 measurement agent report check:
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/unit/test_measurement_agent.py
 ```
+
+V2.2-B7 verifier agent evidence check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/unit/test_verifier_agent.py
+```
