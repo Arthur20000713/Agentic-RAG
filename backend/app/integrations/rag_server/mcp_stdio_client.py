@@ -6,7 +6,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Awaitable
 
 from backend.app.core.config import Settings
 from backend.app.integrations.rag_server.base import RagServerClient
@@ -18,6 +18,25 @@ from backend.app.services.trace_service import TraceService
 
 class RagServerMcpError(RuntimeError):
     pass
+
+
+class RagServerTimeoutPolicy:
+    ERROR_CODE = "RAG_TIMEOUT"
+
+    def __init__(self, timeout_seconds: float) -> None:
+        self.timeout_seconds = timeout_seconds
+
+    async def wait_for(self, awaitable: Awaitable[Any], *, operation: str) -> Any:
+        try:
+            return await asyncio.wait_for(awaitable, timeout=self.timeout_seconds)
+        except asyncio.TimeoutError as exc:
+            raise RagServerMcpError(
+                f"{operation} timed out after {self.timeout_seconds:g}s"
+            ) from exc
+
+    @classmethod
+    def is_timeout_error(cls, exc: RagServerMcpError) -> bool:
+        return "timed out" in str(exc)
 
 
 class RagServerMcpClient(RagServerClient):
@@ -102,6 +121,8 @@ class RagServerMcpClient(RagServerClient):
                 top_k=top_k,
                 status="error",
                 error_code=error_result.error_code,
+                result_count=0,
+                mapped_result_count=0,
                 latency_ms=self._elapsed_ms(started_at),
             )
             return error_result
@@ -122,6 +143,8 @@ class RagServerMcpClient(RagServerClient):
                 status="error",
                 raw_response_id=error_result.raw_response_id,
                 error_code=error_result.error_code,
+                result_count=0,
+                mapped_result_count=0,
                 latency_ms=self._elapsed_ms(started_at),
             )
             return error_result
@@ -263,7 +286,12 @@ class RagServerMcpClient(RagServerClient):
         self._request_id += 1
         request_id = self._request_id
         await self._send({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params})
-        response = await self._read_response(request_id)
+        try:
+            response = await self._read_response(request_id)
+        except RagServerMcpError as exc:
+            if RagServerTimeoutPolicy.is_timeout_error(exc):
+                await self.close()
+            raise
         if "error" in response:
             error = response["error"]
             message = error.get("message", "mcp request failed") if isinstance(error, dict) else str(error)
@@ -297,11 +325,11 @@ class RagServerMcpClient(RagServerClient):
         if self.process is None or self.process.stdout is None:
             raise RagServerMcpError("MCP stdio process is not available")
 
-        timeout = self.settings.rag_server.timeout_seconds
+        timeout_policy = RagServerTimeoutPolicy(self.settings.rag_server.timeout_seconds)
         while True:
-            raw_line = await asyncio.wait_for(
+            raw_line = await timeout_policy.wait_for(
                 asyncio.to_thread(self.process.stdout.readline),
-                timeout=timeout,
+                operation=f"MCP stdio response for request {request_id}",
             )
             if not raw_line:
                 stderr_text = await self._read_stderr_tail()
@@ -353,7 +381,7 @@ class RagServerMcpClient(RagServerClient):
         if "repo_path is required" in message or "RAG_SERVER_PATH" in message:
             return "RAG_SERVER_PATH_MISSING"
         if "timed out" in message:
-            return "RAG_TIMEOUT"
+            return RagServerTimeoutPolicy.ERROR_CODE
         return "RAG_MCP_ERROR"
 
     def _drop_none(self, data: dict[str, Any]) -> dict[str, Any]:
