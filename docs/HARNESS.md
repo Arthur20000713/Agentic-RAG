@@ -164,3 +164,9 @@ V2.2-B8 safety agent blocking check:
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/unit/test_safety_agent.py
 ```
+
+V2.2-B9 response agent output check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/unit/test_response_agent.py
+```
