@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any, Iterable
 
+from backend.app.evaluation.failure_analysis import build_failure_summary
+
 
 CHECK_TO_METRIC = {
     "intent": "intent_accuracy",
@@ -26,6 +28,7 @@ def compute_metrics(results: Iterable[Any]) -> dict[str, Any]:
         "failed_cases": total - passed,
         "pass_rate": _rate(passed, total),
         "by_category": _category_summary(items),
+        "failure_categories": build_failure_summary(items),
     }
 
     for check_name, metric_name in CHECK_TO_METRIC.items():

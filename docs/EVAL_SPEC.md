@@ -28,3 +28,5 @@ Outputs:
 `scripts/check_all.py` runs `pytest -m "not rag_server"` first, then runs this fake golden-set evaluation.
 
 Real RAG evaluation is explicit and optional. It requires `RAG_SERVER_PATH` or `rag_server.repo_path`; when `--optional` is set and the path is missing, the runner writes a skipped report instead of falling back to fake RAG.
+
+Evaluation metrics include fixed failure category counts under `metrics.failure_categories`: `NO_COLLECTION`, `NO_RETRIEVAL_RESULT`, `LOW_RETRIEVAL_SCORE`, `BAD_MAPPING`, `UNSUPPORTED_CLAIM`, `SAFETY_VIOLATION`, `TOOL_TIMEOUT`, and `RAG_SERVER_UNAVAILABLE`.

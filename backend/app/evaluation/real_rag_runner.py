@@ -185,4 +185,7 @@ class RealRagEvalRunner:
         lines.extend(["", "## Categories", "", "| Category | Passed | Total | Pass rate |", "|---|---:|---:|---:|"])
         for category, item in metrics["by_category"].items():
             lines.append(f"| {category} | {item['passed']} | {item['total']} | {item['pass_rate']:.2%} |")
+        lines.extend(["", "## Failure Categories", "", "| Category | Count |", "|---|---:|"])
+        for category, count in metrics.get("failure_categories", {}).items():
+            lines.append(f"| {category} | {count} |")
         (self.output_dir / "eval_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
