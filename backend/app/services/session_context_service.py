@@ -3,11 +3,14 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 from pydantic import BaseModel, Field
 
 from backend.app.schemas.agent import IntentType
+
+
+SlotSource = Literal["user_confirmed", "ai_inferred", "missing", "stale", "tool_result"]
 
 
 def utc_now() -> datetime:
@@ -21,7 +24,7 @@ class SessionContextData(BaseModel):
     last_symptoms: list[str] = Field(default_factory=list)
     last_animal_id: str | None = None
     pending_slots: list[str] = Field(default_factory=list)
-    slot_sources: dict[str, str] = Field(default_factory=dict)
+    slot_sources: dict[str, SlotSource] = Field(default_factory=dict)
     risk_context_status: str = "empty"
     updated_at: datetime = Field(default_factory=utc_now)
     expires_at: datetime | None = None
@@ -69,5 +72,13 @@ class SessionContextService:
 
     def update_context(self, session_id: str, **changes: Any) -> SessionContextData:
         current = self.get_context(session_id) or SessionContextData(session_id=session_id)
-        updated = current.model_copy(update=changes)
+        data = current.model_dump()
+        data.update(changes)
+        updated = SessionContextData.model_validate(data)
         return self.save_context(updated)
+
+    def set_slot_source(self, session_id: str, slot_name: str, source: SlotSource) -> SessionContextData:
+        current = self.get_context(session_id) or SessionContextData(session_id=session_id)
+        slot_sources = dict(current.slot_sources)
+        slot_sources[slot_name] = source
+        return self.update_context(session_id, slot_sources=slot_sources)

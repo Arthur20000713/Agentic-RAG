@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import pytest
+from pydantic import ValidationError
+
 from backend.app.db.connection import get_connection
 from backend.app.db.migrations import init_db
 from backend.app.services.session_context_service import SessionContextData, SessionContextService
@@ -61,3 +64,32 @@ def test_session_context_service_update_creates_missing_context() -> None:
     assert updated.session_id == "s_new"
     assert updated.last_animal_id == "yak_032"
     assert service.get_context("s_new") == updated
+
+
+def test_session_context_slot_sources_accept_only_allowed_values() -> None:
+    context = SessionContextData(
+        session_id="s1",
+        slot_sources={
+            "duration_days": "user_confirmed",
+            "risk_level": "ai_inferred",
+            "temperature_c": "missing",
+            "group_outbreak": "stale",
+            "symptoms": "tool_result",
+        },
+    )
+
+    assert context.slot_sources["duration_days"] == "user_confirmed"
+
+    with pytest.raises(ValidationError):
+        SessionContextData(session_id="s1", slot_sources={"temperature_c": "guessed"})
+
+
+def test_session_context_service_set_slot_source_validates_value() -> None:
+    service = _service()
+    service.save_context(SessionContextData(session_id="s1"))
+
+    updated = service.set_slot_source("s1", "temperature_c", "user_confirmed")
+
+    assert updated.slot_sources == {"temperature_c": "user_confirmed"}
+    with pytest.raises(ValidationError):
+        service.update_context("s1", slot_sources={"temperature_c": "guessed"})

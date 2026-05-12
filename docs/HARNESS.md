@@ -236,3 +236,9 @@ V2.4-D2 session context service check:
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/unit/test_session_context.py -k service
 ```
+
+V2.4-D3 session context slot sources check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/unit/test_session_context.py -k slot_sources
+```
