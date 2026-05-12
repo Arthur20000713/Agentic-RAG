@@ -182,3 +182,9 @@ V2.2-B11 disease graph check:
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/integration/test_agent_graph.py -k disease
 ```
+
+V2.2-B12 measurement graph check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/integration/test_agent_graph.py -k measurement
+```

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import asyncio
 
-from backend.app.agent.graph import run_disease_graph, run_general_qa_graph
+from backend.app.agent.graph import run_disease_graph, run_general_qa_graph, run_measurement_graph
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
+from backend.app.schemas.measurement import MeasurementInput
 
 
 def test_general_qa_graph_runs_supervisor_rag_verifier_safety_response() -> None:
@@ -104,3 +105,55 @@ def test_disease_graph_high_risk_uses_rag_verifier_safety_response() -> None:
         "safety_agent",
         "response_agent",
     ]
+
+
+def test_measurement_graph_runs_without_rag_and_preserves_evidence() -> None:
+    measurement = MeasurementInput(
+        animal_id="yak_032",
+        current={"chest_girth_cm": 158.4, "weight_kg": 246.5},
+        history=[
+            {
+                "measure_date": "2026-04-01",
+                "chest_girth_cm": 157.0,
+                "weight_kg": 242.0,
+            }
+        ],
+        confidence=0.82,
+    )
+
+    state = asyncio.run(run_measurement_graph(measurement, session_id="s_measure_graph"))
+
+    assert state.intent == "measurement_analysis"
+    assert state.measurement_report is not None
+    assert "chest_girth_cm" in state.measurement_report["abnormal_items"]
+    assert "livestock_rag_search" not in state.tool_results
+    assert state.rag_query is None
+    assert state.verification_result is not None
+    assert state.verification_result["passed"] is True
+    assert state.safety_result is not None
+    assert state.safety_result["passed"] is True
+    assert state.final_answer is not None
+    assert "增长 1.4 cm" in state.final_answer
+    assert [item["node"] for item in state.agent_trace] == [
+        "supervisor",
+        "measurement_agent",
+        "verifier_agent",
+        "safety_agent",
+        "response_agent",
+    ]
+
+
+def test_measurement_graph_without_history_still_returns_report() -> None:
+    measurement = MeasurementInput(
+        animal_id="yak_001",
+        current={"body_height_cm": 114.2, "weight_kg": 246.5},
+        confidence=0.82,
+    )
+
+    state = asyncio.run(run_measurement_graph(measurement, session_id="s_measure_none"))
+
+    assert state.intent == "measurement_analysis"
+    assert state.measurement_report is not None
+    assert state.measurement_report["abnormal_items"] == []
+    assert state.final_answer is not None
+    assert "无历史记录" in state.final_answer

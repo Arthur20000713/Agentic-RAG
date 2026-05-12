@@ -3,6 +3,7 @@ from __future__ import annotations
 from uuid import uuid4
 
 from backend.app.agent.disease_agent import DiseaseAgent
+from backend.app.agent.measurement_agent import MeasurementAgent
 from backend.app.agent.rag_agent import RagAgent
 from backend.app.agent.response_agent import ResponseAgent
 from backend.app.agent.safety_agent import SafetyAgent
@@ -12,6 +13,7 @@ from backend.app.agent.verifier_agent import VerifierAgent
 from backend.app.integrations.rag_server.base import RagServerClient
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
 from backend.app.model.answer_generator import AnswerGenerator
+from backend.app.schemas.measurement import MeasurementInput
 from backend.app.schemas.rag_server import RagSearchResult
 
 
@@ -45,6 +47,23 @@ async def run_disease_graph(
         await RagAgent(rag_client or FakeRagServerClient()).run(state)
         _compose_rag_draft(state, prefix=disease_draft)
         VerifierAgent().verify(state)
+    SafetyAgent().check(state)
+    ResponseAgent().render(state)
+    return state
+
+
+async def run_measurement_graph(
+    measurement: MeasurementInput,
+    *,
+    session_id: str | None = None,
+) -> MultiAgentState:
+    state = MultiAgentState(
+        session_id=session_id or _new_session_id(),
+        user_query=f"body measurement analysis for {measurement.animal_id}",
+    )
+    SupervisorAgent().route(state)
+    MeasurementAgent().run(state, measurement)
+    VerifierAgent().verify(state)
     SafetyAgent().check(state)
     ResponseAgent().render(state)
     return state
