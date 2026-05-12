@@ -22,7 +22,7 @@ def main() -> int:
     if completed.returncode != 0:
         return completed.returncode
 
-    eval_command = [sys.executable, str(Path(__file__).with_name("run_eval.py"))]
+    eval_command = [sys.executable, str(Path(__file__).with_name("run_eval.py")), "--mode", "fake"]
     eval_completed = subprocess.run(eval_command, check=False)
     return eval_completed.returncode
 

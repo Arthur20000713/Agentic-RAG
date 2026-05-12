@@ -37,3 +37,19 @@ def test_run_eval_script_outputs_expected_files() -> None:
     assert (output_dir / "eval_result.json").exists()
     assert (output_dir / "eval_result.csv").exists()
     assert (output_dir / "eval_summary.md").read_text(encoding="utf-8").startswith("# Evaluation Summary")
+
+
+def test_run_eval_script_accepts_fake_mode() -> None:
+    output_dir = _tmp_dir()
+
+    exit_code = run_eval_main(["--mode", "fake", "--output-dir", str(output_dir)])
+
+    assert exit_code == 0
+    assert (output_dir / "eval_result.json").exists()
+
+
+def test_run_eval_real_optional_skips_until_real_runner_exists(capsys) -> None:  # noqa: ANN001
+    exit_code = run_eval_main(["--mode", "real", "--optional"])
+
+    assert exit_code == 0
+    assert "SKIPPED" in capsys.readouterr().out

@@ -41,3 +41,18 @@ def test_ingest_via_rag_server_reports_missing_path() -> None:
     assert completed.returncode == 2
     assert "RAG_SERVER_PATH_MISSING" in completed.stdout
 
+
+def test_check_v2_offline_passes() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/check_v2.py",
+            "--offline",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0
+    assert "V2 checks passed" in completed.stdout

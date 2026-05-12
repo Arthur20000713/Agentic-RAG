@@ -13,11 +13,33 @@ from backend.app.evaluation.golden_runner import GoldenSetRunner  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Run the local fake golden-set evaluation.")
+    parser = argparse.ArgumentParser(description="Run V2 evaluation checks.")
+    parser.add_argument(
+        "--mode",
+        choices=["fake", "real"],
+        default="fake",
+        help="evaluation mode; real mode is implemented in V2.1-A11",
+    )
     parser.add_argument("--golden-set", default="tests/fixtures/golden_set.json", help="path to golden set JSON")
     parser.add_argument("--output-dir", default="reports", help="directory for evaluation reports")
     parser.add_argument("--json", action="store_true", help="print JSON report to stdout")
+    parser.add_argument(
+        "--optional",
+        action="store_true",
+        help="allow optional real evaluation to skip when not implemented or not configured",
+    )
     args = parser.parse_args(argv)
+
+    if args.mode == "real":
+        message = "real RAG evaluation is not implemented until V2.1-A11"
+        if args.optional:
+            if args.json:
+                print(json.dumps({"status": "skipped", "reason": message}, ensure_ascii=False, indent=2))
+            else:
+                print(f"SKIPPED: {message}")
+            return 0
+        print(f"ERROR: {message}", file=sys.stderr)
+        return 2
 
     runner = GoldenSetRunner(args.golden_set, output_dir=args.output_dir)
     report = runner.run()
