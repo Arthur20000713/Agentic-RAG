@@ -76,3 +76,9 @@ V2.1-A6 RAG trace integration check:
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/integration/test_rag_server_adapter.py tests/integration/test_rag_server_mcp_client.py -m "not rag_server"
 ```
+
+V2.1-A7 RAG collections API check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/integration/test_rag_api.py -k collections
+```
