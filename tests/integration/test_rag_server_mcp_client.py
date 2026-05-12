@@ -9,7 +9,11 @@ from textwrap import dedent
 import pytest
 
 from backend.app.core.config import Settings
+from backend.app.db.connection import get_connection
+from backend.app.db.migrations import init_db
+from backend.app.db.repositories import RagTraceRepository
 from backend.app.integrations.rag_server.mcp_stdio_client import RagServerMcpClient
+from backend.app.services.trace_service import TraceService
 
 
 def _make_mock_rag_server() -> Path:
@@ -208,3 +212,59 @@ def test_real_rag_server_mcp_smoke_requires_env_path() -> None:
         assert isinstance(collections, list)
 
     asyncio.run(scenario())
+
+
+def test_mcp_client_records_query_trace() -> None:
+    repo_path = _make_mock_rag_server()
+    conn = get_connection("sqlite:///:memory:")
+    init_db(conn)
+    traces = RagTraceRepository(conn)
+    client = RagServerMcpClient(_settings(repo_path), trace_service=TraceService(traces))
+
+    async def scenario() -> None:
+        result = await client.query("calf diarrhea", top_k=1, collection="default")
+        await client.close()
+
+        stored = conn.execute(
+            "SELECT * FROM rag_trace_log WHERE raw_response_id = ?",
+            (result.raw_response_id,),
+        ).fetchone()
+
+        assert stored is not None
+        assert stored["rag_mode"] == "real"
+        assert stored["collection"] == "default"
+        assert stored["query"] == "calf diarrhea"
+        assert stored["top_k"] == 1
+        assert stored["result_count"] == 1
+        assert stored["mapped_result_count"] == 1
+        assert stored["status"] == "success"
+        assert stored["error_code"] is None
+
+    asyncio.run(scenario())
+
+
+def test_mcp_client_records_error_trace_for_missing_repo_path(monkeypatch) -> None:
+    monkeypatch.delenv("RAG_SERVER_PATH", raising=False)
+    conn = get_connection("sqlite:///:memory:")
+    init_db(conn)
+    traces = RagTraceRepository(conn)
+    client = RagServerMcpClient(
+        Settings(rag_server={"query_mode": "mcp_stdio", "repo_path": None}),
+        trace_service=TraceService(traces),
+    )
+
+    result = asyncio.run(client.query("calf diarrhea", top_k=3, collection="default"))
+    stored = conn.execute(
+        "SELECT * FROM rag_trace_log WHERE raw_response_id = ?",
+        (result.raw_response_id,),
+    ).fetchone()
+
+    assert result.status == "error"
+    assert result.error_code == "RAG_SERVER_PATH_MISSING"
+    assert stored is not None
+    assert stored["rag_mode"] == "real"
+    assert stored["collection"] == "default"
+    assert stored["query"] == "calf diarrhea"
+    assert stored["top_k"] == 3
+    assert stored["status"] == "error"
+    assert stored["error_code"] == "RAG_SERVER_PATH_MISSING"

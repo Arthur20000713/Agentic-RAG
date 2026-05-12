@@ -10,7 +10,9 @@ from backend.app.core.errors import ErrorCode
 from backend.app.core.response import ApiResponse
 from backend.app.db.connection import get_connection
 from backend.app.db.migrations import init_db
+from backend.app.db.repositories import RagTraceRepository
 from backend.app.integrations.rag_server import create_rag_server_client
+from backend.app.services.trace_service import TraceService
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -19,7 +21,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = app_settings
     app.state.db_conn = get_connection(app_settings.database.url)
     init_db(app.state.db_conn)
-    app.state.rag_client = create_rag_server_client(app_settings)
+    app.state.trace_service = TraceService(RagTraceRepository(app.state.db_conn))
+    app.state.rag_client = create_rag_server_client(app_settings, trace_service=app.state.trace_service)
 
     app.include_router(chat.router)
     app.include_router(documents.router)

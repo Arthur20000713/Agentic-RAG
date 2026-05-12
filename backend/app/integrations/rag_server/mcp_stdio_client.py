@@ -4,6 +4,7 @@ import asyncio
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ from backend.app.integrations.rag_server.base import RagServerClient
 from backend.app.integrations.rag_server.health import resolve_rag_server_path
 from backend.app.integrations.rag_server.mapper import RagServerMapper
 from backend.app.schemas.rag_server import RagDocumentSummary, RagSearchResult
+from backend.app.services.trace_service import TraceService
 
 
 class RagServerMcpError(RuntimeError):
@@ -19,8 +21,9 @@ class RagServerMcpError(RuntimeError):
 
 
 class RagServerMcpClient(RagServerClient):
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, trace_service: TraceService | None = None) -> None:
         self.settings = settings
+        self.trace_service = trace_service
         self.process: subprocess.Popen[str] | None = None
         self._request_id = 0
         self._repo_path: Path | None = None
@@ -75,32 +78,67 @@ class RagServerMcpClient(RagServerClient):
         domain: str | None = None,
         species: str | None = None,
     ) -> RagSearchResult:
+        started_at = time.perf_counter()
+        resolved_collection = collection or self.settings.rag_server.collection
         try:
             result = await self._call_tool(
                 "query_knowledge_hub",
                 {
                     "query": query,
                     "top_k": top_k,
-                    "collection": collection or self.settings.rag_server.collection,
+                    "collection": resolved_collection,
                 },
             )
         except RagServerMcpError as exc:
-            return RagSearchResult(
+            error_result = RagSearchResult(
                 query=query,
                 status="error",
                 error_code=self._error_code(exc),
                 error_message=str(exc),
             )
+            error_result.raw_response_id = self._record_query_trace(
+                query=query,
+                collection=resolved_collection,
+                top_k=top_k,
+                status="error",
+                error_code=error_result.error_code,
+                latency_ms=self._elapsed_ms(started_at),
+            )
+            return error_result
 
         payload = self._tool_result_payload(result)
         if payload.get("isError") or payload.get("is_error"):
-            return RagSearchResult(
+            error_result = RagSearchResult(
                 query=query,
                 status="error",
                 error_code=payload.get("error_code", "RAG_INTERNAL_ERROR"),
                 error_message=payload.get("error_message", "rag server tool returned an error"),
+                raw_response_id=payload.get("raw_response_id"),
             )
-        return RagServerMapper.to_search_result(payload, query=query)
+            error_result.raw_response_id = self._record_query_trace(
+                query=query,
+                collection=resolved_collection,
+                top_k=top_k,
+                status="error",
+                raw_response_id=error_result.raw_response_id,
+                error_code=error_result.error_code,
+                latency_ms=self._elapsed_ms(started_at),
+            )
+            return error_result
+        mapped = RagServerMapper.to_search_result(payload, query=query)
+        mapped.raw_response_id = self._record_query_trace(
+            query=query,
+            collection=resolved_collection,
+            top_k=top_k,
+            status=mapped.status,
+            raw_response_id=mapped.raw_response_id,
+            result_count=len(payload.get("hits", payload.get("results", []))),
+            mapped_result_count=len(mapped.hits),
+            top_score=mapped.hits[0].score if mapped.hits else None,
+            error_code=mapped.error_code,
+            latency_ms=self._elapsed_ms(started_at),
+        )
+        return mapped
 
     async def get_document_summary(
         self,
@@ -108,42 +146,93 @@ class RagServerMcpClient(RagServerClient):
         *,
         collection: str | None = None,
     ) -> RagDocumentSummary:
+        started_at = time.perf_counter()
+        resolved_collection = collection or self.settings.rag_server.collection
         try:
             result = await self._call_tool(
                 "get_document_summary",
                 {
                     "doc_id": doc_id,
-                    "collection": collection or self.settings.rag_server.collection,
+                    "collection": resolved_collection,
                 },
             )
         except RagServerMcpError as exc:
+            self._record_tool_trace(
+                query=f"get_document_summary:{doc_id}",
+                collection=resolved_collection,
+                status="error",
+                error_code=self._error_code(exc),
+                latency_ms=self._elapsed_ms(started_at),
+            )
             return RagDocumentSummary(doc_id=doc_id, summary=str(exc))
 
         payload = self._tool_result_payload(result)
-        return RagServerMapper.to_document_summary(payload, doc_id=doc_id)
+        summary = RagServerMapper.to_document_summary(payload, doc_id=doc_id)
+        self._record_tool_trace(
+            query=f"get_document_summary:{doc_id}",
+            collection=resolved_collection,
+            status="success",
+            result_count=1,
+            mapped_result_count=1,
+            raw_response_id=payload.get("raw_response_id"),
+            latency_ms=self._elapsed_ms(started_at),
+        )
+        return summary
 
     async def list_collections(self, *, include_stats: bool = True) -> list[str]:
+        started_at = time.perf_counter()
         try:
             result = await self._call_tool(
                 "list_collections",
                 {"include_stats": include_stats},
             )
-        except RagServerMcpError:
+        except RagServerMcpError as exc:
+            self._record_tool_trace(
+                query="list_collections",
+                status="error",
+                error_code=self._error_code(exc),
+                latency_ms=self._elapsed_ms(started_at),
+            )
             return []
 
         payload = self._tool_result_payload(result)
         collections = payload.get("collections")
         if isinstance(collections, list):
-            return [str(item) for item in collections]
+            names = [str(item) for item in collections]
+            self._record_tool_trace(
+                query="list_collections",
+                status="success",
+                result_count=len(names),
+                mapped_result_count=len(names),
+                raw_response_id=payload.get("raw_response_id"),
+                latency_ms=self._elapsed_ms(started_at),
+            )
+            return names
 
         text = payload.get("text", "")
         if not text:
+            self._record_tool_trace(
+                query="list_collections",
+                status="empty",
+                result_count=0,
+                mapped_result_count=0,
+                raw_response_id=payload.get("raw_response_id"),
+                latency_ms=self._elapsed_ms(started_at),
+            )
             return []
         names: list[str] = []
         for line in text.splitlines():
             cleaned = line.strip().lstrip("-*").strip()
             if cleaned:
                 names.append(cleaned.split()[0])
+        self._record_tool_trace(
+            query="list_collections",
+            status="success" if names else "empty",
+            result_count=len(names),
+            mapped_result_count=len(names),
+            raw_response_id=payload.get("raw_response_id"),
+            latency_ms=self._elapsed_ms(started_at),
+        )
         return names
 
     async def _initialize(self) -> None:
@@ -269,3 +358,62 @@ class RagServerMcpClient(RagServerClient):
 
     def _drop_none(self, data: dict[str, Any]) -> dict[str, Any]:
         return {key: value for key, value in data.items() if value is not None}
+
+    def _record_query_trace(
+        self,
+        *,
+        query: str,
+        collection: str | None,
+        top_k: int | None,
+        status: str,
+        raw_response_id: str | None = None,
+        result_count: int | None = None,
+        mapped_result_count: int | None = None,
+        top_score: float | None = None,
+        error_code: str | None = None,
+        latency_ms: int | None = None,
+    ) -> str | None:
+        if self.trace_service is None:
+            return raw_response_id
+        return self.trace_service.record_rag_call(
+            rag_mode=self.settings.rag_server.normalized_query_mode,
+            collection=collection,
+            query=query,
+            top_k=top_k,
+            result_count=result_count,
+            mapped_result_count=mapped_result_count,
+            top_score=top_score,
+            raw_response_id=raw_response_id,
+            status=status,
+            error_code=error_code,
+            latency_ms=latency_ms,
+        )
+
+    def _record_tool_trace(
+        self,
+        *,
+        query: str,
+        status: str,
+        collection: str | None = None,
+        raw_response_id: str | None = None,
+        result_count: int | None = None,
+        mapped_result_count: int | None = None,
+        error_code: str | None = None,
+        latency_ms: int | None = None,
+    ) -> str | None:
+        if self.trace_service is None:
+            return raw_response_id
+        return self.trace_service.record_rag_call(
+            rag_mode=self.settings.rag_server.normalized_query_mode,
+            collection=collection,
+            query=query,
+            raw_response_id=raw_response_id,
+            result_count=result_count,
+            mapped_result_count=mapped_result_count,
+            status=status,
+            error_code=error_code,
+            latency_ms=latency_ms,
+        )
+
+    def _elapsed_ms(self, started_at: float) -> int:
+        return max(0, int((time.perf_counter() - started_at) * 1000))
