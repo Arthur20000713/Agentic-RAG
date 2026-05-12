@@ -32,6 +32,9 @@ async function submitChat(event) {
 
 function renderChat(data) {
   const container = document.querySelector("#chat-result");
+  const followUps = (data.follow_up_questions || [])
+    .map((item) => `<li>${escapeHtml(item)}</li>`)
+    .join("");
   container.innerHTML = `
     <article class="answer-block">
       <div class="meta-row">
@@ -39,6 +42,7 @@ function renderChat(data) {
         ${data.risk_level ? `<span>${escapeHtml(data.risk_level)}</span>` : ""}
       </div>
       <p>${escapeHtml(data.answer || "暂无回答")}</p>
+      ${followUps ? `<h3>追问信息</h3><ul>${followUps}</ul>` : ""}
     </article>
   `;
 }

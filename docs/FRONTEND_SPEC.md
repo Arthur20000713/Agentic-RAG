@@ -10,7 +10,7 @@ V2.3 前端使用 FastAPI 静态文件，不引入 Node、React、Vite 或构建
 
 ## 页面
 
-- Chat：提交 `/api/chat`，展示 answer、intent、risk_level。
+- Chat：提交 `/api/chat`，展示 answer、intent、risk_level 和 follow_up_questions。
 - Measurement：提交 `/api/measurement/analyze`，展示 report 和 evidence。
 - Debug JSON：展示最近一次 API 响应的原始 JSON。
 

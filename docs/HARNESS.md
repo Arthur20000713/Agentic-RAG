@@ -194,3 +194,9 @@ V2.3-C1 static frontend contract check:
 ```powershell
 .venv\Scripts\python.exe scripts\check_v2.py --frontend-contract
 ```
+
+V2.3-C2 chat frontend contract check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/integration/test_frontend_contract.py -k chat
+```
