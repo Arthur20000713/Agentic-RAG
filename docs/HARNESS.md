@@ -170,3 +170,9 @@ V2.2-B9 response agent output check:
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/unit/test_response_agent.py
 ```
+
+V2.2-B10 general QA graph check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/integration/test_agent_graph.py -k general
+```
