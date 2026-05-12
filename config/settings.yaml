@@ -8,5 +8,6 @@ rag_server:
   python_executable:
   collection: default
   timeout_seconds: 5
+  strict_real_mode: false
 database:
   url: "sqlite:///data/app.db"

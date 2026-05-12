@@ -7,7 +7,7 @@ from backend.app.integrations.rag_server.mcp_stdio_client import RagServerMcpCli
 
 
 def create_rag_server_client(settings: Settings) -> RagServerClient:
-    if settings.rag_server.query_mode == "fake":
+    if not settings.rag_server.uses_real_rag_server:
         return FakeRagServerClient()
     return RagServerMcpClient(settings)
 
@@ -18,4 +18,3 @@ __all__ = [
     "RagServerMcpClient",
     "create_rag_server_client",
 ]
-

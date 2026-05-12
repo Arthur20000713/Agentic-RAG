@@ -12,12 +12,27 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_SETTINGS_PATH = PROJECT_ROOT / "config" / "settings.yaml"
 
 
+RagQueryMode = Literal["fake", "smoke", "real", "mcp_stdio"]
+NormalizedRagQueryMode = Literal["fake", "smoke", "real"]
+
+
 class RagServerSettings(BaseModel):
-    query_mode: Literal["fake", "mcp_stdio"] = "fake"
+    query_mode: RagQueryMode = "fake"
     repo_path: str | None = None
     python_executable: str | None = None
     collection: str = "default"
     timeout_seconds: float = 5.0
+    strict_real_mode: bool = False
+
+    @property
+    def normalized_query_mode(self) -> NormalizedRagQueryMode:
+        if self.query_mode == "mcp_stdio":
+            return "real"
+        return self.query_mode
+
+    @property
+    def uses_real_rag_server(self) -> bool:
+        return self.query_mode in {"smoke", "real", "mcp_stdio"}
 
 
 class DatabaseSettings(BaseModel):
