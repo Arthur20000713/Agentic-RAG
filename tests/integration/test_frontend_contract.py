@@ -29,3 +29,17 @@ def test_frontend_chat_js_contract() -> None:
     assert 'fetch("/api/chat"' in response.text
     assert "risk_level" in response.text
     assert "follow_up_questions" in response.text
+
+
+def test_frontend_sources_and_tools_contract() -> None:
+    client = _client()
+
+    js = client.get("/app/app.js").text
+    chat = client.post("/api/chat", json={"query": "How should cattle feeding be managed?"}).json()
+
+    assert "function renderSources" in js
+    assert "function renderToolSummary" in js
+    assert "source_uri" in js
+    assert "tools_used" in js
+    assert chat["data"]["sources"][0]["source_uri"].startswith("rag://")
+    assert "livestock_rag_search" in chat["data"]["tools_used"]

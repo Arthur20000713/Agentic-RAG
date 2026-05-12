@@ -43,8 +43,27 @@ function renderChat(data) {
       </div>
       <p>${escapeHtml(data.answer || "暂无回答")}</p>
       ${followUps ? `<h3>追问信息</h3><ul>${followUps}</ul>` : ""}
+      ${renderSources(data.sources || [])}
+      ${renderToolSummary(data.tools_used || [])}
     </article>
   `;
+}
+
+function renderSources(sources) {
+  if (!sources.length) return "";
+  const items = sources.map((source) => {
+    const location = source.page ? `P${escapeHtml(source.page)}` : "";
+    const section = source.section_title ? escapeHtml(source.section_title) : "";
+    const sourceUri = source.source_uri ? `<code>${escapeHtml(source.source_uri)}</code>` : "";
+    return `<li><strong>${escapeHtml(source.title || "未知来源")}</strong> ${location} ${section} ${sourceUri}</li>`;
+  }).join("");
+  return `<h3>引用</h3><ul class="source-list">${items}</ul>`;
+}
+
+function renderToolSummary(toolsUsed) {
+  if (!toolsUsed.length) return "";
+  const items = toolsUsed.map((tool) => `<span>${escapeHtml(tool)}</span>`).join("");
+  return `<h3>工具</h3><div class="tool-list">${items}</div>`;
 }
 
 async function submitMeasurement(event) {

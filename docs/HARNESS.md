@@ -200,3 +200,9 @@ V2.3-C2 chat frontend contract check:
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/integration/test_frontend_contract.py -k chat
 ```
+
+V2.3-C3 frontend sources/tools contract check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/integration/test_frontend_contract.py -k sources
+```

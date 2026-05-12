@@ -143,3 +143,25 @@ input {
   background: #0f172a;
   color: #e2e8f0;
 }
+
+.source-list,
+.tool-list {
+  margin-top: 8px;
+}
+
+.source-list code {
+  overflow-wrap: anywhere;
+}
+
+.tool-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tool-list span {
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: #f8fafc;
+}
