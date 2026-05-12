@@ -248,3 +248,9 @@ V2.4-D4 session context TTL check:
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/unit/test_session_context.py -k ttl
 ```
+
+V2.4-D5 session follow-up flow check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/e2e/test_session_follow_up_flow.py
+```
