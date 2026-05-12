@@ -158,3 +158,9 @@ V2.2-B7 verifier agent evidence check:
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/unit/test_verifier_agent.py
 ```
+
+V2.2-B8 safety agent blocking check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/unit/test_safety_agent.py
+```
