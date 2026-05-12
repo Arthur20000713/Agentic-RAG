@@ -10,6 +10,7 @@ APPLICATION_TABLES = {
     "rag_ingestion_task",
     "qa_log",
     "tool_call_log",
+    "rag_trace_log",
 }
 
 
@@ -98,10 +99,33 @@ CREATE TABLE IF NOT EXISTS tool_call_log (
     latency_ms INTEGER,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS rag_trace_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT,
+    request_id TEXT,
+    rag_mode TEXT,
+    collection TEXT,
+    query TEXT,
+    top_k INTEGER,
+    result_count INTEGER,
+    mapped_result_count INTEGER,
+    top_score REAL,
+    raw_response_id TEXT,
+    status TEXT,
+    error_code TEXT,
+    latency_ms INTEGER,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_rag_trace_request_id
+ON rag_trace_log(request_id);
+
+CREATE INDEX IF NOT EXISTS idx_rag_trace_session_id
+ON rag_trace_log(session_id);
 """
 
 
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_SQL)
     conn.commit()
-

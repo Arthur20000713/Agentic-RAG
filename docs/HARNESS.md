@@ -64,3 +64,9 @@ Phase I evaluation check:
 py -3.11 -m pytest tests/unit/test_golden_set_schema.py tests/unit/test_eval_metrics.py tests/integration/test_eval_runner.py
 py -3.11 scripts/run_eval.py
 ```
+
+V2.1-A5 RAG trace persistence check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/integration/test_rag_trace.py tests/integration/test_sqlite_schema.py
+```

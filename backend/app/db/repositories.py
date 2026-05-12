@@ -225,3 +225,70 @@ class ToolCallLogRepository:
         self.conn.commit()
         return int(cursor.lastrowid)
 
+
+class RagTraceRepository:
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self.conn = conn
+
+    def add(
+        self,
+        *,
+        session_id: str | None = None,
+        request_id: str | None = None,
+        rag_mode: str,
+        collection: str | None = None,
+        query: str | None = None,
+        top_k: int | None = None,
+        result_count: int | None = None,
+        mapped_result_count: int | None = None,
+        top_score: float | None = None,
+        raw_response_id: str | None = None,
+        status: str,
+        error_code: str | None = None,
+        latency_ms: int | None = None,
+    ) -> int:
+        cursor = self.conn.execute(
+            """
+            INSERT INTO rag_trace_log (
+                session_id, request_id, rag_mode, collection, query, top_k,
+                result_count, mapped_result_count, top_score, raw_response_id,
+                status, error_code, latency_ms
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                session_id,
+                request_id,
+                rag_mode,
+                collection,
+                query,
+                top_k,
+                result_count,
+                mapped_result_count,
+                top_score,
+                raw_response_id,
+                status,
+                error_code,
+                latency_ms,
+            ),
+        )
+        self.conn.commit()
+        return int(cursor.lastrowid)
+
+    def get(self, trace_id: int) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            "SELECT * FROM rag_trace_log WHERE id = ?",
+            (trace_id,),
+        ).fetchone()
+        return None if row is None else dict(row)
+
+    def list_by_request_id(self, request_id: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT * FROM rag_trace_log
+            WHERE request_id = ?
+            ORDER BY id ASC
+            """,
+            (request_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
