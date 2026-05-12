@@ -45,7 +45,9 @@ async def run_disease_graph(
     state = MultiAgentState(session_id=resolved_session_id, user_query=query)
     SupervisorAgent().route(state)
     if session_context_service is not None:
-        previous_context = session_context_service.get_context(resolved_session_id)
+        previous_context = None
+        if not session_context_service.clear_conflicted_context(resolved_session_id, query):
+            previous_context = session_context_service.get_context(resolved_session_id)
         if previous_context is not None:
             state.normalized_query = merge_session_slots(query, previous_context)
     DiseaseAgent().run(state)

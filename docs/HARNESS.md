@@ -254,3 +254,9 @@ V2.4-D5 session follow-up flow check:
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/e2e/test_session_follow_up_flow.py
 ```
+
+V2.4-D6 session reset check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/e2e/test_session_follow_up_flow.py -k reset
+```

@@ -159,3 +159,39 @@ def test_session_context_high_risk_level_is_not_reusable() -> None:
     )
 
     assert service.is_reusable_for_risk(context) is False
+
+
+def test_session_context_clear_conflicted_context_on_species_change() -> None:
+    service = _service()
+    service.save_context(
+        SessionContextData(
+            session_id="s1",
+            last_intent="disease_consultation",
+            last_species="cattle",
+            last_symptoms=["diarrhea"],
+            pending_slots=["temperature_c"],
+            slot_sources={"temperature_c": "missing"},
+        )
+    )
+
+    cleared = service.clear_conflicted_context("s1", "这只羊咳嗽一天")
+
+    assert cleared is True
+    assert service.get_context("s1") is None
+
+
+def test_session_context_clear_conflicted_context_ignores_non_reset_negation() -> None:
+    service = _service()
+    service.save_context(
+        SessionContextData(
+            session_id="s1",
+            last_intent="disease_consultation",
+            last_species="cattle",
+            pending_slots=["group_outbreak"],
+        )
+    )
+
+    cleared = service.clear_conflicted_context("s1", "没有群体发病")
+
+    assert cleared is False
+    assert service.get_context("s1") is not None

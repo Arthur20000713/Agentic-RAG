@@ -11,6 +11,12 @@ from backend.app.schemas.agent import IntentType
 
 
 SlotSource = Literal["user_confirmed", "ai_inferred", "missing", "stale", "tool_result"]
+SPECIES_KEYWORDS = {
+    "cattle": ("牛", "犊牛", "牦牛", "cattle", "calf", "cow", "yak"),
+    "sheep": ("羊", "sheep"),
+    "pig": ("猪", "pig"),
+}
+RESET_MARKERS = ("不是这头", "不是那头", "换一头", "换成", "另一头", "另外一头", "新问题", "重新开始")
 
 
 def utc_now() -> datetime:
@@ -99,6 +105,24 @@ class SessionContextService:
         self.save_context(stale_context, status="stale")
         return stale_context
 
+    def clear_conflicted_context(self, session_id: str, query: str) -> bool:
+        row = self._get_active_row(session_id)
+        if row is None:
+            return False
+        context = SessionContextData.model_validate(json.loads(row["context_json"]))
+        if not self._has_conflict(query, context):
+            return False
+        cleared = context.model_copy(
+            update={
+                "pending_slots": [],
+                "slot_sources": {slot: "stale" for slot in context.slot_sources},
+                "risk_context_status": "stale",
+                "updated_at": self.now_provider(),
+            }
+        )
+        self.save_context(cleared, status="cleared")
+        return True
+
     def is_reusable_for_risk(self, context: SessionContextData) -> bool:
         if context.risk_context_status in {"high", "emergency"}:
             return False
@@ -122,3 +146,16 @@ class SessionContextService:
             """,
             (session_id,),
         ).fetchone()
+
+    def _has_conflict(self, query: str, context: SessionContextData) -> bool:
+        normalized = query.lower()
+        if any(marker in normalized for marker in RESET_MARKERS):
+            return True
+        mentioned_species = self._mentioned_species(normalized)
+        return context.last_species is not None and mentioned_species is not None and mentioned_species != context.last_species
+
+    def _mentioned_species(self, normalized_query: str) -> str | None:
+        for species, keywords in SPECIES_KEYWORDS.items():
+            if any(keyword.lower() in normalized_query for keyword in keywords):
+                return species
+        return None

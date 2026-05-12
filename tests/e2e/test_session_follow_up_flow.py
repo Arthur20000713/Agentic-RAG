@@ -50,3 +50,34 @@ def test_session_follow_up_flow_merges_pending_disease_slots() -> None:
     assert "初步风险等级：high" in second.final_answer
     assert context is not None
     assert context.pending_slots == []
+
+
+def test_session_follow_up_flow_reset_clears_conflicted_context() -> None:
+    service = _session_service()
+    asyncio.run(
+        run_disease_graph(
+            "牛拉稀了怎么办？",
+            rag_client=FakeRagServerClient(),
+            session_context_service=service,
+            session_id="s_reset",
+        )
+    )
+
+    reset = asyncio.run(
+        run_disease_graph(
+            "换成羊咳嗽一天，体温40.1度，没有群体发病",
+            rag_client=FakeRagServerClient(),
+            session_context_service=service,
+            session_id="s_reset",
+        )
+    )
+
+    context = service.get_context("s_reset")
+
+    assert reset.normalized_query == reset.user_query.strip()
+    assert "腹泻" not in reset.normalized_query
+    assert reset.extracted_slots["species"] == "sheep"
+    assert "cough" in reset.extracted_slots["symptoms"]
+    assert context is not None
+    assert context.last_species == "sheep"
+    assert "diarrhea" not in context.last_symptoms
