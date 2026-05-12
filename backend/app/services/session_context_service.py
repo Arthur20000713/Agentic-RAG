@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Literal
 
 from pydantic import BaseModel, Field
@@ -36,7 +36,8 @@ class SessionContextService:
         self.now_provider = now_provider
 
     def save_context(self, context: SessionContextData, *, status: str = "active") -> SessionContextData:
-        context = context.model_copy(update={"updated_at": self.now_provider()})
+        now = self.now_provider()
+        context = context.model_copy(update={"updated_at": now, "expires_at": context.expires_at or self._default_expires_at(context, now)})
         self.conn.execute(
             """
             INSERT INTO session_context (session_id, context_json, expires_at, status, updated_at)
@@ -59,16 +60,14 @@ class SessionContextService:
         return context
 
     def get_context(self, session_id: str) -> SessionContextData | None:
-        row = self.conn.execute(
-            """
-            SELECT context_json FROM session_context
-            WHERE session_id = ? AND status = 'active'
-            """,
-            (session_id,),
-        ).fetchone()
+        row = self._get_active_row(session_id)
         if row is None:
             return None
-        return SessionContextData.model_validate(json.loads(row["context_json"]))
+        context = SessionContextData.model_validate(json.loads(row["context_json"]))
+        if self._is_expired(context):
+            self.expire_stale_context(session_id)
+            return None
+        return context
 
     def update_context(self, session_id: str, **changes: Any) -> SessionContextData:
         current = self.get_context(session_id) or SessionContextData(session_id=session_id)
@@ -82,3 +81,44 @@ class SessionContextService:
         slot_sources = dict(current.slot_sources)
         slot_sources[slot_name] = source
         return self.update_context(session_id, slot_sources=slot_sources)
+
+    def expire_stale_context(self, session_id: str) -> SessionContextData | None:
+        row = self._get_active_row(session_id)
+        if row is None:
+            return None
+        context = SessionContextData.model_validate(json.loads(row["context_json"]))
+        stale_sources = {slot: "stale" for slot in context.slot_sources}
+        stale_context = context.model_copy(
+            update={
+                "pending_slots": [],
+                "slot_sources": stale_sources,
+                "risk_context_status": "stale",
+                "updated_at": self.now_provider(),
+            }
+        )
+        self.save_context(stale_context, status="stale")
+        return stale_context
+
+    def is_reusable_for_risk(self, context: SessionContextData) -> bool:
+        if context.risk_context_status in {"high", "emergency"}:
+            return False
+        if context.slot_sources.get("risk_level") == "ai_inferred":
+            return False
+        return not self._is_expired(context)
+
+    def _default_expires_at(self, context: SessionContextData, now: datetime) -> datetime:
+        if context.last_intent == "disease_consultation" and context.pending_slots:
+            return now + timedelta(hours=2)
+        return now + timedelta(hours=24)
+
+    def _is_expired(self, context: SessionContextData) -> bool:
+        return context.expires_at is not None and context.expires_at <= self.now_provider()
+
+    def _get_active_row(self, session_id: str) -> sqlite3.Row | None:
+        return self.conn.execute(
+            """
+            SELECT context_json FROM session_context
+            WHERE session_id = ? AND status = 'active'
+            """,
+            (session_id,),
+        ).fetchone()

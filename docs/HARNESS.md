@@ -242,3 +242,9 @@ V2.4-D3 session context slot sources check:
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/unit/test_session_context.py -k slot_sources
 ```
+
+V2.4-D4 session context TTL check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/unit/test_session_context.py -k ttl
+```

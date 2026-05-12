@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -93,3 +93,69 @@ def test_session_context_service_set_slot_source_validates_value() -> None:
     assert updated.slot_sources == {"temperature_c": "user_confirmed"}
     with pytest.raises(ValidationError):
         service.update_context("s1", slot_sources={"temperature_c": "guessed"})
+
+
+def test_session_context_ttl_uses_two_hours_for_disease_pending_slots() -> None:
+    now = datetime(2026, 5, 12, 12, 0, tzinfo=timezone.utc)
+    service = _service(now)
+
+    saved = service.save_context(
+        SessionContextData(
+            session_id="s1",
+            last_intent="disease_consultation",
+            pending_slots=["temperature_c"],
+        )
+    )
+
+    assert saved.expires_at == now + timedelta(hours=2)
+
+
+def test_session_context_ttl_uses_twenty_four_hours_for_qa_and_measurement() -> None:
+    now = datetime(2026, 5, 12, 12, 0, tzinfo=timezone.utc)
+    service = _service(now)
+
+    qa = service.save_context(SessionContextData(session_id="qa", last_intent="general_qa"))
+    measurement = service.save_context(SessionContextData(session_id="m", last_intent="measurement_analysis"))
+
+    assert qa.expires_at == now + timedelta(hours=24)
+    assert measurement.expires_at == now + timedelta(hours=24)
+
+
+def test_session_context_ttl_expire_stale_context_prevents_auto_reuse() -> None:
+    first_now = datetime(2026, 5, 12, 12, 0, tzinfo=timezone.utc)
+    later_now = datetime(2026, 5, 12, 14, 1, tzinfo=timezone.utc)
+    current_now = first_now
+    service = _service()
+    service.now_provider = lambda: current_now
+    service.save_context(
+        SessionContextData(
+            session_id="s1",
+            last_intent="disease_consultation",
+            pending_slots=["temperature_c"],
+            slot_sources={"temperature_c": "missing"},
+        )
+    )
+
+    current_now = later_now
+    stale = service.expire_stale_context("s1")
+    loaded = service.get_context("s1")
+
+    assert stale is not None
+    assert stale.pending_slots == []
+    assert stale.slot_sources == {"temperature_c": "stale"}
+    assert stale.risk_context_status == "stale"
+    assert loaded is None
+
+
+def test_session_context_high_risk_level_is_not_reusable() -> None:
+    service = _service()
+    context = service.save_context(
+        SessionContextData(
+            session_id="s1",
+            last_intent="disease_consultation",
+            risk_context_status="high",
+            slot_sources={"risk_level": "ai_inferred"},
+        )
+    )
+
+    assert service.is_reusable_for_risk(context) is False
