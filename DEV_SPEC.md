@@ -832,7 +832,7 @@ V2.2 验收：
 
 | ID | 小阶段任务 | 修改文件列表 | 实现的类/函数 | 验收标准 | 测试方法 | commit 消息示例 |
 |---|---|---|---|---|---|---|
-| V2.4-D1 | 新增 session_context 表 | `backend/app/db/migrations.py`、`tests/integration/test_session_context.py` | migration | 表结构与设计一致 | `python -m pytest tests/integration/test_session_context.py -k schema` | `V2.4-D1：新增会话上下文表并通过迁移测试` |
+| V2.4-D1 | 新增 session_context 表 | `backend/app/db/migrations.py`、`tests/integration/test_session_context_schema.py` | migration | 表结构与设计一致 | `python -m pytest tests/integration/test_session_context_schema.py -k schema` | `V2.4-D1：新增会话上下文表并通过迁移测试` |
 | V2.4-D2 | 实现 SessionContextService | `backend/app/services/session_context_service.py`、`tests/unit/test_session_context.py` | `SessionContextService` | 保存/读取/更新上下文 | `python -m pytest tests/unit/test_session_context.py -k service` | `V2.4-D2：实现会话上下文服务并通过单元测试` |
 | V2.4-D3 | 实现 slot_sources | `backend/app/services/session_context_service.py`、`tests/unit/test_session_context.py` | `SlotSource` | 支持 user_confirmed/ai_inferred/missing/stale/tool_result，非法值拒绝 | `python -m pytest tests/unit/test_session_context.py -k slot_sources` | `V2.4-D3：实现槽位来源标记并通过测试` |
 | V2.4-D4 | 实现 TTL 和 stale | `backend/app/services/session_context_service.py`、`tests/unit/test_session_context.py` | `expire_stale_context` | 疾病 pending slots 2 小时，QA/体尺 24 小时，高风险等级不自动复用 | `python -m pytest tests/unit/test_session_context.py -k ttl` | `V2.4-D4：实现上下文过期机制并通过 TTL 测试` |
@@ -858,7 +858,7 @@ V2.2 验收：
 | V2.1 | 真实 RAG-SERVER 接入与验收 | DONE（A0-A12 已完成） | `python -m pytest tests/integration/test_rag_server_adapter.py` |
 | V2.2 | Multi-agent Workflow | DONE（B1-B12 已完成） | `python -m pytest tests/integration/test_agent_graph.py` |
 | V2.3 | 前端 UI 与 Debug Panel | DONE（C1-C6 已完成） | `python -m pytest tests/integration/test_frontend_contract.py` |
-| V2.4 | Session Context 多轮追问 | IN_PROGRESS（D1 已完成） | `python -m pytest tests/e2e/test_session_follow_up_flow.py` |
+| V2.4 | Session Context 多轮追问 | IN_PROGRESS（D1-D2 已完成） | `python -m pytest tests/e2e/test_session_follow_up_flow.py` |
 | V2.5 | 真实评测和交付材料 | TODO | `python scripts/run_eval.py --mode fake` |
 
 ### 6.7 每次小阶段完成检查清单

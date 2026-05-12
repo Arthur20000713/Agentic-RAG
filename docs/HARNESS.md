@@ -228,5 +228,11 @@ V2.3-C6 frontend smoke check:
 V2.4-D1 session context schema check:
 
 ```powershell
-.venv\Scripts\python.exe -m pytest tests/integration/test_session_context.py -k schema
+.venv\Scripts\python.exe -m pytest tests/integration/test_session_context_schema.py -k schema
+```
+
+V2.4-D2 session context service check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/unit/test_session_context.py -k service
 ```
