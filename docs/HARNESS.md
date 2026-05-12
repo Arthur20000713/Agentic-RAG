@@ -224,3 +224,9 @@ V2.3-C6 frontend smoke check:
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/e2e/test_frontend_smoke.py
 ```
+
+V2.4-D1 session context schema check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/integration/test_session_context.py -k schema
+```

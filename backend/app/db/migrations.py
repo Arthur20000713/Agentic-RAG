@@ -12,6 +12,7 @@ APPLICATION_TABLES = {
     "tool_call_log",
     "agent_trace_log",
     "rag_trace_log",
+    "session_context",
 }
 
 
@@ -141,6 +142,15 @@ ON rag_trace_log(request_id);
 
 CREATE INDEX IF NOT EXISTS idx_rag_trace_session_id
 ON rag_trace_log(session_id);
+
+CREATE TABLE IF NOT EXISTS session_context (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT UNIQUE NOT NULL,
+    context_json TEXT NOT NULL,
+    expires_at TEXT,
+    status TEXT DEFAULT 'active',
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 
