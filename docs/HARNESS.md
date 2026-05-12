@@ -82,3 +82,9 @@ V2.1-A7 RAG collections API check:
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/integration/test_rag_api.py -k collections
 ```
+
+V2.1-A8 RAG document summary API check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/integration/test_rag_api.py -k summary
+```

@@ -22,6 +22,7 @@ Current endpoints:
 - `POST /api/measurement/analyze`: runs body-measurement analysis and returns the structured report.
 - `GET /api/rag/status`: returns RAG mode, effective mode, path status, MCP availability, default collection, and last RAG error.
 - `GET /api/rag/collections`: calls `RagServerClient.list_collections`; fake mode returns fake collections, while real/smoke mode with missing `RAG_SERVER_PATH` returns a unified `RAG_SERVER_UNAVAILABLE` response and does not silently fall back to fake.
+- `GET /api/rag/collections/{collection}/documents/{doc_id}/summary`: calls `RagServerClient.get_document_summary`; the route requires the collection path segment and real/smoke mode with missing `RAG_SERVER_PATH` returns `RAG_SERVER_UNAVAILABLE` without using fake data.
 
 RAG answer rules:
 
