@@ -116,3 +116,9 @@ V2.1-A12 failure category check:
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/unit/test_eval_metrics.py -k failure
 ```
+
+V2.2-B1 multi-agent state check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/unit/test_multi_agent_state.py
+```
