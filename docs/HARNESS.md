@@ -212,3 +212,9 @@ V2.3-C4 measurement frontend contract check:
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/integration/test_frontend_contract.py -k measurement
 ```
+
+V2.3-C5 debug panel frontend contract check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/integration/test_frontend_contract.py -k debug
+```

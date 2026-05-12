@@ -68,3 +68,22 @@ def test_frontend_measurement_contract() -> None:
     assert "abnormal_items" in js
     assert response["data"]["report"]
     assert response["data"]["evidence"]
+
+
+def test_frontend_debug_panel_contract() -> None:
+    client = _client()
+
+    html = client.get("/app").text
+    js = client.get("/app/app.js").text
+    trace = client.get("/api/traces/req_debug").json()
+    rag_status = client.get("/api/rag/status").json()
+
+    assert 'id="debug-json"' in html
+    assert "function renderDebugPanel" in js
+    assert "function buildDebugSummary" in js
+    assert 'fetch("/api/rag/status"' in js
+    for field in ("request_id", "rag_mode", "agent_path", "safety", "verifier"):
+        assert field in js
+    assert trace["data"]["request_id"] == "req_debug"
+    assert "agent_trace" in trace["data"]
+    assert rag_status["data"]["rag_mode"] == "fake"

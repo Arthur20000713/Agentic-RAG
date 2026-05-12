@@ -1,5 +1,6 @@
 const state = {
   lastResponse: null,
+  ragStatus: null,
 };
 
 function setActiveView(viewName) {
@@ -13,7 +14,35 @@ function setActiveView(viewName) {
 
 function renderDebugPanel(payload) {
   state.lastResponse = payload;
-  document.querySelector("#debug-json").textContent = JSON.stringify(payload || {}, null, 2);
+  const summary = buildDebugSummary(payload || {});
+  document.querySelector("#debug-json").textContent = JSON.stringify({ summary, raw: payload || {} }, null, 2);
+}
+
+function buildDebugSummary(payload) {
+  const data = payload.data || {};
+  return {
+    request_id: payload.request_id || data.request_id || null,
+    rag_mode: data.rag_mode_effective || data.rag_mode || state.ragStatus?.rag_mode_effective || state.ragStatus?.rag_mode || null,
+    agent_path: data.agent_path || nodesFromTrace(data.agent_trace) || data.tools_used || [],
+    safety: data.safety_result || data.safety || "not_available",
+    verifier: data.verification_result || data.verifier_result || "not_available",
+  };
+}
+
+function nodesFromTrace(agentTrace) {
+  if (!Array.isArray(agentTrace)) return null;
+  return agentTrace.map((item) => item.node).filter(Boolean);
+}
+
+async function loadRagStatus() {
+  try {
+    const response = await fetch("/api/rag/status");
+    const payload = await response.json();
+    state.ragStatus = payload.data || null;
+    renderDebugPanel(state.lastResponse || payload);
+  } catch {
+    renderDebugPanel(state.lastResponse || {});
+  }
 }
 
 async function submitChat(event) {
@@ -120,3 +149,4 @@ document.querySelectorAll(".tab").forEach((tab) => {
 });
 document.querySelector("#chat-form").addEventListener("submit", submitChat);
 document.querySelector("#measurement-form").addEventListener("submit", submitMeasurement);
+loadRagStatus();
