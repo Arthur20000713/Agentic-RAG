@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import subprocess
 import sys
 import time
@@ -72,6 +73,7 @@ class RagServerMcpClient(RagServerClient):
             text=True,
             encoding="utf-8",
             bufsize=1,
+            env=self._build_process_env(repo_path),
         )
         await self._initialize()
 
@@ -386,6 +388,37 @@ class RagServerMcpClient(RagServerClient):
 
     def _drop_none(self, data: dict[str, Any]) -> dict[str, Any]:
         return {key: value for key, value in data.items() if value is not None}
+
+    def _build_process_env(self, repo_path: Path) -> dict[str, str]:
+        env = os.environ.copy()
+        pythonpath_parts = [
+            path
+            for path in [
+                repo_path / ".deps",
+                repo_path,
+                Path("C:/ProgramData/anaconda3/Lib/site-packages/win32"),
+                Path("C:/ProgramData/anaconda3/Lib/site-packages/win32/lib"),
+            ]
+            if path.exists()
+        ]
+        if env.get("PYTHONPATH"):
+            pythonpath_parts.append(Path(env["PYTHONPATH"]))
+        if pythonpath_parts:
+            env["PYTHONPATH"] = os.pathsep.join(str(path) for path in pythonpath_parts)
+
+        path_parts = [
+            path
+            for path in [
+                repo_path / ".deps" / "pywin32_system32",
+                Path("C:/ProgramData/anaconda3/Library/bin"),
+            ]
+            if path.exists()
+        ]
+        if env.get("PATH"):
+            path_parts.append(Path(env["PATH"]))
+        if path_parts:
+            env["PATH"] = os.pathsep.join(str(path) for path in path_parts)
+        return env
 
     def _record_query_trace(
         self,

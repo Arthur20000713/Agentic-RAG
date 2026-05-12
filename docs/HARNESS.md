@@ -55,7 +55,9 @@ Optional real RAG-SERVER smoke tests:
 
 ```powershell
 $env:RAG_SERVER_PATH="C:\Users\DELL\PycharmProjects\PythonProject\RAG-SERVER"
-py -3.11 -m pytest tests/integration/test_rag_server_mcp_client.py tests/integration/test_rag_server_cli_gateway.py -m rag_server
+# Optional if auto-detection from scripts\run_local.ps1 does not match your RAG-SERVER runtime:
+# $env:RAG_SERVER_PYTHON="C:\Users\DELL\.conda\envs\all-in-rag\python.exe"
+py -3.11 -m pytest -m rag_server
 ```
 
 Phase I evaluation check:
@@ -93,4 +95,11 @@ V2.1-A9 RAG timeout/fallback check:
 
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/integration/test_rag_server_adapter.py -k timeout
+```
+
+V2.1-A10 real RAG-SERVER smoke check:
+
+```powershell
+$env:RAG_SERVER_PATH="C:\Users\DELL\PycharmProjects\PythonProject\RAG-SERVER"
+.venv\Scripts\python.exe -m pytest -m rag_server
 ```
