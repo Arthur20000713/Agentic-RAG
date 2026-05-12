@@ -4,13 +4,13 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from backend.app.api import chat, documents, measurement, rag, tasks
+from backend.app.api import chat, documents, measurement, rag, tasks, traces
 from backend.app.core.config import Settings, load_settings
 from backend.app.core.errors import ErrorCode
 from backend.app.core.response import ApiResponse
 from backend.app.db.connection import get_connection
 from backend.app.db.migrations import init_db
-from backend.app.db.repositories import RagTraceRepository
+from backend.app.db.repositories import AgentTraceRepository, RagTraceRepository
 from backend.app.integrations.rag_server import create_rag_server_client
 from backend.app.services.trace_service import TraceService
 
@@ -21,7 +21,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = app_settings
     app.state.db_conn = get_connection(app_settings.database.url)
     init_db(app.state.db_conn)
-    app.state.trace_service = TraceService(RagTraceRepository(app.state.db_conn))
+    app.state.trace_service = TraceService(
+        RagTraceRepository(app.state.db_conn),
+        AgentTraceRepository(app.state.db_conn),
+    )
     app.state.rag_client = create_rag_server_client(app_settings, trace_service=app.state.trace_service)
 
     app.include_router(chat.router)
@@ -29,6 +32,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(rag.router)
     app.include_router(tasks.router)
     app.include_router(measurement.router)
+    app.include_router(traces.router)
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request, exc):  # noqa: ANN001

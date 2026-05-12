@@ -122,3 +122,9 @@ V2.2-B1 multi-agent state check:
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/unit/test_multi_agent_state.py
 ```
+
+V2.2-B2 agent trace persistence/API check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/integration/test_trace_api.py -k agent
+```

@@ -23,6 +23,7 @@ Current endpoints:
 - `GET /api/rag/status`: returns RAG mode, effective mode, path status, MCP availability, default collection, and last RAG error.
 - `GET /api/rag/collections`: calls `RagServerClient.list_collections`; fake mode returns fake collections, while real/smoke mode with missing `RAG_SERVER_PATH` returns a unified `RAG_SERVER_UNAVAILABLE` response and does not silently fall back to fake.
 - `GET /api/rag/collections/{collection}/documents/{doc_id}/summary`: calls `RagServerClient.get_document_summary`; the route requires the collection path segment and real/smoke mode with missing `RAG_SERVER_PATH` returns `RAG_SERVER_UNAVAILABLE` without using fake data.
+- `GET /api/traces/{request_id}`: returns the trace bundle for a request. V2.2-B2 includes persisted `agent_trace`; `tool_trace`, `rag_trace`, `safety_result`, and `verifier_result` are reserved in the response shape for later trace panel stages.
 
 RAG answer rules:
 

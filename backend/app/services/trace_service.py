@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+from typing import Any
 from uuid import uuid4
 
-from backend.app.db.repositories import RagTraceRepository
+from backend.app.db.repositories import AgentTraceRepository, RagTraceRepository
 
 
 class TraceService:
-    def __init__(self, rag_trace_repository: RagTraceRepository) -> None:
+    def __init__(
+        self,
+        rag_trace_repository: RagTraceRepository,
+        agent_trace_repository: AgentTraceRepository | None = None,
+    ) -> None:
         self.rag_trace_repository = rag_trace_repository
+        self.agent_trace_repository = agent_trace_repository
 
     def record_rag_call(
         self,
@@ -43,3 +49,29 @@ class TraceService:
             latency_ms=latency_ms,
         )
         return resolved_raw_response_id
+
+    def record_agent_trace(
+        self,
+        *,
+        trace: list[dict[str, Any]] | dict[str, Any],
+        status: str,
+        session_id: str | None = None,
+        request_id: str | None = None,
+        latency_ms: int | None = None,
+        error_code: str | None = None,
+    ) -> int:
+        if self.agent_trace_repository is None:
+            raise RuntimeError("agent trace repository is not configured")
+        return self.agent_trace_repository.add(
+            session_id=session_id,
+            request_id=request_id,
+            trace=trace,
+            status=status,
+            latency_ms=latency_ms,
+            error_code=error_code,
+        )
+
+    def list_agent_traces(self, request_id: str) -> list[dict[str, Any]]:
+        if self.agent_trace_repository is None:
+            return []
+        return self.agent_trace_repository.list_by_request_id(request_id)

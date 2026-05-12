@@ -10,6 +10,7 @@ APPLICATION_TABLES = {
     "rag_ingestion_task",
     "qa_log",
     "tool_call_log",
+    "agent_trace_log",
     "rag_trace_log",
 }
 
@@ -99,6 +100,23 @@ CREATE TABLE IF NOT EXISTS tool_call_log (
     latency_ms INTEGER,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS agent_trace_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT,
+    request_id TEXT,
+    trace_json TEXT NOT NULL,
+    status TEXT,
+    latency_ms INTEGER,
+    error_code TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_trace_request_id
+ON agent_trace_log(request_id);
+
+CREATE INDEX IF NOT EXISTS idx_agent_trace_session_id
+ON agent_trace_log(session_id);
 
 CREATE TABLE IF NOT EXISTS rag_trace_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -226,6 +226,63 @@ class ToolCallLogRepository:
         return int(cursor.lastrowid)
 
 
+class AgentTraceRepository:
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self.conn = conn
+
+    def add(
+        self,
+        *,
+        session_id: str | None = None,
+        request_id: str | None = None,
+        trace: list[dict[str, Any]] | dict[str, Any],
+        status: str,
+        latency_ms: int | None = None,
+        error_code: str | None = None,
+    ) -> int:
+        cursor = self.conn.execute(
+            """
+            INSERT INTO agent_trace_log (
+                session_id, request_id, trace_json, status, latency_ms, error_code
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                session_id,
+                request_id,
+                json.dumps(trace, ensure_ascii=False),
+                status,
+                latency_ms,
+                error_code,
+            ),
+        )
+        self.conn.commit()
+        return int(cursor.lastrowid)
+
+    def get(self, trace_id: int) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            "SELECT * FROM agent_trace_log WHERE id = ?",
+            (trace_id,),
+        ).fetchone()
+        return None if row is None else self._decode(row)
+
+    def list_by_request_id(self, request_id: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT * FROM agent_trace_log
+            WHERE request_id = ?
+            ORDER BY id ASC
+            """,
+            (request_id,),
+        ).fetchall()
+        return [self._decode(row) for row in rows]
+
+    def _decode(self, row: sqlite3.Row) -> dict[str, Any]:
+        data = dict(row)
+        data["trace"] = json.loads(data.pop("trace_json"))
+        return data
+
+
 class RagTraceRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self.conn = conn
