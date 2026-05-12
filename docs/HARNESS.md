@@ -134,3 +134,9 @@ V2.2-B3 supervisor agent route check:
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/unit/test_supervisor_agent.py tests/unit/test_agent_router.py
 ```
+
+V2.2-B4 RAG agent evidence status check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/unit/test_rag_agent.py
+```
