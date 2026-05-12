@@ -188,3 +188,9 @@ V2.2-B12 measurement graph check:
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/integration/test_agent_graph.py -k measurement
 ```
+
+V2.3-C1 static frontend contract check:
+
+```powershell
+.venv\Scripts\python.exe scripts\check_v2.py --frontend-contract
+```

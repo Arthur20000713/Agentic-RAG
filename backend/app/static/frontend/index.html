@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>畜牧业 Agentic RAG 智能助手</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <h1>畜牧业 Agentic RAG 智能助手</h1>
+          <p>Chat、体尺分析、引用和调试信息演示入口</p>
+        </div>
+        <span class="mode-pill">V2 Demo</span>
+      </header>
+
+      <nav class="tabs" aria-label="页面">
+        <button class="tab is-active" type="button" data-view="chat">Chat</button>
+        <button class="tab" type="button" data-view="measurement">Measurement</button>
+      </nav>
+
+      <section id="chat-view" class="view is-active" aria-label="Chat Page">
+        <div class="panel">
+          <h2>畜牧问答</h2>
+          <form id="chat-form" class="stack">
+            <label for="chat-query">问题</label>
+            <textarea id="chat-query" name="query" rows="4" placeholder="例如：犊牛腹泻的常见原因是什么？"></textarea>
+            <button type="submit">发送</button>
+          </form>
+          <div id="chat-result" class="result" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section id="measurement-view" class="view" aria-label="Measurement Page">
+        <div class="panel">
+          <h2>体尺分析</h2>
+          <form id="measurement-form" class="grid-form">
+            <label>动物 ID<input name="animal_id" value="yak_032" /></label>
+            <label>胸围 cm<input name="chest_girth_cm" type="number" step="0.1" value="158.4" /></label>
+            <label>体重 kg<input name="weight_kg" type="number" step="0.1" value="246.5" /></label>
+            <label>置信度<input name="confidence" type="number" step="0.01" min="0" max="1" value="0.82" /></label>
+            <label class="checkbox"><input name="use_demo_history" type="checkbox" checked /> 使用演示历史</label>
+            <button type="submit">分析</button>
+          </form>
+          <div id="measurement-result" class="result" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <aside class="panel debug-panel">
+        <h2>Debug JSON</h2>
+        <pre id="debug-json">{}</pre>
+      </aside>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>

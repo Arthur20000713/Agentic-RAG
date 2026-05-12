@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from backend.app.api import chat, documents, measurement, rag, tasks, traces
 from backend.app.core.config import Settings, load_settings
@@ -13,6 +16,12 @@ from backend.app.db.migrations import init_db
 from backend.app.db.repositories import AgentTraceRepository, RagTraceRepository
 from backend.app.integrations.rag_server import create_rag_server_client
 from backend.app.services.trace_service import TraceService
+
+
+def mount_frontend(app: FastAPI) -> None:
+    frontend_dir = Path(__file__).with_name("static") / "frontend"
+    if frontend_dir.exists():
+        app.mount("/app", StaticFiles(directory=frontend_dir, html=True), name="frontend")
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -33,6 +42,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(tasks.router)
     app.include_router(measurement.router)
     app.include_router(traces.router)
+    mount_frontend(app)
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request, exc):  # noqa: ANN001
