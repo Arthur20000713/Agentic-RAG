@@ -23,3 +23,35 @@ Agent Workflow 当前使用这些工具作为内部能力边界：
 - 普通问答：调用 `RagServerClient.query` 后由 `AnswerGenerator` 拼装引用。
 - 疾病问诊：先抽槽并追问，信息充分后调用疾病风险规则和 RAG 查询，最终经过 `FinalSafetyGuard`。
 - 体尺分析：调用 `BodyMeasurementAnalyzer`，异常项必须带 evidence。
+
+## V2.1 RAG-SERVER 标准输出字段
+
+`query_knowledge_hub` 的业务层标准输出必须通过 `RagSearchResult` 和 `StandardRetrievedContext` 表达，不允许 Agent、Verifier 或前端直接依赖 RAG-SERVER 原始 MCP payload。
+
+`StandardRetrievedContext` 必须包含：
+
+- `rank`
+- `collection`
+- `doc_id` / `document_id`
+- `chunk_id`
+- `title` / `document_title`
+- `content`
+- `source_uri`
+- `score`
+- `score_type`
+- `raw_score`
+- `mapped_score`
+- `metadata`
+
+`RagSearchResult` 必须包含：
+
+- `status`
+- `hits`
+- `citations`
+- `answer_text`
+- `raw_response_id`
+- `mapping_warnings`
+- `error_code`
+- `error_message`
+
+`source_uri` 是引用、Verifier、Trace 和 Eval 的稳定来源 ID。V2.1-A3 只固化 schema 和透传字段；缺失字段时的 fallback `source_uri` 生成规则由 V2.1-A4 实现。

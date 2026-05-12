@@ -19,6 +19,8 @@ class RagServerMapper:
                 status="error",
                 error_code=payload.get("error_code", "RAG_INTERNAL_ERROR"),
                 error_message=payload.get("error_message", "rag server returned an error"),
+                raw_response_id=payload.get("raw_response_id"),
+                mapping_warnings=list(payload.get("mapping_warnings") or []),
             )
 
         status = payload.get("status", "success")
@@ -36,6 +38,7 @@ class RagServerMapper:
             citations = [
                 RagCitation(
                     source_id=str(hit.document_id) if hit.document_id is not None else None,
+                    source_uri=hit.source_uri,
                     title=hit.document_title,
                     page=hit.page,
                     section_title=hit.section_title,
@@ -50,6 +53,8 @@ class RagServerMapper:
             hits=hits,
             citations=citations,
             answer_text=payload.get("answer_text") or payload.get("answer"),
+            raw_response_id=payload.get("raw_response_id"),
+            mapping_warnings=list(payload.get("mapping_warnings") or []),
             error_code=payload.get("error_code"),
             error_message=payload.get("error_message"),
         )
@@ -76,13 +81,18 @@ class RagServerMapper:
             or "Unknown source"
         )
         return RagSearchHit(
+            rank=item.get("rank"),
             chunk_id=item.get("chunk_id") or item.get("id") or metadata.get("chunk_id", ""),
+            collection=item.get("collection") or metadata.get("collection"),
             document_id=document_id,
             document_title=title,
             content=item.get("content") or item.get("text") or "",
+            source_uri=item.get("source_uri") or metadata.get("source_uri"),
             page=item.get("page", metadata.get("page")),
             section_title=item.get("section_title", metadata.get("section_title")),
             score=float(item.get("score", 0.0)),
+            score_type=item.get("score_type", "rag_server_score"),
+            raw_score=item.get("raw_score", metadata.get("raw_score")),
+            mapped_score=item.get("mapped_score", metadata.get("mapped_score")),
             metadata=metadata,
         )
-
