@@ -13,6 +13,14 @@ class RouteResult(BaseModel):
 
 class IntentRouter:
     disease_keywords = {
+        "diarrhea",
+        "fever",
+        "temperature",
+        "cough",
+        "respiratory",
+        "sick",
+        "illness",
+        "symptom",
         "腹泻",
         "拉稀",
         "发烧",
@@ -24,8 +32,31 @@ class IntentRouter:
         "呼吸困难",
         "发病",
     }
-    measurement_keywords = {"体尺", "体高", "体长", "胸围", "胸深", "胸宽", "体重"}
+    measurement_keywords = {
+        "body measurement",
+        "body height",
+        "body length",
+        "chest girth",
+        "chest depth",
+        "chest width",
+        "weight",
+        "体尺",
+        "体高",
+        "体长",
+        "胸围",
+        "胸深",
+        "胸宽",
+        "体重",
+    }
     livestock_keywords = {
+        "cattle",
+        "calf",
+        "cow",
+        "yak",
+        "livestock",
+        "feeding",
+        "feed",
+        "farm",
         "牛",
         "犊牛",
         "牦牛",
@@ -38,7 +69,20 @@ class IntentRouter:
         "牧场",
         "畜牧",
     }
-    out_of_scope_keywords = {"股票", "交易", "基金", "代码", "旅游", "电影"}
+    out_of_scope_keywords = {
+        "stock",
+        "trading",
+        "fund",
+        "code",
+        "travel",
+        "movie",
+        "股票",
+        "交易",
+        "基金",
+        "代码",
+        "旅游",
+        "电影",
+    }
 
     def route(self, query: str) -> RouteResult:
         if self._contains_any(query, self.out_of_scope_keywords) and not self._contains_any(query, self.livestock_keywords):
@@ -52,5 +96,5 @@ class IntentRouter:
         return RouteResult(intent="out_of_scope", confidence=0.7, reason="no livestock domain signal")
 
     def _contains_any(self, text: str, keywords: set[str]) -> bool:
-        return any(keyword in text for keyword in keywords)
-
+        normalized = text.lower()
+        return any(keyword.lower() in normalized for keyword in keywords)

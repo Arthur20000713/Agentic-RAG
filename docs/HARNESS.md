@@ -128,3 +128,9 @@ V2.2-B2 agent trace persistence/API check:
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/integration/test_trace_api.py -k agent
 ```
+
+V2.2-B3 supervisor agent route check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/unit/test_supervisor_agent.py tests/unit/test_agent_router.py
+```

@@ -27,3 +27,11 @@ def test_router_detects_out_of_scope() -> None:
 
     assert result.intent == "out_of_scope"
 
+
+def test_router_detects_english_livestock_intents() -> None:
+    router = IntentRouter()
+
+    assert router.route("Calf diarrhea and fever for two days").intent == "disease_consultation"
+    assert router.route("Analyze cattle body height and chest girth").intent == "measurement_analysis"
+    assert router.route("How should calf feeding be managed after weaning?").intent == "general_qa"
+    assert router.route("Write a stock trading strategy").intent == "out_of_scope"
