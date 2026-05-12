@@ -176,3 +176,9 @@ V2.2-B10 general QA graph check:
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/integration/test_agent_graph.py -k general
 ```
+
+V2.2-B11 disease graph check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/integration/test_agent_graph.py -k disease
+```
