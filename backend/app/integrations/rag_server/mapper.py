@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 from typing import Any
+from urllib.parse import quote
 
 from backend.app.schemas.rag_server import (
     RagCitation,
@@ -10,9 +12,50 @@ from backend.app.schemas.rag_server import (
 )
 
 
+PARTIAL_SOURCE_URI_WARNING = "RAG_MAPPING_PARTIAL_SOURCE_URI"
+
+
+def build_source_uri(
+    collection: str | None,
+    doc_id: str | int | None,
+    chunk_id: str | int | None,
+    *,
+    title: str | None = None,
+    source: str | None = None,
+    content: str | None = None,
+    page: int | str | None = None,
+    rank: int | None = None,
+) -> str:
+    resolved_collection = _uri_part(collection or "default")
+    resolved_doc_id = doc_id
+    resolved_chunk_id = chunk_id
+
+    if resolved_doc_id in (None, ""):
+        resolved_doc_id = f"unknown-doc-{_stable_digest(title, source, rank)}"
+    if resolved_chunk_id in (None, ""):
+        resolved_chunk_id = f"unknown-chunk-{_stable_digest(content, page, rank)}"
+
+    return f"rag://{resolved_collection}/{_uri_part(resolved_doc_id)}/{_uri_part(resolved_chunk_id)}"
+
+
+def _stable_digest(*parts: object) -> str:
+    text = "|".join("" if part is None else str(part) for part in parts)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+
+
+def _uri_part(value: object) -> str:
+    return quote(str(value), safe="-_.~")
+
+
+def _append_warning(warnings: list[str], warning: str) -> None:
+    if warning not in warnings:
+        warnings.append(warning)
+
+
 class RagServerMapper:
     @staticmethod
     def to_search_result(payload: dict[str, Any], *, query: str | None = None) -> RagSearchResult:
+        mapping_warnings = list(payload.get("mapping_warnings") or [])
         if payload.get("isError") or payload.get("is_error"):
             return RagSearchResult(
                 query=query or payload.get("query", ""),
@@ -20,12 +63,18 @@ class RagServerMapper:
                 error_code=payload.get("error_code", "RAG_INTERNAL_ERROR"),
                 error_message=payload.get("error_message", "rag server returned an error"),
                 raw_response_id=payload.get("raw_response_id"),
-                mapping_warnings=list(payload.get("mapping_warnings") or []),
+                mapping_warnings=mapping_warnings,
             )
 
         status = payload.get("status", "success")
         raw_hits = payload.get("hits", payload.get("results", []))
-        hits = [RagServerMapper._to_hit(item) for item in raw_hits]
+        collection = payload.get("collection")
+        hits: list[RagSearchHit] = []
+        for index, item in enumerate(raw_hits, start=1):
+            hit = RagServerMapper._to_hit(item, collection=collection, rank=index)
+            hits.append(hit)
+            if _has_partial_source(item):
+                _append_warning(mapping_warnings, PARTIAL_SOURCE_URI_WARNING)
 
         if not hits and status == "success":
             status = "empty"
@@ -54,7 +103,7 @@ class RagServerMapper:
             citations=citations,
             answer_text=payload.get("answer_text") or payload.get("answer"),
             raw_response_id=payload.get("raw_response_id"),
-            mapping_warnings=list(payload.get("mapping_warnings") or []),
+            mapping_warnings=mapping_warnings,
             error_code=payload.get("error_code"),
             error_message=payload.get("error_message"),
         )
@@ -71,23 +120,50 @@ class RagServerMapper:
         )
 
     @staticmethod
-    def _to_hit(item: dict[str, Any]) -> RagSearchHit:
+    def _to_hit(item: dict[str, Any], *, collection: str | None = None, rank: int | None = None) -> RagSearchHit:
         metadata = dict(item.get("metadata", {}))
-        document_id = item.get("document_id", item.get("source_id", metadata.get("document_id")))
+        document_id = (
+            item.get("doc_id")
+            or item.get("document_id")
+            or item.get("source_id")
+            or metadata.get("doc_id")
+            or metadata.get("document_id")
+        )
+        chunk_id = item.get("chunk_id") or item.get("id") or metadata.get("chunk_id", "")
+        resolved_collection = item.get("collection") or metadata.get("collection") or collection
         title = (
             item.get("document_title")
             or item.get("title")
             or metadata.get("title")
             or "Unknown source"
         )
+        content = item.get("content") or item.get("text") or ""
+        source_uri = item.get("source_uri") or metadata.get("source_uri")
+        resolved_document_id = document_id
+        resolved_chunk_id = chunk_id
+        if resolved_document_id in (None, ""):
+            resolved_document_id = f"unknown-doc-{_stable_digest(title, metadata.get('source') or metadata.get('source_path'), rank)}"
+        if resolved_chunk_id in (None, ""):
+            resolved_chunk_id = f"unknown-chunk-{_stable_digest(content, item.get('page', metadata.get('page')), rank)}"
+        if not source_uri:
+            source_uri = build_source_uri(
+                resolved_collection,
+                document_id,
+                chunk_id,
+                title=title,
+                source=metadata.get("source") or metadata.get("source_path"),
+                content=content,
+                page=item.get("page", metadata.get("page")),
+                rank=rank,
+            )
         return RagSearchHit(
-            rank=item.get("rank"),
-            chunk_id=item.get("chunk_id") or item.get("id") or metadata.get("chunk_id", ""),
-            collection=item.get("collection") or metadata.get("collection"),
-            document_id=document_id,
+            rank=item.get("rank") or rank,
+            chunk_id=str(resolved_chunk_id),
+            collection=resolved_collection,
+            document_id=resolved_document_id,
             document_title=title,
-            content=item.get("content") or item.get("text") or "",
-            source_uri=item.get("source_uri") or metadata.get("source_uri"),
+            content=content,
+            source_uri=source_uri,
             page=item.get("page", metadata.get("page")),
             section_title=item.get("section_title", metadata.get("section_title")),
             score=float(item.get("score", 0.0)),
@@ -96,3 +172,16 @@ class RagServerMapper:
             mapped_score=item.get("mapped_score", metadata.get("mapped_score")),
             metadata=metadata,
         )
+
+
+def _has_partial_source(item: dict[str, Any]) -> bool:
+    metadata = dict(item.get("metadata", {}))
+    doc_id = (
+        item.get("doc_id")
+        or item.get("document_id")
+        or item.get("source_id")
+        or metadata.get("doc_id")
+        or metadata.get("document_id")
+    )
+    chunk_id = item.get("chunk_id") or item.get("id") or metadata.get("chunk_id")
+    return doc_id in (None, "") or chunk_id in (None, "")
