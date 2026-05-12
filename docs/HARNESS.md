@@ -140,3 +140,9 @@ V2.2-B4 RAG agent evidence status check:
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/unit/test_rag_agent.py
 ```
+
+V2.2-B5 disease agent follow-up/risk check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/unit/test_disease_agent.py
+```
