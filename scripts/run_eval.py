@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from backend.app.evaluation.golden_runner import GoldenSetRunner  # noqa: E402
+from backend.app.evaluation.real_rag_runner import RealRagEvalRunner, RealRagEvalUnavailable  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -31,15 +32,23 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.mode == "real":
-        message = "real RAG evaluation is not implemented until V2.1-A11"
-        if args.optional:
-            if args.json:
-                print(json.dumps({"status": "skipped", "reason": message}, ensure_ascii=False, indent=2))
-            else:
-                print(f"SKIPPED: {message}")
-            return 0
-        print(f"ERROR: {message}", file=sys.stderr)
-        return 2
+        runner = RealRagEvalRunner(args.golden_set, output_dir=args.output_dir)
+        try:
+            report = runner.run()
+        except RealRagEvalUnavailable as exc:
+            if args.optional:
+                runner.write_skipped_report(exc)
+                if args.json:
+                    print(json.dumps(exc.to_payload(), ensure_ascii=False, indent=2))
+                else:
+                    print(f"SKIPPED: {exc.message}")
+                return 0
+            print(f"ERROR: {exc.message}", file=sys.stderr)
+            return 2
+        runner.write_outputs(report)
+        if args.json:
+            print(json.dumps(report.model_dump(), ensure_ascii=False, indent=2))
+        return 0 if report.metrics["failed_cases"] == 0 else 1
 
     runner = GoldenSetRunner(args.golden_set, output_dir=args.output_dir)
     report = runner.run()

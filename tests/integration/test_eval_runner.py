@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import json
+import sys
 from pathlib import Path
 from uuid import uuid4
 
 from backend.app.evaluation.golden_runner import GoldenSetRunner
+from backend.app.evaluation.real_rag_runner import RealRagEvalRunner
+from backend.app.integrations.rag_server.mcp_stdio_client import RagServerMcpClient
 from scripts.run_eval import main as run_eval_main
 
 
@@ -48,8 +52,41 @@ def test_run_eval_script_accepts_fake_mode() -> None:
     assert (output_dir / "eval_result.json").exists()
 
 
-def test_run_eval_real_optional_skips_until_real_runner_exists(capsys) -> None:  # noqa: ANN001
-    exit_code = run_eval_main(["--mode", "real", "--optional"])
+def test_run_eval_real_rag_optional_writes_skipped_report_when_unconfigured(monkeypatch, capsys) -> None:  # noqa: ANN001
+    monkeypatch.delenv("RAG_SERVER_PATH", raising=False)
+    output_dir = _tmp_dir()
+
+    exit_code = run_eval_main(["--mode", "real", "--optional", "--output-dir", str(output_dir)])
 
     assert exit_code == 0
     assert "SKIPPED" in capsys.readouterr().out
+    payload = json.loads((output_dir / "eval_result.json").read_text(encoding="utf-8"))
+    assert payload["status"] == "skipped"
+    assert payload["mode"] == "real"
+    assert payload["error_code"] == "RAG_SERVER_PATH_MISSING"
+    assert (output_dir / "eval_result.csv").exists()
+    assert (output_dir / "eval_summary.md").read_text(encoding="utf-8").startswith("# Real RAG Evaluation Summary")
+
+
+def test_run_eval_real_rag_requires_configuration_without_optional(monkeypatch, capsys) -> None:  # noqa: ANN001
+    monkeypatch.delenv("RAG_SERVER_PATH", raising=False)
+
+    exit_code = run_eval_main(["--mode", "real"])
+
+    assert exit_code == 2
+    assert "RAG_SERVER_PATH" in capsys.readouterr().err
+
+
+def test_real_rag_runner_creates_mcp_client_when_path_is_configured(monkeypatch) -> None:
+    repo_path = _tmp_dir()
+    run_local = repo_path / "scripts" / "run_local.ps1"
+    run_local.parent.mkdir(parents=True, exist_ok=True)
+    run_local.write_text(f'$Python = "{sys.executable}"\n', encoding="utf-8")
+    monkeypatch.setenv("RAG_SERVER_PATH", str(repo_path))
+
+    runner = RealRagEvalRunner(output_dir=_tmp_dir())
+    client = runner.create_rag_client()
+
+    assert isinstance(client, RagServerMcpClient)
+    assert runner.settings.rag_server.query_mode == "real"
+    assert runner.settings.rag_server.python_executable == sys.executable

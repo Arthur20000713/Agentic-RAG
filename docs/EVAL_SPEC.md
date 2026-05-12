@@ -16,6 +16,7 @@ Local runner:
 ```powershell
 py -3.11 scripts/run_eval.py
 py -3.11 scripts/run_eval.py --json
+py -3.11 scripts/run_eval.py --mode real --optional
 ```
 
 Outputs:
@@ -25,3 +26,5 @@ Outputs:
 - `reports/eval_summary.md`
 
 `scripts/check_all.py` runs `pytest -m "not rag_server"` first, then runs this fake golden-set evaluation.
+
+Real RAG evaluation is explicit and optional. It requires `RAG_SERVER_PATH` or `rag_server.repo_path`; when `--optional` is set and the path is missing, the runner writes a skipped report instead of falling back to fake RAG.

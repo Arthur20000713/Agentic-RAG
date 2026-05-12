@@ -103,3 +103,10 @@ V2.1-A10 real RAG-SERVER smoke check:
 $env:RAG_SERVER_PATH="C:\Users\DELL\PycharmProjects\PythonProject\RAG-SERVER"
 .venv\Scripts\python.exe -m pytest -m rag_server
 ```
+
+V2.1-A11 real RAG eval runner check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/integration/test_eval_runner.py -k real_rag
+.venv\Scripts\python.exe scripts\run_eval.py --mode real --optional
+```
