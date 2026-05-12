@@ -857,7 +857,7 @@ V2.2 验收：
 |---|---|---|---|
 | V2.1 | 真实 RAG-SERVER 接入与验收 | DONE（A0-A12 已完成） | `python -m pytest tests/integration/test_rag_server_adapter.py` |
 | V2.2 | Multi-agent Workflow | DONE（B1-B12 已完成） | `python -m pytest tests/integration/test_agent_graph.py` |
-| V2.3 | 前端 UI 与 Debug Panel | IN_PROGRESS（C1-C3 已完成） | `python -m pytest tests/integration/test_frontend_contract.py` |
+| V2.3 | 前端 UI 与 Debug Panel | IN_PROGRESS（C1-C4 已完成） | `python -m pytest tests/integration/test_frontend_contract.py` |
 | V2.4 | Session Context 多轮追问 | TODO | `python -m pytest tests/e2e/test_session_follow_up_flow.py` |
 | V2.5 | 真实评测和交付材料 | TODO | `python scripts/run_eval.py --mode fake` |
 

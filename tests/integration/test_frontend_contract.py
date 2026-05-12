@@ -43,3 +43,28 @@ def test_frontend_sources_and_tools_contract() -> None:
     assert "tools_used" in js
     assert chat["data"]["sources"][0]["source_uri"].startswith("rag://")
     assert "livestock_rag_search" in chat["data"]["tools_used"]
+
+
+def test_frontend_measurement_contract() -> None:
+    client = _client()
+
+    html = client.get("/app").text
+    js = client.get("/app/app.js").text
+    response = client.post(
+        "/api/measurement/analyze",
+        json={
+            "animal_id": "yak_032",
+            "current": {"chest_girth_cm": 158.4},
+            "confidence": 0.82,
+            "use_demo_history": True,
+        },
+    ).json()
+
+    assert 'id="measurement-form"' in html
+    assert 'id="measurement-result"' in html
+    assert "function renderMeasurement" in js
+    assert "async function submitMeasurement" in js
+    assert 'fetch("/api/measurement/analyze"' in js
+    assert "abnormal_items" in js
+    assert response["data"]["report"]
+    assert response["data"]["evidence"]

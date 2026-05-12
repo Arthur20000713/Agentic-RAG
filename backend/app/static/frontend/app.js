@@ -90,9 +90,12 @@ async function submitMeasurement(event) {
 
 function renderMeasurement(data) {
   const evidence = (data.evidence || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+  const abnormalItems = (data.abnormal_items || []).map((item) => `<span>${escapeHtml(item)}</span>`).join("");
   document.querySelector("#measurement-result").innerHTML = `
     <article class="answer-block">
+      ${data.summary ? `<p><strong>${escapeHtml(data.summary)}</strong></p>` : ""}
       <p>${escapeHtml(data.report || "暂无报告")}</p>
+      ${abnormalItems ? `<h3>异常项</h3><div class="tool-list">${abnormalItems}</div>` : ""}
       ${evidence ? `<h3>证据</h3><ul>${evidence}</ul>` : ""}
     </article>
   `;

@@ -206,3 +206,9 @@ V2.3-C3 frontend sources/tools contract check:
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/integration/test_frontend_contract.py -k sources
 ```
+
+V2.3-C4 measurement frontend contract check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/integration/test_frontend_contract.py -k measurement
+```
