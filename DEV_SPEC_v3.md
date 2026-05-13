@@ -439,7 +439,7 @@ V3.0-A3：新增 V3 配置开关并保持 V2 回归通过
 | 阶段 | 目标 | 状态 | 主要验收命令 |
 |---|---|---|---|
 | V3.0 | 仓库实况映射与 V3 Harness | DONE（A1-A3 已完成） | `.venv\Scripts\python.exe scripts\check_v3.py --stage A` |
-| V3.1 | Feature Flags 与回退护栏 | TODO | `.venv\Scripts\python.exe -m pytest tests\unit\test_feature_flags.py` |
+| V3.1 | Feature Flags 与回退护栏 | IN_PROGRESS（B1 已完成） | `.venv\Scripts\python.exe -m pytest tests\unit\test_feature_flags.py` |
 | V3.2 | SafetyPrecheck 与 Model Router Shadow | TODO | `.venv\Scripts\python.exe -m pytest tests\unit\test_safety_precheck.py tests\unit\test_model_router.py` |
 | V3.3 | 低风险结构化任务路由接管 | TODO | `.venv\Scripts\python.exe -m pytest -m "not rag_server"` |
 | V3.4 | Verifier / Safety P0 增强 | TODO | `.venv\Scripts\python.exe -m pytest tests\unit\test_verifier_agent.py tests\unit\test_safety_agent.py` |

@@ -33,7 +33,9 @@ def _check_stage(stage: str) -> list[str]:
     failures = _check_baseline()
     if stage in {"A", "full"}:
         failures.extend(_check_stage_a())
-    if stage in {"B", "C", "D", "E", "F", "G", "full"}:
+    if stage in {"B", "full"}:
+        failures.extend(_check_stage_b())
+    if stage in {"C", "D", "E", "F", "G", "full"}:
         failures.extend(_check_future_stage_declared(stage))
     return failures
 
@@ -116,6 +118,29 @@ def _check_stage_a() -> list[str]:
     ):
         if class_name not in config_py:
             failures.append(f"backend/app/core/config.py is missing {class_name}")
+    return failures
+
+
+def _check_stage_b() -> list[str]:
+    failures = _missing_paths(
+        [
+            "backend/app/services/feature_flag_service.py",
+            "tests/unit/test_feature_flags.py",
+        ]
+    )
+    service = _read_text("backend/app/services/feature_flag_service.py")
+    tests = _read_text("tests/unit/test_feature_flags.py")
+    for required_text in (
+        "FeatureFlagService",
+        "FeatureFlagSnapshot",
+        "model_router_low_risk_takeover_enabled",
+        "safety_precheck_enabled",
+    ):
+        if required_text not in service:
+            failures.append(f"feature_flag_service.py is missing required text: {required_text}")
+    for required_text in ("v3_enabled", "model_router", "long_term_memory", "lora"):
+        if required_text not in tests:
+            failures.append(f"test_feature_flags.py is missing required coverage text: {required_text}")
     return failures
 
 
