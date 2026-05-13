@@ -37,6 +37,31 @@ def test_chat_api_contract_general_qa() -> None:
     assert payload["data"]["intent"] == "disease_consultation"
     assert "answer" in payload["data"]
     assert "tools_used" in payload["data"]
+    assert payload["data"]["v3_debug"]["v3_enabled"] is False
+    assert payload["data"]["v3_debug"]["flags"]["final_guard_required"] is True
+
+
+def test_chat_api_reports_v3_debug_flags_without_changing_v2_fields() -> None:
+    settings = Settings(
+        database={"url": "sqlite:///:memory:"},
+        v3={"enabled": True},
+        model_router={"enabled": True, "shadow_mode": True},
+        long_term_memory={"write_enabled": True, "read_enabled": False},
+    )
+    client = TestClient(create_app(settings=settings))
+
+    response = client.post("/api/chat", json={"query": "How should cattle feeding be managed?", "session_id": "s_v3"})
+
+    payload = response.json()
+    assert response.status_code == 200
+    _assert_response_contract(payload)
+    assert payload["code"] == 0
+    assert "answer" in payload["data"]
+    assert "tools_used" in payload["data"]
+    assert payload["data"]["v3_debug"]["v3_enabled"] is True
+    assert payload["data"]["v3_debug"]["flags"]["model_router_enabled"] is True
+    assert payload["data"]["v3_debug"]["flags"]["model_router_shadow_mode"] is True
+    assert payload["data"]["v3_debug"]["flags"]["memory_write_enabled"] is True
 
 
 def test_measurement_api_contract() -> None:

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from backend.app.agent.router import IntentRouter
+from backend.app.core.config import Settings
 from backend.app.agent.workflow import run_disease_consultation, run_general_qa
 from backend.app.integrations.rag_server.base import RagServerClient
 from backend.app.schemas.agent import AgentState
 from backend.app.schemas.api import ChatRequest
+from backend.app.services.feature_flag_service import FeatureFlagService, FeatureFlagSnapshot
 
 
 class ChatService:
@@ -39,7 +41,7 @@ class ChatService:
         return state
 
 
-def state_to_chat_data(state: AgentState) -> dict:
+def state_to_chat_data(state: AgentState, *, settings: Settings | None = None) -> dict:
     return {
         "answer": state.final_answer,
         "intent": state.intent,
@@ -49,6 +51,15 @@ def state_to_chat_data(state: AgentState) -> dict:
         "need_follow_up": state.need_follow_up,
         "follow_up_questions": state.follow_up_questions,
         "errors": [error.model_dump() for error in state.errors],
+        "v3_debug": build_debug_payload(settings),
+    }
+
+
+def build_debug_payload(settings: Settings | None = None) -> dict:
+    snapshot = FeatureFlagService(settings or Settings()).snapshot()
+    return {
+        "v3_enabled": snapshot.v3_enabled,
+        "flags": snapshot.model_dump(),
     }
 
 

@@ -87,3 +87,14 @@ def test_frontend_debug_panel_contract() -> None:
     assert trace["data"]["request_id"] == "req_debug"
     assert "agent_trace" in trace["data"]
     assert rag_status["data"]["rag_mode"] == "fake"
+
+
+def test_frontend_debug_panel_can_show_v3_debug_payload() -> None:
+    client = _client()
+
+    js = client.get("/app/app.js").text
+    chat = client.post("/api/chat", json={"query": "How should cattle feeding be managed?"}).json()
+
+    assert "v3_debug" in chat["data"]
+    assert chat["data"]["v3_debug"]["v3_enabled"] is False
+    assert "raw" in js

@@ -125,11 +125,14 @@ def _check_stage_b() -> list[str]:
     failures = _missing_paths(
         [
             "backend/app/services/feature_flag_service.py",
+            "backend/app/services/chat_service.py",
             "tests/unit/test_feature_flags.py",
         ]
     )
     service = _read_text("backend/app/services/feature_flag_service.py")
+    chat_service = _read_text("backend/app/services/chat_service.py")
     tests = _read_text("tests/unit/test_feature_flags.py")
+    api_tests = _read_text("tests/integration/test_api_contract.py")
     for required_text in (
         "FeatureFlagService",
         "FeatureFlagSnapshot",
@@ -138,9 +141,14 @@ def _check_stage_b() -> list[str]:
     ):
         if required_text not in service:
             failures.append(f"feature_flag_service.py is missing required text: {required_text}")
+    for required_text in ("build_debug_payload", "v3_debug", "FeatureFlagService"):
+        if required_text not in chat_service:
+            failures.append(f"chat_service.py is missing V3 debug payload text: {required_text}")
     for required_text in ("v3_enabled", "model_router", "long_term_memory", "lora"):
         if required_text not in tests:
             failures.append(f"test_feature_flags.py is missing required coverage text: {required_text}")
+    if "v3_debug" not in api_tests:
+        failures.append("test_api_contract.py must cover v3_debug")
     return failures
 
 
