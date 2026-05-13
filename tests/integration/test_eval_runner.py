@@ -69,6 +69,7 @@ def test_run_eval_real_rag_optional_writes_skipped_report_when_unconfigured(monk
     assert payload["error_code"] == "RAG_SERVER_PATH_MISSING"
     assert (output_dir / "eval_result.csv").exists()
     assert (output_dir / "eval_summary.md").read_text(encoding="utf-8").startswith("# Real RAG Evaluation Summary")
+    assert "RAG_SERVER_UNAVAILABLE" in (output_dir / "failure_analysis.md").read_text(encoding="utf-8")
 
 
 def test_run_eval_real_rag_requires_configuration_without_optional(monkeypatch, capsys) -> None:  # noqa: ANN001

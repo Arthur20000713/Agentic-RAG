@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Literal
 
 
@@ -70,3 +71,69 @@ def build_failure_summary(results: list[Any]) -> dict[FailureCategory, int]:
         if category is not None:
             summary[category] += 1
     return summary
+
+
+def build_failure_report(report: Any, output_path: str | Path) -> Path:
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = ["# Real RAG Failure Analysis", ""]
+
+    if isinstance(report, dict) and report.get("status") == "skipped":
+        summary: dict[FailureCategory, int] = {category: 0 for category in FAILURE_CATEGORIES}
+        summary["RAG_SERVER_UNAVAILABLE"] = 1
+        lines.extend(
+            [
+                "- Status: skipped",
+                f"- Mode: {report.get('mode', 'real')}",
+                f"- Error code: {report.get('error_code', '')}",
+                f"- Reason: {report.get('reason', '')}",
+                "",
+                "## Failure Categories",
+                "",
+                "| Category | Count |",
+                "|---|---:|",
+            ]
+        )
+        for category in FAILURE_CATEGORIES:
+            lines.append(f"| {category} | {summary[category]} |")
+        lines.extend(
+            [
+                "",
+                "## Examples",
+                "",
+                f"- `real_rag_unavailable` (RAG_SERVER_UNAVAILABLE): {report.get('reason', '')}",
+            ]
+        )
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return path
+
+    metrics = dict(getattr(report, "metrics", {}) or {})
+    cases = list(getattr(report, "cases", []) or [])
+    lines.extend(
+        [
+            f"- Total cases: {metrics.get('total_cases', len(cases))}",
+            f"- Failed cases: {metrics.get('failed_cases', sum(1 for item in cases if not item.passed))}",
+            "",
+            "## Failure Categories",
+            "",
+            "| Category | Count |",
+            "|---|---:|",
+        ]
+    )
+    summary = metrics.get("failure_categories") or build_failure_summary(cases)
+    for category in FAILURE_CATEGORIES:
+        lines.append(f"| {category} | {summary.get(category, 0)} |")
+
+    lines.extend(["", "## Examples", ""])
+    failed_cases = [item for item in cases if not item.passed][:10]
+    if not failed_cases:
+        lines.append("- No failed cases.")
+    for item in failed_cases:
+        category = categorize_failure(item) or "PASSED"
+        lines.append(
+            f"- `{item.case_id}` ({item.category}, {category}): "
+            f"errors={','.join(item.errors) or 'none'}; checks={item.checks}"
+        )
+
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path

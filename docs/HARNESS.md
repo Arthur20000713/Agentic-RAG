@@ -266,3 +266,11 @@ V2.5-E1 eval run log check:
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/integration/test_eval_runner.py -k log
 ```
+
+V2.5-E2 real RAG failure analysis check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/unit/test_eval_metrics.py -k failure
+.venv\Scripts\python.exe -m pytest tests/integration/test_eval_runner.py -k real_rag
+.venv\Scripts\python.exe scripts\run_eval.py --mode real --optional
+```

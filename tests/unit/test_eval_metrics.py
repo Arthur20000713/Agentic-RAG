@@ -1,8 +1,17 @@
 from __future__ import annotations
 
-from backend.app.evaluation.failure_analysis import FAILURE_CATEGORIES, categorize_failure
+from pathlib import Path
+from uuid import uuid4
+
+from backend.app.evaluation.failure_analysis import FAILURE_CATEGORIES, build_failure_report, categorize_failure
 from backend.app.evaluation.golden_runner import EvaluationCaseResult
 from backend.app.evaluation.metrics import compute_metrics
+
+
+def _tmp_dir() -> Path:
+    path = Path(".tmp_tests") / uuid4().hex
+    path.mkdir(parents=True, exist_ok=True)
+    return path.resolve()
 
 
 def test_compute_metrics_counts_overall_and_named_checks() -> None:
@@ -111,3 +120,26 @@ def test_compute_metrics_outputs_failure_category_counts() -> None:
     assert metrics["failure_categories"]["NO_RETRIEVAL_RESULT"] == 1
     assert metrics["failure_categories"]["LOW_RETRIEVAL_SCORE"] == 1
     assert all(category in metrics["failure_categories"] for category in FAILURE_CATEGORIES)
+
+
+def test_build_failure_report_outputs_categories_and_examples() -> None:
+    results = [
+        EvaluationCaseResult(
+            case_id="case_bad_mapping",
+            category="general_qa",
+            passed=False,
+            checks={"citation": False},
+            tools_used=["livestock_rag_search"],
+            errors=["RAG_MAPPING_PARTIAL_SOURCE_URI"],
+        )
+    ]
+
+    class Report:
+        metrics = compute_metrics(results)
+        cases = results
+
+    path = build_failure_report(Report(), _tmp_dir() / "failure_analysis.md")
+    text = path.read_text(encoding="utf-8")
+
+    assert "BAD_MAPPING" in text
+    assert "case_bad_mapping" in text

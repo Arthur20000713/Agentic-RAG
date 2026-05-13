@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 
 from backend.app.core.config import PROJECT_ROOT, Settings, load_settings
+from backend.app.evaluation.failure_analysis import build_failure_report
 from backend.app.evaluation.golden_runner import EvaluationReport, GoldenSetRunner
 from backend.app.integrations.rag_server import create_rag_server_client
 from backend.app.integrations.rag_server.base import RagServerClient
@@ -61,6 +62,7 @@ class RealRagEvalRunner:
         self._write_json(report)
         self._write_csv(report)
         self._write_summary(report)
+        build_failure_report(report, self.output_dir / "failure_analysis.md")
 
     def create_rag_client(self) -> RagServerClient:
         if self.rag_client is not None:
@@ -92,6 +94,7 @@ class RealRagEvalRunner:
             ),
             encoding="utf-8",
         )
+        build_failure_report(payload, self.output_dir / "failure_analysis.md")
 
     def _require_repo_path(self) -> Path:
         repo_path = resolve_rag_server_path(self.settings)
