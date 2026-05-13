@@ -256,15 +256,19 @@ def _check_stage_d() -> list[str]:
             "backend/app/model/base.py",
             "backend/app/model/local_client.py",
             "backend/app/model/query_normalizer.py",
+            "backend/app/agent/disease_agent.py",
             "tests/unit/test_local_model_client.py",
             "tests/unit/test_query_normalizer.py",
+            "tests/unit/test_disease_agent.py",
         ]
     )
     base = _read_text("backend/app/model/base.py")
     local_client = _read_text("backend/app/model/local_client.py")
     query_normalizer = _read_text("backend/app/model/query_normalizer.py")
+    disease_agent = _read_text("backend/app/agent/disease_agent.py")
     tests = _read_text("tests/unit/test_local_model_client.py")
     normalizer_tests = _read_text("tests/unit/test_query_normalizer.py")
+    disease_tests = _read_text("tests/unit/test_disease_agent.py")
     for required_text in ("BaseModelClient", "generate_json"):
         if required_text not in base:
             failures.append(f"model/base.py is missing required local model text: {required_text}")
@@ -284,6 +288,12 @@ def _check_stage_d() -> list[str]:
             failures.append(f"query_normalizer.py is missing required text: {required_text}")
         if required_text not in normalizer_tests:
             failures.append(f"test_query_normalizer.py is missing required coverage text: {required_text}")
+    for required_text in ("extract_slots_with_router", "disease_slot_router", "ModelRouter", "fallback_used"):
+        if required_text not in disease_agent:
+            failures.append(f"disease_agent.py is missing required router slot text: {required_text}")
+    for required_text in ("disease_slot_router", "fallback_used", "local_small", "selected_model"):
+        if required_text not in disease_tests:
+            failures.append(f"test_disease_agent.py is missing required router slot coverage text: {required_text}")
     return failures
 
 

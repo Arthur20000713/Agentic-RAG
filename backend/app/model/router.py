@@ -33,7 +33,7 @@ class ModelRouteDecision(BaseModel):
 
 class ModelRouter:
     local_task_types = {"structured_extraction", "measurement_analysis", "summarization"}
-    low_risk_levels = {"S0", "S1"}
+    low_risk_levels = {"S0", "S1", "S2"}
     high_risk_levels = {"S3", "S4"}
 
     def __init__(self, settings: Settings | None = None) -> None:

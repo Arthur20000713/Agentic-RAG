@@ -108,6 +108,30 @@ def test_disease_graph_high_risk_uses_rag_verifier_safety_response() -> None:
     ]
 
 
+def test_disease_graph_uses_router_slot_extraction_without_rag_for_follow_up() -> None:
+    settings = Settings(
+        v3={"enabled": True},
+        model_router={"enabled": True, "shadow_mode": False, "allow_low_risk_takeover": True},
+        local_model={"enabled": True},
+    )
+
+    state = asyncio.run(
+        run_disease_graph(
+            "犊牛腹泻了怎么办？",
+            rag_client=FakeRagServerClient(),
+            session_id="s_disease_slot_router",
+            settings=settings,
+        )
+    )
+
+    assert state.disease_assessment is not None
+    assert state.disease_assessment["status"] == "follow_up"
+    assert "livestock_rag_search" not in state.tool_results
+    assert state.tool_results["disease_slot_router"]["route_decision"]["selected_model"] == "local_small"
+    assert state.tool_results["disease_slot_router"]["fallback_used"] is False
+    assert state.final_answer is not None
+
+
 def test_measurement_graph_runs_without_rag_and_preserves_evidence() -> None:
     measurement = MeasurementInput(
         animal_id="yak_032",

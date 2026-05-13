@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from backend.app.agent.disease_agent import DiseaseAgent
 from backend.app.agent.state import MultiAgentState
+from backend.app.core.config import Settings
 
 
 def test_disease_agent_returns_follow_up_for_missing_slots() -> None:
@@ -77,3 +78,39 @@ def test_disease_agent_uses_normalized_query_for_slot_extraction() -> None:
     assert state.disease_assessment is not None
     assert state.disease_assessment["risk_level"] == "high"
     assert state.rag_query == "用户原始输入 风险等级 high 处理原则"
+
+
+def test_disease_agent_uses_router_for_low_risk_slot_extraction() -> None:
+    settings = Settings(
+        v3={"enabled": True},
+        model_router={"enabled": True, "shadow_mode": False, "allow_low_risk_takeover": True},
+        local_model={"enabled": True},
+    )
+    state = MultiAgentState(session_id="s1", user_query="犊牛腹泻了怎么办？", intent="disease_consultation")
+
+    DiseaseAgent(settings=settings).run(state)
+
+    assert state.extracted_slots["species"] == "cattle"
+    assert "diarrhea" in state.extracted_slots["symptoms"]
+    assert state.tool_results["disease_slot_router"]["route_decision"]["selected_model"] == "local_small"
+    assert state.tool_results["disease_slot_router"]["fallback_used"] is False
+
+
+def test_disease_agent_router_falls_back_to_rule_slots_for_high_risk_query() -> None:
+    settings = Settings(
+        v3={"enabled": True},
+        model_router={"enabled": True, "shadow_mode": False, "allow_low_risk_takeover": True},
+        local_model={"enabled": True},
+    )
+    state = MultiAgentState(
+        session_id="s1",
+        user_query="多头犊牛腹泻两天，体温40.2度，精神差，不吃草，群体发病",
+        intent="disease_consultation",
+    )
+
+    DiseaseAgent(settings=settings).run(state)
+
+    assert state.extracted_slots["species"] == "cattle"
+    assert "diarrhea" in state.extracted_slots["symptoms"]
+    assert state.tool_results["disease_slot_router"]["route_decision"]["selected_model"] == "primary"
+    assert state.tool_results["disease_slot_router"]["fallback_used"] is True

@@ -59,7 +59,7 @@ async def run_disease_graph(
             previous_context = session_context_service.get_context(resolved_session_id)
         if previous_context is not None:
             state.normalized_query = merge_session_slots(query, previous_context)
-    DiseaseAgent().run(state)
+    DiseaseAgent(settings=settings).run(state)
     if session_context_service is not None:
         _save_disease_context(session_context_service, state)
     if state.rag_query:

@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import time
+from typing import Any
 
-from backend.app.agent.extractor import SlotExtractor, build_follow_up_questions
+from backend.app.agent.extractor import DiseaseSlots, SlotExtractor, build_follow_up_questions
+from backend.app.agent.safety_precheck import SafetyPrecheck
 from backend.app.agent.state import MultiAgentState
+from backend.app.core.config import Settings
+from backend.app.model.router import ModelRouteRequest, ModelRouter
 from backend.app.rules.disease_risk import DiseaseRiskEvaluator
 
 
@@ -13,15 +17,17 @@ class DiseaseAgent:
         *,
         slot_extractor: SlotExtractor | None = None,
         risk_evaluator: DiseaseRiskEvaluator | None = None,
+        settings: Settings | None = None,
     ) -> None:
         self.slot_extractor = slot_extractor or SlotExtractor()
         self.risk_evaluator = risk_evaluator or DiseaseRiskEvaluator()
+        self.settings = settings or Settings()
 
     def run(self, state: MultiAgentState) -> MultiAgentState:
         started_at = time.perf_counter()
         state.active_agent = "disease_agent"
 
-        slots = self.slot_extractor.extract(state.normalized_query or state.user_query)
+        slots = self.extract_slots_with_router(state.normalized_query or state.user_query, state=state)
         state.extracted_slots = slots.model_dump()
         state.tool_results["slot_extractor"] = state.extracted_slots
 
@@ -72,6 +78,66 @@ class DiseaseAgent:
             missing_info=risk_result.missing_info,
         )
         return state
+
+    def extract_slots_with_router(self, query: str, *, state: MultiAgentState | None = None) -> DiseaseSlots:
+        rule_slots = self.slot_extractor.extract(query)
+        safety = SafetyPrecheck().classify(query)
+        route_request = ModelRouteRequest(
+            task_type="structured_extraction",
+            safety_level=safety.level,
+            requires_final_answer=False,
+            user_query=query,
+            metadata={"component": "disease_slot_extraction"},
+        )
+        decision = ModelRouter(self.settings).route(route_request)
+        if decision.selected_model != "local_small":
+            self._record_slot_router(
+                state,
+                route_request=route_request.model_dump(),
+                route_decision=decision.model_dump(),
+                fallback_used=True,
+                fallback_reason=decision.blocked_reason or "local_takeover_not_selected",
+            )
+            return rule_slots
+
+        try:
+            local_slots = self.slot_extractor.extract(query)
+        except Exception as exc:
+            self._record_slot_router(
+                state,
+                route_request=route_request.model_dump(),
+                route_decision=decision.model_dump(),
+                fallback_used=True,
+                fallback_reason=f"local_slot_error:{exc.__class__.__name__}",
+            )
+            return rule_slots
+
+        self._record_slot_router(
+            state,
+            route_request=route_request.model_dump(),
+            route_decision=decision.model_dump(),
+            fallback_used=False,
+            fallback_reason=None,
+        )
+        return local_slots
+
+    def _record_slot_router(
+        self,
+        state: MultiAgentState | None,
+        *,
+        route_request: dict[str, Any],
+        route_decision: dict[str, Any],
+        fallback_used: bool,
+        fallback_reason: str | None,
+    ) -> None:
+        if state is None or route_decision["route_mode"] == "disabled":
+            return
+        state.tool_results["disease_slot_router"] = {
+            "route_request": route_request,
+            "route_decision": route_decision,
+            "fallback_used": fallback_used,
+            "fallback_reason": fallback_reason,
+        }
 
     def _build_consultation_draft(self, risk_result: dict) -> str:
         need_vet = "是" if risk_result["need_vet"] else "视情况"

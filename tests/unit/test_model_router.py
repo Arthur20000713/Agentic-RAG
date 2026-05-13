@@ -75,6 +75,26 @@ def test_model_router_takeover_allows_only_low_risk_structured_tasks() -> None:
     assert decision.local_candidate_allowed is True
 
 
+def test_model_router_allows_s2_structured_extraction_but_not_final_answer() -> None:
+    settings = Settings(
+        v3={"enabled": True},
+        model_router={"enabled": True, "shadow_mode": False, "allow_low_risk_takeover": True},
+        local_model={"enabled": True},
+    )
+
+    extraction = ModelRouter(settings).route(
+        ModelRouteRequest(task_type="structured_extraction", safety_level="S2")
+    )
+    final_answer = ModelRouter(settings).route(
+        ModelRouteRequest(task_type="final_answer", safety_level="S2", requires_final_answer=True)
+    )
+
+    assert extraction.selected_model == "local_small"
+    assert extraction.local_candidate_allowed is True
+    assert final_answer.selected_model == "primary"
+    assert final_answer.local_candidate_allowed is False
+
+
 def test_model_router_never_routes_high_risk_to_local_small() -> None:
     settings = Settings(
         v3={"enabled": True},
