@@ -45,10 +45,49 @@ class AppSettings(BaseModel):
     debug: bool = False
 
 
+class V3Settings(BaseModel):
+    enabled: bool = False
+
+
+class ModelRouterSettings(BaseModel):
+    enabled: bool = False
+    shadow_mode: bool = True
+    allow_low_risk_takeover: bool = False
+
+
+class LocalModelSettings(BaseModel):
+    enabled: bool = False
+    provider: str = "mock"
+    timeout_seconds: float = 3.0
+
+
+class LoraSettings(BaseModel):
+    dataset_enabled: bool = False
+    inference_enabled: bool = False
+    registry_path: str = "data/v3/model_registry.json"
+
+
+class LongTermMemorySettings(BaseModel):
+    write_enabled: bool = False
+    read_enabled: bool = False
+    ttl_days: int = 365
+
+
+class EnhancedSafetySettings(BaseModel):
+    precheck_enabled: bool = True
+    final_guard_required: bool = True
+
+
 class Settings(BaseModel):
     app: AppSettings = Field(default_factory=AppSettings)
     rag_server: RagServerSettings = Field(default_factory=RagServerSettings)
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
+    v3: V3Settings = Field(default_factory=V3Settings)
+    model_router: ModelRouterSettings = Field(default_factory=ModelRouterSettings)
+    local_model: LocalModelSettings = Field(default_factory=LocalModelSettings)
+    lora: LoraSettings = Field(default_factory=LoraSettings)
+    long_term_memory: LongTermMemorySettings = Field(default_factory=LongTermMemorySettings)
+    enhanced_safety: EnhancedSafetySettings = Field(default_factory=EnhancedSafetySettings)
 
 
 def _read_yaml(path: Path) -> dict:

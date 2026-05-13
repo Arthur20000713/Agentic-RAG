@@ -11,3 +11,24 @@ rag_server:
   strict_real_mode: false
 database:
   url: "sqlite:///data/app.db"
+v3:
+  enabled: false
+model_router:
+  enabled: false
+  shadow_mode: true
+  allow_low_risk_takeover: false
+local_model:
+  enabled: false
+  provider: mock
+  timeout_seconds: 3
+lora:
+  dataset_enabled: false
+  inference_enabled: false
+  registry_path: data/v3/model_registry.json
+long_term_memory:
+  write_enabled: false
+  read_enabled: false
+  ttl_days: 365
+enhanced_safety:
+  precheck_enabled: true
+  final_guard_required: true

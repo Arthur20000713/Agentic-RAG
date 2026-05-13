@@ -82,7 +82,7 @@ def _check_baseline() -> list[str]:
 
 
 def _check_stage_a() -> list[str]:
-    return _missing_paths(
+    failures = _missing_paths(
         [
             "scripts/check_v3.py",
             "tests/integration/test_cli_scripts.py",
@@ -91,6 +91,32 @@ def _check_stage_a() -> list[str]:
             "config/settings.test.yaml",
         ]
     )
+    settings = _read_text("config/settings.yaml")
+    test_settings = _read_text("config/settings.test.yaml")
+    config_py = _read_text("backend/app/core/config.py")
+    for required_text in (
+        "v3:",
+        "model_router:",
+        "local_model:",
+        "lora:",
+        "long_term_memory:",
+        "enhanced_safety:",
+    ):
+        if required_text not in settings:
+            failures.append(f"config/settings.yaml is missing V3 config block: {required_text}")
+        if required_text not in test_settings:
+            failures.append(f"config/settings.test.yaml is missing V3 config block: {required_text}")
+    for class_name in (
+        "V3Settings",
+        "ModelRouterSettings",
+        "LocalModelSettings",
+        "LoraSettings",
+        "LongTermMemorySettings",
+        "EnhancedSafetySettings",
+    ):
+        if class_name not in config_py:
+            failures.append(f"backend/app/core/config.py is missing {class_name}")
+    return failures
 
 
 def _check_future_stage_declared(stage: str) -> list[str]:
