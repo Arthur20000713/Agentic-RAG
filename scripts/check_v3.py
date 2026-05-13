@@ -35,7 +35,9 @@ def _check_stage(stage: str) -> list[str]:
         failures.extend(_check_stage_a())
     if stage in {"B", "full"}:
         failures.extend(_check_stage_b())
-    if stage in {"C", "D", "E", "F", "G", "full"}:
+    if stage in {"C", "full"}:
+        failures.extend(_check_stage_c())
+    if stage in {"D", "E", "F", "G", "full"}:
         failures.extend(_check_future_stage_declared(stage))
     return failures
 
@@ -160,6 +162,49 @@ def _check_stage_b() -> list[str]:
     ):
         if required_text not in disabled_e2e_tests:
             failures.append(f"test_v3_disabled_regression.py is missing required coverage text: {required_text}")
+    return failures
+
+
+def _check_stage_c() -> list[str]:
+    failures = _missing_paths(
+        [
+            "backend/app/agent/safety_precheck.py",
+            "tests/unit/test_safety_precheck.py",
+        ]
+    )
+    precheck = _read_text("backend/app/agent/safety_precheck.py")
+    tests = _read_text("tests/unit/test_safety_precheck.py")
+    for required_text in (
+        "SafetyPrecheck",
+        "SafetyPrecheckResult",
+        "classify",
+        "S0",
+        "S1",
+        "S2",
+        "S3",
+        "S4",
+        "dosage",
+        "prescription",
+        "group_outbreak",
+        "food_safety",
+    ):
+        if required_text not in precheck:
+            failures.append(f"safety_precheck.py is missing required text: {required_text}")
+    for required_text in (
+        "SafetyPrecheck",
+        "classify",
+        "S0",
+        "S1",
+        "S2",
+        "S3",
+        "S4",
+        "dosage",
+        "prescription",
+        "group_outbreak",
+        "food_safety",
+    ):
+        if required_text not in tests:
+            failures.append(f"test_safety_precheck.py is missing required coverage text: {required_text}")
     return failures
 
 
