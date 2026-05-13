@@ -1,14 +1,18 @@
 blocked_categories:
   dosage:
     - '\d+(\.\d+)?\s*(mg/kg|mg|ml|g|kg|毫升|克|片)'
+    - '每公斤.*(mg|毫克|ml|毫升)'
+    - 具体剂量
   definitive_diagnosis:
     - 确诊
     - 确定诊断
     - 可以确定诊断
+    - 诊断为
   prescription:
+    - 开处方
     - 开具处方
     - 处方药
+    - 抗生素处方
   fabricated_tool_result:
     - 工具调用失败.*检索结果
     - 检索失败.*资料显示
-

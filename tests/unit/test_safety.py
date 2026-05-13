@@ -17,6 +17,13 @@ def test_safety_blocks_definitive_diagnosis() -> None:
     assert "definitive_diagnosis" in result.violations
 
 
+def test_safety_blocks_prescription() -> None:
+    result = SafetyGuard().check("请开处方并使用抗生素处方药。")
+
+    assert result.passed is False
+    assert "prescription" in result.violations
+
+
 def test_final_safety_guard_rewrites_unsafe_answer() -> None:
     answer = FinalSafetyGuard().enforce("确诊为肺炎，使用药物 5 mg/kg。")
 
@@ -30,4 +37,3 @@ def test_safety_blocks_fabricated_tool_result_claim() -> None:
 
     assert result.passed is False
     assert "fabricated_tool_result" in result.violations
-

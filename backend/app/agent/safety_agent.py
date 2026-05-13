@@ -7,6 +7,9 @@ from backend.app.agent.state import MultiAgentState
 from backend.app.schemas.agent import AgentToolError
 
 
+S4_HARD_VIOLATIONS = {"dosage", "prescription", "definitive_diagnosis"}
+
+
 class SafetyAgent:
     def __init__(
         self,
@@ -23,11 +26,14 @@ class SafetyAgent:
 
         candidate_answer = state.final_answer or state.draft_answer or ""
         result = self.safety_guard.check(candidate_answer)
+        hard_violations = [violation for violation in result.violations if violation in S4_HARD_VIOLATIONS]
         safe_answer = candidate_answer if result.passed else self.final_safety_guard.enforce(candidate_answer)
         state.final_answer = safe_answer
         state.safety_result = {
             "passed": result.passed,
             "violations": result.violations,
+            "hard_blocked": bool(hard_violations),
+            "hard_violations": hard_violations,
             "message": result.message,
             "safe_answer": safe_answer,
         }
@@ -49,6 +55,7 @@ class SafetyAgent:
                 "status": "success" if result.passed else "blocked",
                 "passed": result.passed,
                 "violations": result.violations,
+                "hard_blocked": bool(hard_violations),
                 "violation_count": len(result.violations),
                 "latency_ms": max(0, int((time.perf_counter() - started_at) * 1000)),
             }

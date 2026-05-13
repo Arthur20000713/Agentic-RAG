@@ -317,17 +317,31 @@ def _check_stage_e() -> list[str]:
     failures = _missing_paths(
         [
             "backend/app/agent/verifier_agent.py",
+            "backend/app/agent/safety_agent.py",
+            "backend/app/rules/safety_rules.yaml",
             "tests/unit/test_verifier_agent.py",
+            "tests/unit/test_safety_agent.py",
         ]
     )
     verifier = _read_text("backend/app/agent/verifier_agent.py")
+    safety_agent = _read_text("backend/app/agent/safety_agent.py")
+    safety_rules = _read_text("backend/app/rules/safety_rules.yaml")
     tests = _read_text("tests/unit/test_verifier_agent.py")
+    safety_tests = _read_text("tests/unit/test_safety_agent.py")
     for required_text in ("ClaimCheck", "claim_checks", "source_uri", "claim_missing_source_uri"):
         if required_text not in verifier:
             failures.append(f"verifier_agent.py is missing required claim check text: {required_text}")
     for required_text in ("claim_checks", "source_uri", "claim_missing_source_uri"):
         if required_text not in tests:
             failures.append(f"test_verifier_agent.py is missing required claim check coverage text: {required_text}")
+    for required_text in ("S4_HARD_VIOLATIONS", "hard_blocked", "hard_violations"):
+        if required_text not in safety_agent:
+            failures.append(f"safety_agent.py is missing required hard block text: {required_text}")
+    for required_text in ("dosage", "prescription", "definitive_diagnosis"):
+        if required_text not in safety_rules:
+            failures.append(f"safety_rules.yaml is missing required hard block rule: {required_text}")
+        if required_text not in safety_tests:
+            failures.append(f"test_safety_agent.py is missing required hard block coverage text: {required_text}")
     return failures
 
 
