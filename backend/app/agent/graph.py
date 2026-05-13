@@ -40,6 +40,7 @@ async def run_disease_graph(
     rag_client: RagServerClient | None = None,
     session_context_service: SessionContextService | None = None,
     session_id: str | None = None,
+    unsafe_draft_for_test: str | None = None,
 ) -> MultiAgentState:
     resolved_session_id = session_id or _new_session_id()
     state = MultiAgentState(session_id=resolved_session_id, user_query=query)
@@ -57,6 +58,8 @@ async def run_disease_graph(
         disease_draft = state.draft_answer or ""
         await RagAgent(rag_client or FakeRagServerClient()).run(state)
         _compose_rag_draft(state, prefix=disease_draft)
+        if unsafe_draft_for_test is not None:
+            state.draft_answer = unsafe_draft_for_test
         VerifierAgent().verify(state)
     SafetyAgent().check(state)
     ResponseAgent().render(state)

@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from backend.app.evaluation.golden_runner import GoldenSetRunner  # noqa: E402
+from backend.app.evaluation.multi_agent_runner import MultiAgentEvalRunner  # noqa: E402
 from backend.app.evaluation.real_rag_runner import RealRagEvalRunner, RealRagEvalUnavailable  # noqa: E402
 
 
@@ -17,9 +18,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run V2 evaluation checks.")
     parser.add_argument(
         "--mode",
-        choices=["fake", "real"],
+        choices=["fake", "real", "multi_agent"],
         default="fake",
-        help="evaluation mode; real mode is implemented in V2.1-A11",
+        help="evaluation mode; real mode is optional and multi_agent mode evaluates V2 graph workflows",
     )
     parser.add_argument("--golden-set", default="tests/fixtures/golden_set.json", help="path to golden set JSON")
     parser.add_argument("--output-dir", default="reports", help="directory for evaluation reports")
@@ -45,6 +46,14 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             print(f"ERROR: {exc.message}", file=sys.stderr)
             return 2
+        runner.write_outputs(report)
+        if args.json:
+            print(json.dumps(report.model_dump(), ensure_ascii=False, indent=2))
+        return 0 if report.metrics["failed_cases"] == 0 else 1
+
+    if args.mode == "multi_agent":
+        runner = MultiAgentEvalRunner(args.golden_set, output_dir=args.output_dir)
+        report = runner.run()
         runner.write_outputs(report)
         if args.json:
             print(json.dumps(report.model_dump(), ensure_ascii=False, indent=2))

@@ -274,3 +274,9 @@ V2.5-E2 real RAG failure analysis check:
 .venv\Scripts\python.exe -m pytest tests/integration/test_eval_runner.py -k real_rag
 .venv\Scripts\python.exe scripts\run_eval.py --mode real --optional
 ```
+
+V2.5-E3 multi-agent eval metrics check:
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/integration/test_eval_runner.py -k multi_agent
+```

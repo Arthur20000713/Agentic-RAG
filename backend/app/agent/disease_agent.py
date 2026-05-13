@@ -61,6 +61,7 @@ class DiseaseAgent:
             return state
 
         state.disease_assessment = risk_result.model_dump()
+        state.risk_level = risk_result.risk_level
         state.rag_query = f"{state.user_query} 风险等级 {risk_result.risk_level} 处理原则"
         state.draft_answer = self._build_consultation_draft(risk_result.model_dump())
         self._append_trace(

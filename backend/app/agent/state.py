@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from backend.app.schemas.agent import AgentToolError, IntentType, RetrievedContext
+from backend.app.schemas.agent import AgentToolError, IntentType, RetrievedContext, RiskLevel
 
 
 EvidenceStatus = Literal["success", "empty", "low_confidence", "error"]
@@ -15,6 +15,7 @@ class MultiAgentState(BaseModel):
     user_query: str
     normalized_query: str | None = None
     intent: IntentType | None = None
+    risk_level: RiskLevel | None = None
     route_reason: str | None = None
     active_agent: str | None = None
     session_context: dict[str, Any] = Field(default_factory=dict)
