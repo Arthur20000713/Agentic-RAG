@@ -3,6 +3,8 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from pydantic import BaseModel
+
 from backend.app.agent.state import MultiAgentState
 from backend.app.agent.verifier import VerifierLite
 from backend.app.schemas.agent import AgentToolError
@@ -10,6 +12,13 @@ from backend.app.schemas.agent import AgentToolError
 
 RAG_TOOL_NAME = "livestock_rag_search"
 PARTIAL_SOURCE_URI_WARNING = "RAG_MAPPING_PARTIAL_SOURCE_URI"
+
+
+class ClaimCheck(BaseModel):
+    claim: str
+    source_uri: str | None = None
+    supported: bool
+    issue: str | None = None
 
 
 class VerifierAgent:
@@ -33,12 +42,15 @@ class VerifierAgent:
 
         citation_issues = self._citation_issues(state, base_result.issues)
         unsupported_claims = self._unsupported_claims(state, answer)
-        issues = self._merge_issues(base_result.issues, citation_issues, unsupported_claims)
+        claim_checks = self._claim_checks(state, answer)
+        claim_issues = [check.issue for check in claim_checks if not check.supported and check.issue]
+        issues = self._merge_issues(base_result.issues, citation_issues, unsupported_claims, claim_issues)
         result = {
             "passed": not issues,
             "issues": issues,
             "citation_issues": citation_issues,
             "unsupported_claims": unsupported_claims,
+            "claim_checks": [check.model_dump() for check in claim_checks],
         }
         state.verification_result = result
         state.tool_results["verifier_agent"] = result
@@ -53,6 +65,7 @@ class VerifierAgent:
                 "issue_count": len(issues),
                 "citation_issue_count": len(citation_issues),
                 "unsupported_claim_count": len(unsupported_claims),
+                "claim_check_count": len(claim_checks),
                 "latency_ms": max(0, int((time.perf_counter() - started_at) * 1000)),
             }
         )
@@ -89,6 +102,33 @@ class VerifierAgent:
             return ["unsupported_claim"]
         return []
 
+    def _claim_checks(self, state: MultiAgentState, answer: str) -> list[ClaimCheck]:
+        if state.intent not in {"general_qa", "disease_consultation"}:
+            return []
+        if not answer.strip() or self._is_fallback_answer(answer):
+            return []
+
+        source_uris = self._source_uris(state)
+        claim = self._claim_text(answer)
+        if source_uris:
+            return [ClaimCheck(claim=claim, source_uri=source_uris[0], supported=True)]
+        return [ClaimCheck(claim=claim, supported=False, issue="claim_missing_source_uri")]
+
+    def _source_uris(self, state: MultiAgentState) -> list[str]:
+        source_uris: list[str] = []
+        rag_result = self._rag_result(state)
+        for citation in rag_result.get("citations") or []:
+            if isinstance(citation, dict) and citation.get("source_uri"):
+                source_uris.append(str(citation["source_uri"]))
+        for hit in rag_result.get("hits") or []:
+            if isinstance(hit, dict) and hit.get("source_uri"):
+                source_uris.append(str(hit["source_uri"]))
+        return source_uris
+
+    def _claim_text(self, answer: str) -> str:
+        first_line = next((line.strip() for line in answer.splitlines() if line.strip()), "")
+        return first_line[:240]
+
     def _has_professional_claim(self, answer: str) -> bool:
         claim_markers = [
             "应",
@@ -121,9 +161,12 @@ class VerifierAgent:
         base_issues: list[str],
         citation_issues: list[str],
         unsupported_claims: list[str],
+        claim_issues: list[str | None],
     ) -> list[str]:
         merged: list[str] = []
-        for issue in [*base_issues, *citation_issues, *unsupported_claims]:
+        for issue in [*base_issues, *citation_issues, *unsupported_claims, *claim_issues]:
+            if issue is None:
+                continue
             if issue not in merged:
                 merged.append(issue)
         return merged

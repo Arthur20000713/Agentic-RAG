@@ -39,7 +39,9 @@ def _check_stage(stage: str) -> list[str]:
         failures.extend(_check_stage_c())
     if stage in {"D", "full"}:
         failures.extend(_check_stage_d())
-    if stage in {"E", "F", "G", "full"}:
+    if stage in {"E", "full"}:
+        failures.extend(_check_stage_e())
+    if stage in {"F", "G", "full"}:
         failures.extend(_check_future_stage_declared(stage))
     return failures
 
@@ -308,6 +310,24 @@ def _check_stage_d() -> list[str]:
             failures.append(f"test_measurement_agent.py is missing required JSON renderer coverage text: {required_text}")
         if required_text not in measurement_e2e_tests:
             failures.append(f"test_measurement_report_flow.py is missing required JSON renderer coverage text: {required_text}")
+    return failures
+
+
+def _check_stage_e() -> list[str]:
+    failures = _missing_paths(
+        [
+            "backend/app/agent/verifier_agent.py",
+            "tests/unit/test_verifier_agent.py",
+        ]
+    )
+    verifier = _read_text("backend/app/agent/verifier_agent.py")
+    tests = _read_text("tests/unit/test_verifier_agent.py")
+    for required_text in ("ClaimCheck", "claim_checks", "source_uri", "claim_missing_source_uri"):
+        if required_text not in verifier:
+            failures.append(f"verifier_agent.py is missing required claim check text: {required_text}")
+    for required_text in ("claim_checks", "source_uri", "claim_missing_source_uri"):
+        if required_text not in tests:
+            failures.append(f"test_verifier_agent.py is missing required claim check coverage text: {required_text}")
     return failures
 
 

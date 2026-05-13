@@ -40,6 +40,14 @@ def test_verifier_agent_passes_supported_rag_answer() -> None:
         "issues": [],
         "citation_issues": [],
         "unsupported_claims": [],
+        "claim_checks": [
+            {
+                "claim": state.draft_answer,
+                "source_uri": "rag://default/doc_1/chunk_1",
+                "supported": True,
+                "issue": None,
+            }
+        ],
     }
     assert state.errors == []
     assert state.agent_trace[-1]["node"] == "verifier_agent"
@@ -78,6 +86,9 @@ def test_verifier_agent_detects_missing_citation_issue() -> None:
     assert state.verification_result["passed"] is False
     assert state.verification_result["citation_issues"] == ["missing_citation"]
     assert "missing_citation" in state.verification_result["issues"]
+    assert state.verification_result["claim_checks"][0]["source_uri"] is None
+    assert state.verification_result["claim_checks"][0]["supported"] is False
+    assert state.verification_result["claim_checks"][0]["issue"] == "claim_missing_source_uri"
     assert state.errors[-1].tool_name == "verifier_agent"
     assert state.agent_trace[-1]["status"] == "failed"
 
@@ -105,7 +116,7 @@ def test_verifier_agent_detects_unsupported_claim_on_low_confidence_evidence() -
     assert state.verification_result["passed"] is False
     assert state.verification_result["unsupported_claims"] == ["unsupported_claim"]
     assert "unsupported_claim" in state.verification_result["issues"]
-    assert state.errors[-1].error_code == "unsupported_claim"
+    assert any(error.error_code == "unsupported_claim" for error in state.errors)
 
 
 def test_verifier_agent_uses_measurement_evidence_boundary() -> None:
