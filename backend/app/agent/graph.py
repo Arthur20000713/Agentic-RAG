@@ -7,14 +7,18 @@ from backend.app.agent.measurement_agent import MeasurementAgent
 from backend.app.agent.rag_agent import RagAgent
 from backend.app.agent.response_agent import ResponseAgent
 from backend.app.agent.safety_agent import SafetyAgent
+from backend.app.agent.safety_precheck import SafetyPrecheck
 from backend.app.agent.state import MultiAgentState
 from backend.app.agent.supervisor import SupervisorAgent
 from backend.app.agent.verifier_agent import VerifierAgent
+from backend.app.core.config import Settings
 from backend.app.integrations.rag_server.base import RagServerClient
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
 from backend.app.model.answer_generator import AnswerGenerator
+from backend.app.model.router import ModelRouteRequest, ModelRouter, ModelTaskType
 from backend.app.schemas.measurement import MeasurementInput
 from backend.app.schemas.rag_server import RagSearchResult
+from backend.app.services.feature_flag_service import FeatureFlagService
 from backend.app.services.session_context_service import SessionContextData, SessionContextService
 
 
@@ -23,9 +27,11 @@ async def run_general_qa_graph(
     *,
     rag_client: RagServerClient | None = None,
     session_id: str | None = None,
+    settings: Settings | None = None,
 ) -> MultiAgentState:
     state = MultiAgentState(session_id=session_id or _new_session_id(), user_query=query)
     SupervisorAgent().route(state)
+    record_shadow_route(state, settings=settings)
     await RagAgent(rag_client or FakeRagServerClient()).run(state)
     _compose_rag_draft(state)
     VerifierAgent().verify(state)
@@ -41,10 +47,12 @@ async def run_disease_graph(
     session_context_service: SessionContextService | None = None,
     session_id: str | None = None,
     unsafe_draft_for_test: str | None = None,
+    settings: Settings | None = None,
 ) -> MultiAgentState:
     resolved_session_id = session_id or _new_session_id()
     state = MultiAgentState(session_id=resolved_session_id, user_query=query)
     SupervisorAgent().route(state)
+    record_shadow_route(state, settings=settings)
     if session_context_service is not None:
         previous_context = None
         if not session_context_service.clear_conflicted_context(resolved_session_id, query):
@@ -79,12 +87,14 @@ async def run_measurement_graph(
     measurement: MeasurementInput,
     *,
     session_id: str | None = None,
+    settings: Settings | None = None,
 ) -> MultiAgentState:
     state = MultiAgentState(
         session_id=session_id or _new_session_id(),
         user_query=f"body measurement analysis for {measurement.animal_id}",
     )
     SupervisorAgent().route(state)
+    record_shadow_route(state, settings=settings)
     MeasurementAgent().run(state, measurement)
     VerifierAgent().verify(state)
     SafetyAgent().check(state)
@@ -97,6 +107,49 @@ def _compose_rag_draft(state: MultiAgentState, *, prefix: str | None = None) -> 
     if isinstance(rag_result, dict):
         evidence_answer = AnswerGenerator().compose_with_citations(RagSearchResult.model_validate(rag_result))
         state.draft_answer = f"{prefix}\n\n{evidence_answer}" if prefix else evidence_answer
+
+
+def record_shadow_route(state: MultiAgentState, *, settings: Settings | None = None) -> None:
+    app_settings = settings or Settings()
+    if not FeatureFlagService(app_settings).model_router_enabled:
+        return
+
+    safety = SafetyPrecheck().classify(state.normalized_query or state.user_query)
+    request = ModelRouteRequest(
+        task_type=_model_task_type(state),
+        safety_level=safety.level,
+        requires_final_answer=_requires_final_answer(state),
+        user_query=state.normalized_query or state.user_query,
+        metadata={"intent": state.intent or "unknown"},
+    )
+    decision = ModelRouter(app_settings).route(request)
+    payload = {
+        "safety_precheck": safety.model_dump(),
+        "route_request": request.model_dump(),
+        "route_decision": decision.model_dump(),
+    }
+    state.tool_results["model_router_shadow"] = payload
+    state.agent_trace.append(
+        {
+            "node": "model_router_shadow",
+            "status": "success",
+            "route_mode": decision.route_mode,
+            "selected_model": decision.selected_model,
+            "shadow_model": decision.shadow_model,
+            "safety_level": safety.level,
+            "local_candidate_allowed": decision.local_candidate_allowed,
+        }
+    )
+
+
+def _model_task_type(state: MultiAgentState) -> ModelTaskType:
+    if state.intent == "measurement_analysis":
+        return "measurement_analysis"
+    return "final_answer"
+
+
+def _requires_final_answer(state: MultiAgentState) -> bool:
+    return state.intent in {"general_qa", "disease_consultation", "out_of_scope"}
 
 
 def _new_session_id() -> str:

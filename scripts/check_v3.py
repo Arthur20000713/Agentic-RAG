@@ -170,19 +170,23 @@ def _check_stage_c() -> list[str]:
         [
             "backend/app/agent/safety_precheck.py",
             "backend/app/model/router.py",
+            "backend/app/agent/graph.py",
             "backend/app/db/migrations.py",
             "backend/app/db/repositories.py",
             "tests/unit/test_safety_precheck.py",
             "tests/unit/test_model_router.py",
+            "tests/integration/test_agent_graph.py",
             "tests/integration/test_model_route_log.py",
         ]
     )
     precheck = _read_text("backend/app/agent/safety_precheck.py")
     router = _read_text("backend/app/model/router.py")
+    graph = _read_text("backend/app/agent/graph.py")
     migrations = _read_text("backend/app/db/migrations.py")
     repositories = _read_text("backend/app/db/repositories.py")
     tests = _read_text("tests/unit/test_safety_precheck.py")
     router_tests = _read_text("tests/unit/test_model_router.py")
+    graph_tests = _read_text("tests/integration/test_agent_graph.py")
     route_log_tests = _read_text("tests/integration/test_model_route_log.py")
     for required_text in (
         "SafetyPrecheck",
@@ -235,6 +239,12 @@ def _check_stage_c() -> list[str]:
     for required_text in ("ModelRouteLogRepository", "route_mode", "shadow", "list_by_request_id"):
         if required_text not in route_log_tests:
             failures.append(f"test_model_route_log.py is missing required coverage text: {required_text}")
+    for required_text in ("record_shadow_route", "model_router_shadow", "ModelRouter", "SafetyPrecheck"):
+        if required_text not in graph:
+            failures.append(f"graph.py is missing required shadow route text: {required_text}")
+    for required_text in ("model_router_shadow", "shadow_model", "local_small"):
+        if required_text not in graph_tests:
+            failures.append(f"test_agent_graph.py is missing required shadow route coverage text: {required_text}")
     return failures
 
 

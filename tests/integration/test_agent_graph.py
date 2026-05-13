@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from backend.app.agent.graph import run_disease_graph, run_general_qa_graph, run_measurement_graph
+from backend.app.core.config import Settings
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
 from backend.app.schemas.measurement import MeasurementInput
 
@@ -157,3 +158,40 @@ def test_measurement_graph_without_history_still_returns_report() -> None:
     assert state.measurement_report["abnormal_items"] == []
     assert state.final_answer is not None
     assert "无历史记录" in state.final_answer
+
+
+def test_measurement_graph_records_shadow_route_without_changing_answer() -> None:
+    measurement = MeasurementInput(
+        animal_id="yak_032",
+        current={"chest_girth_cm": 158.4, "weight_kg": 246.5},
+        history=[
+            {
+                "measure_date": "2026-04-01",
+                "chest_girth_cm": 157.0,
+                "weight_kg": 242.0,
+            }
+        ],
+        confidence=0.82,
+    )
+    settings = Settings(
+        v3={"enabled": True},
+        model_router={"enabled": True, "shadow_mode": True, "allow_low_risk_takeover": True},
+        local_model={"enabled": True},
+    )
+
+    baseline = asyncio.run(run_measurement_graph(measurement, session_id="s_measure_shadow_base"))
+    shadow = asyncio.run(run_measurement_graph(measurement, session_id="s_measure_shadow", settings=settings))
+
+    assert shadow.final_answer == baseline.final_answer
+    assert shadow.measurement_report == baseline.measurement_report
+    assert shadow.tool_results["model_router_shadow"]["route_decision"]["route_mode"] == "shadow"
+    assert shadow.tool_results["model_router_shadow"]["route_decision"]["selected_model"] == "primary"
+    assert shadow.tool_results["model_router_shadow"]["route_decision"]["shadow_model"] == "local_small"
+    assert [item["node"] for item in shadow.agent_trace] == [
+        "supervisor",
+        "model_router_shadow",
+        "measurement_agent",
+        "verifier_agent",
+        "safety_agent",
+        "response_agent",
+    ]
