@@ -127,12 +127,14 @@ def _check_stage_b() -> list[str]:
             "backend/app/services/feature_flag_service.py",
             "backend/app/services/chat_service.py",
             "tests/unit/test_feature_flags.py",
+            "tests/e2e/test_v3_disabled_regression.py",
         ]
     )
     service = _read_text("backend/app/services/feature_flag_service.py")
     chat_service = _read_text("backend/app/services/chat_service.py")
     tests = _read_text("tests/unit/test_feature_flags.py")
     api_tests = _read_text("tests/integration/test_api_contract.py")
+    disabled_e2e_tests = _read_text("tests/e2e/test_v3_disabled_regression.py")
     for required_text in (
         "FeatureFlagService",
         "FeatureFlagSnapshot",
@@ -149,6 +151,15 @@ def _check_stage_b() -> list[str]:
             failures.append(f"test_feature_flags.py is missing required coverage text: {required_text}")
     if "v3_debug" not in api_tests:
         failures.append("test_api_contract.py must cover v3_debug")
+    for required_text in (
+        "v3_disabled",
+        "/api/chat",
+        "/api/measurement/analyze",
+        "model_router",
+        "long_term_memory",
+    ):
+        if required_text not in disabled_e2e_tests:
+            failures.append(f"test_v3_disabled_regression.py is missing required coverage text: {required_text}")
     return failures
 
 
