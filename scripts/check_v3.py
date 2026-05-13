@@ -169,11 +169,15 @@ def _check_stage_c() -> list[str]:
     failures = _missing_paths(
         [
             "backend/app/agent/safety_precheck.py",
+            "backend/app/model/router.py",
             "tests/unit/test_safety_precheck.py",
+            "tests/unit/test_model_router.py",
         ]
     )
     precheck = _read_text("backend/app/agent/safety_precheck.py")
+    router = _read_text("backend/app/model/router.py")
     tests = _read_text("tests/unit/test_safety_precheck.py")
+    router_tests = _read_text("tests/unit/test_model_router.py")
     for required_text in (
         "SafetyPrecheck",
         "SafetyPrecheckResult",
@@ -205,6 +209,18 @@ def _check_stage_c() -> list[str]:
     ):
         if required_text not in tests:
             failures.append(f"test_safety_precheck.py is missing required coverage text: {required_text}")
+    for required_text in (
+        "ModelRouter",
+        "ModelRouteRequest",
+        "ModelRouteDecision",
+        "local_small",
+        "high_risk_requires_primary",
+        "risk_final_answer_requires_primary",
+    ):
+        if required_text not in router:
+            failures.append(f"model/router.py is missing required text: {required_text}")
+        if required_text not in router_tests:
+            failures.append(f"test_model_router.py is missing required coverage text: {required_text}")
     return failures
 
 
