@@ -351,6 +351,78 @@ class RagTraceRepository:
         return [dict(row) for row in rows]
 
 
+class ModelRouteLogRepository:
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self.conn = conn
+
+    def add(
+        self,
+        *,
+        session_id: str | None = None,
+        request_id: str | None = None,
+        route_request: Any,
+        route_decision: Any,
+    ) -> int:
+        request_data = self._as_dict(route_request)
+        decision_data = self._as_dict(route_decision)
+        cursor = self.conn.execute(
+            """
+            INSERT INTO model_route_log (
+                session_id, request_id, task_type, safety_level, selected_model,
+                route_mode, shadow_model, local_candidate_allowed, blocked_reason,
+                reason, route_request_json, route_decision_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                session_id,
+                request_id,
+                request_data.get("task_type"),
+                request_data.get("safety_level"),
+                decision_data.get("selected_model"),
+                decision_data.get("route_mode"),
+                decision_data.get("shadow_model"),
+                1 if decision_data.get("local_candidate_allowed") else 0,
+                decision_data.get("blocked_reason"),
+                decision_data.get("reason"),
+                json.dumps(request_data, ensure_ascii=False),
+                json.dumps(decision_data, ensure_ascii=False),
+            ),
+        )
+        self.conn.commit()
+        return int(cursor.lastrowid)
+
+    def get(self, log_id: int) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            "SELECT * FROM model_route_log WHERE id = ?",
+            (log_id,),
+        ).fetchone()
+        return None if row is None else self._decode(row)
+
+    def list_by_request_id(self, request_id: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT * FROM model_route_log
+            WHERE request_id = ?
+            ORDER BY id ASC
+            """,
+            (request_id,),
+        ).fetchall()
+        return [self._decode(row) for row in rows]
+
+    def _decode(self, row: sqlite3.Row) -> dict[str, Any]:
+        data = dict(row)
+        data["local_candidate_allowed"] = bool(data["local_candidate_allowed"])
+        data["route_request"] = json.loads(data.pop("route_request_json"))
+        data["route_decision"] = json.loads(data.pop("route_decision_json"))
+        return data
+
+    def _as_dict(self, value: Any) -> dict[str, Any]:
+        if hasattr(value, "model_dump"):
+            return value.model_dump()
+        return dict(value)
+
+
 class EvalRunRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self.conn = conn

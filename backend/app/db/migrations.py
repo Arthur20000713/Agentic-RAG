@@ -12,6 +12,7 @@ APPLICATION_TABLES = {
     "tool_call_log",
     "agent_trace_log",
     "rag_trace_log",
+    "model_route_log",
     "session_context",
     "eval_run_log",
 }
@@ -143,6 +144,29 @@ ON rag_trace_log(request_id);
 
 CREATE INDEX IF NOT EXISTS idx_rag_trace_session_id
 ON rag_trace_log(session_id);
+
+CREATE TABLE IF NOT EXISTS model_route_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT,
+    request_id TEXT,
+    task_type TEXT NOT NULL,
+    safety_level TEXT,
+    selected_model TEXT NOT NULL,
+    route_mode TEXT NOT NULL,
+    shadow_model TEXT,
+    local_candidate_allowed INTEGER DEFAULT 0,
+    blocked_reason TEXT,
+    reason TEXT,
+    route_request_json TEXT NOT NULL,
+    route_decision_json TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_model_route_log_request_id
+ON model_route_log(request_id);
+
+CREATE INDEX IF NOT EXISTS idx_model_route_log_session_id
+ON model_route_log(session_id);
 
 CREATE TABLE IF NOT EXISTS session_context (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

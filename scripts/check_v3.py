@@ -170,14 +170,20 @@ def _check_stage_c() -> list[str]:
         [
             "backend/app/agent/safety_precheck.py",
             "backend/app/model/router.py",
+            "backend/app/db/migrations.py",
+            "backend/app/db/repositories.py",
             "tests/unit/test_safety_precheck.py",
             "tests/unit/test_model_router.py",
+            "tests/integration/test_model_route_log.py",
         ]
     )
     precheck = _read_text("backend/app/agent/safety_precheck.py")
     router = _read_text("backend/app/model/router.py")
+    migrations = _read_text("backend/app/db/migrations.py")
+    repositories = _read_text("backend/app/db/repositories.py")
     tests = _read_text("tests/unit/test_safety_precheck.py")
     router_tests = _read_text("tests/unit/test_model_router.py")
+    route_log_tests = _read_text("tests/integration/test_model_route_log.py")
     for required_text in (
         "SafetyPrecheck",
         "SafetyPrecheckResult",
@@ -221,6 +227,14 @@ def _check_stage_c() -> list[str]:
             failures.append(f"model/router.py is missing required text: {required_text}")
         if required_text not in router_tests:
             failures.append(f"test_model_router.py is missing required coverage text: {required_text}")
+    if "model_route_log" not in migrations:
+        failures.append("migrations.py is missing model_route_log")
+    for required_text in ("ModelRouteLogRepository", "route_request_json", "route_decision_json", "list_by_request_id"):
+        if required_text not in repositories:
+            failures.append(f"repositories.py is missing required model route log text: {required_text}")
+    for required_text in ("ModelRouteLogRepository", "route_mode", "shadow", "list_by_request_id"):
+        if required_text not in route_log_tests:
+            failures.append(f"test_model_route_log.py is missing required coverage text: {required_text}")
     return failures
 
 
