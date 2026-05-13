@@ -95,7 +95,7 @@ async def run_measurement_graph(
     )
     SupervisorAgent().route(state)
     record_shadow_route(state, settings=settings)
-    MeasurementAgent().run(state, measurement)
+    MeasurementAgent(settings=settings).run(state, measurement)
     VerifierAgent().verify(state)
     SafetyAgent().check(state)
     ResponseAgent().render(state)

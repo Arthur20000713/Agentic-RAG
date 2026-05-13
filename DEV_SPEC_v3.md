@@ -441,7 +441,7 @@ V3.0-A3：新增 V3 配置开关并保持 V2 回归通过
 | V3.0 | 仓库实况映射与 V3 Harness | DONE（A1-A3 已完成） | `.venv\Scripts\python.exe scripts\check_v3.py --stage A` |
 | V3.1 | Feature Flags 与回退护栏 | DONE（B1-B3 已完成） | `.venv\Scripts\python.exe -m pytest tests\unit\test_feature_flags.py tests\e2e\test_v3_disabled_regression.py` |
 | V3.2 | SafetyPrecheck 与 Model Router Shadow | DONE（C1-C4 已完成） | `.venv\Scripts\python.exe -m pytest tests\unit\test_safety_precheck.py tests\unit\test_model_router.py tests\integration\test_model_route_log.py tests\integration\test_agent_graph.py` |
-| V3.3 | 低风险结构化任务路由接管 | IN_PROGRESS（D1-D3 已完成） | `.venv\Scripts\python.exe -m pytest tests\unit\test_local_model_client.py tests\unit\test_query_normalizer.py tests\unit\test_disease_agent.py` |
+| V3.3 | 低风险结构化任务路由接管 | DONE（D1-D4 已完成） | `.venv\Scripts\python.exe -m pytest tests\unit\test_local_model_client.py tests\unit\test_query_normalizer.py tests\unit\test_disease_agent.py tests\unit\test_measurement_agent.py tests\e2e\test_measurement_report_flow.py` |
 | V3.4 | Verifier / Safety P0 增强 | TODO | `.venv\Scripts\python.exe -m pytest tests\unit\test_verifier_agent.py tests\unit\test_safety_agent.py` |
 | V3.5 | LoRA 数据治理 dry-run | TODO | `.venv\Scripts\python.exe -m pytest tests\unit\test_lora_dataset.py` |
 | V3.6 | Memory MVP | TODO | `.venv\Scripts\python.exe -m pytest tests\unit\test_memory_service.py` |

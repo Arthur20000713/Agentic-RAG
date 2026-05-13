@@ -257,18 +257,24 @@ def _check_stage_d() -> list[str]:
             "backend/app/model/local_client.py",
             "backend/app/model/query_normalizer.py",
             "backend/app/agent/disease_agent.py",
+            "backend/app/agent/measurement_agent.py",
             "tests/unit/test_local_model_client.py",
             "tests/unit/test_query_normalizer.py",
             "tests/unit/test_disease_agent.py",
+            "tests/unit/test_measurement_agent.py",
+            "tests/e2e/test_measurement_report_flow.py",
         ]
     )
     base = _read_text("backend/app/model/base.py")
     local_client = _read_text("backend/app/model/local_client.py")
     query_normalizer = _read_text("backend/app/model/query_normalizer.py")
     disease_agent = _read_text("backend/app/agent/disease_agent.py")
+    measurement_agent = _read_text("backend/app/agent/measurement_agent.py")
     tests = _read_text("tests/unit/test_local_model_client.py")
     normalizer_tests = _read_text("tests/unit/test_query_normalizer.py")
     disease_tests = _read_text("tests/unit/test_disease_agent.py")
+    measurement_tests = _read_text("tests/unit/test_measurement_agent.py")
+    measurement_e2e_tests = _read_text("tests/e2e/test_measurement_report_flow.py")
     for required_text in ("BaseModelClient", "generate_json"):
         if required_text not in base:
             failures.append(f"model/base.py is missing required local model text: {required_text}")
@@ -294,6 +300,14 @@ def _check_stage_d() -> list[str]:
     for required_text in ("disease_slot_router", "fallback_used", "local_small", "selected_model"):
         if required_text not in disease_tests:
             failures.append(f"test_disease_agent.py is missing required router slot coverage text: {required_text}")
+    for required_text in ("render_measurement_json", "measurement_json_renderer", "ModelRouter", "report_json"):
+        if required_text not in measurement_agent:
+            failures.append(f"measurement_agent.py is missing required JSON renderer text: {required_text}")
+    for required_text in ("measurement_json_renderer", "local_small", "abnormal_items"):
+        if required_text not in measurement_tests:
+            failures.append(f"test_measurement_agent.py is missing required JSON renderer coverage text: {required_text}")
+        if required_text not in measurement_e2e_tests:
+            failures.append(f"test_measurement_report_flow.py is missing required JSON renderer coverage text: {required_text}")
     return failures
 
 
