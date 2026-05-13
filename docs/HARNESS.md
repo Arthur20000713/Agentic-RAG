@@ -286,3 +286,9 @@ V2.5-E4 V2 docs contract check:
 ```powershell
 .venv\Scripts\python.exe scripts\check_v2.py --docs
 ```
+
+V2.5-E5 demo script review check:
+
+```powershell
+.venv\Scripts\python.exe scripts\check_v2.py --docs
+```
