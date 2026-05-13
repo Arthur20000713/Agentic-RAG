@@ -37,7 +37,9 @@ def _check_stage(stage: str) -> list[str]:
         failures.extend(_check_stage_b())
     if stage in {"C", "full"}:
         failures.extend(_check_stage_c())
-    if stage in {"D", "E", "F", "G", "full"}:
+    if stage in {"D", "full"}:
+        failures.extend(_check_stage_d())
+    if stage in {"E", "F", "G", "full"}:
         failures.extend(_check_future_stage_declared(stage))
     return failures
 
@@ -245,6 +247,28 @@ def _check_stage_c() -> list[str]:
     for required_text in ("model_router_shadow", "shadow_model", "local_small"):
         if required_text not in graph_tests:
             failures.append(f"test_agent_graph.py is missing required shadow route coverage text: {required_text}")
+    return failures
+
+
+def _check_stage_d() -> list[str]:
+    failures = _missing_paths(
+        [
+            "backend/app/model/base.py",
+            "backend/app/model/local_client.py",
+            "tests/unit/test_local_model_client.py",
+        ]
+    )
+    base = _read_text("backend/app/model/base.py")
+    local_client = _read_text("backend/app/model/local_client.py")
+    tests = _read_text("tests/unit/test_local_model_client.py")
+    for required_text in ("BaseModelClient", "generate_json"):
+        if required_text not in base:
+            failures.append(f"model/base.py is missing required local model text: {required_text}")
+    for required_text in ("LocalModelClient", "BaseModelClient", "generate_json", "final_answer", "fallback_required"):
+        if required_text not in local_client:
+            failures.append(f"local_client.py is missing required text: {required_text}")
+        if required_text not in tests:
+            failures.append(f"test_local_model_client.py is missing required coverage text: {required_text}")
     return failures
 
 
