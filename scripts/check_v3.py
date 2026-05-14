@@ -410,16 +410,25 @@ def _check_stage_g() -> list[str]:
     failures = _missing_paths(
         [
             "backend/app/db/migrations.py",
+            "backend/app/services/memory_service.py",
             "tests/integration/test_memory_schema.py",
+            "tests/unit/test_memory_service.py",
         ]
     )
     migrations = _read_text("backend/app/db/migrations.py")
+    service = _read_text("backend/app/services/memory_service.py")
     tests = _read_text("tests/integration/test_memory_schema.py")
+    service_tests = _read_text("tests/unit/test_memory_service.py")
     for required_text in ("memory_event", "payload_json", "supersedes_event_id"):
         if required_text not in migrations:
             failures.append(f"migrations.py is missing required memory event text: {required_text}")
         if required_text not in tests:
             failures.append(f"test_memory_schema.py is missing required memory schema coverage text: {required_text}")
+    for required_text in ("MemoryService", "MemoryFact", "maybe_write_memory", "user_confirmed", "tool_result", "ai_inferred"):
+        if required_text not in service:
+            failures.append(f"memory_service.py is missing required memory service text: {required_text}")
+        if required_text not in service_tests:
+            failures.append(f"test_memory_service.py is missing required memory service coverage text: {required_text}")
     return failures
 
 
