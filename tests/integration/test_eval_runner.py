@@ -8,6 +8,7 @@ from uuid import uuid4
 from backend.app.evaluation.golden_runner import GoldenSetRunner
 from backend.app.evaluation.multi_agent_runner import MultiAgentEvalRunner
 from backend.app.evaluation.real_rag_runner import RealRagEvalRunner
+from backend.app.evaluation.v3_runner import V3EvalRunner
 from backend.app.db.connection import get_connection
 from backend.app.db.migrations import init_db
 from backend.app.db.repositories import EvalRunRepository
@@ -145,6 +146,79 @@ def test_run_eval_script_accepts_multi_agent_mode() -> None:
     payload = json.loads((output_dir / "eval_result.json").read_text(encoding="utf-8"))
     assert payload["metrics"]["route_accuracy"] == 1.0
     assert payload["metrics"]["agent_path_accuracy"] == 1.0
+
+
+def test_v3_eval_runner_compares_baseline_and_router_scenarios() -> None:
+    output_dir = _tmp_dir()
+    golden_set = output_dir / "v3_golden.json"
+    golden_set.write_text(
+        json.dumps(
+            [
+                {
+                    "case_id": "V3_GENERAL",
+                    "category": "general_qa",
+                    "query": "How should cattle feeding be managed?",
+                    "expected": {"intent": "general_qa", "rag_call": True, "citation": True},
+                },
+                {
+                    "case_id": "V3_MEASUREMENT",
+                    "category": "measurement_analysis",
+                    "query": "measurement case",
+                    "measurement": {
+                        "animal_id": "yak_v3_eval",
+                        "current": {"chest_girth_cm": 158.4, "weight_kg": 246.5},
+                        "history": [{"measure_date": "2026-04-01", "chest_girth_cm": 157.0, "weight_kg": 242.0}],
+                        "confidence": 0.82,
+                    },
+                    "expected": {"intent": "measurement_analysis", "rag_call": False, "structure": True},
+                },
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    runner = V3EvalRunner(golden_set, output_dir=output_dir)
+    report = runner.run()
+    runner.write_outputs(report)
+
+    assert report.scenarios == ["v2_baseline", "v3_off", "router_shadow", "router_low_risk"]
+    assert report.metrics["total_cases"] == 8
+    assert report.metrics["failed_cases"] == 0
+    assert report.metrics["by_scenario"]["router_low_risk"]["pass_rate"] == 1.0
+    low_risk_measurement = next(
+        item for item in report.cases if item.scenario == "router_low_risk" and item.case_id == "V3_MEASUREMENT"
+    )
+    assert low_risk_measurement.route_mode == "takeover"
+    assert low_risk_measurement.selected_model == "local_small"
+    assert (output_dir / "eval_result.json").exists()
+    assert (output_dir / "eval_summary.md").read_text(encoding="utf-8").startswith("# V3 Evaluation Summary")
+
+
+def test_run_eval_script_accepts_v3_mode() -> None:
+    output_dir = _tmp_dir()
+    golden_set = output_dir / "v3_golden.json"
+    golden_set.write_text(
+        json.dumps(
+            [
+                {
+                    "case_id": "V3_GENERAL",
+                    "category": "general_qa",
+                    "query": "How should cattle feeding be managed?",
+                    "expected": {"intent": "general_qa", "rag_call": True, "citation": True},
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = run_eval_main(["--mode", "v3", "--golden-set", str(golden_set), "--output-dir", str(output_dir)])
+
+    assert exit_code == 0
+    payload = json.loads((output_dir / "eval_result.json").read_text(encoding="utf-8"))
+    assert payload["mode"] == "v3"
+    assert payload["scenarios"] == ["v2_baseline", "v3_off", "router_shadow", "router_low_risk"]
 
 
 def test_run_eval_real_rag_optional_writes_skipped_report_when_unconfigured(monkeypatch, capsys) -> None:  # noqa: ANN001

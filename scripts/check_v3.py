@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-STAGES = ("0", "A", "B", "C", "D", "E", "F", "G", "full")
+STAGES = ("0", "A", "B", "C", "D", "E", "F", "G", "H", "full")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -45,6 +45,8 @@ def _check_stage(stage: str) -> list[str]:
         failures.extend(_check_stage_f())
     if stage in {"G", "full"}:
         failures.extend(_check_stage_g())
+    if stage in {"H", "full"}:
+        failures.extend(_check_stage_h())
     if stage in {"full"}:
         failures.extend(_check_future_stage_declared(stage))
     return failures
@@ -453,6 +455,35 @@ def _check_stage_g() -> list[str]:
     for required_text in ("maybe_write_memory", "abnormal_items", "risk_level", "diagnosis"):
         if required_text not in memory_flow_tests:
             failures.append(f"test_memory_flow.py is missing required memory E2E coverage text: {required_text}")
+    return failures
+
+
+def _check_stage_h() -> list[str]:
+    failures = _missing_paths(
+        [
+            "backend/app/evaluation/v3_runner.py",
+            "scripts/run_eval.py",
+            "tests/integration/test_eval_runner.py",
+        ]
+    )
+    v3_runner = _read_text("backend/app/evaluation/v3_runner.py")
+    run_eval = _read_text("scripts/run_eval.py")
+    eval_tests = _read_text("tests/integration/test_eval_runner.py")
+    for required_text in (
+        "V3EvalRunner",
+        "v2_baseline",
+        "v3_off",
+        "router_shadow",
+        "router_low_risk",
+        "V3 Evaluation Summary",
+    ):
+        if required_text not in v3_runner:
+            failures.append(f"v3_runner.py is missing required V3 eval text: {required_text}")
+        if required_text not in eval_tests:
+            failures.append(f"test_eval_runner.py is missing required V3 eval coverage text: {required_text}")
+    for required_text in ('"v3"', "V3EvalRunner", "args.mode == \"v3\""):
+        if required_text not in run_eval:
+            failures.append(f"run_eval.py is missing required V3 mode text: {required_text}")
     return failures
 
 

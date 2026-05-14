@@ -21,6 +21,10 @@ class IntentRouter:
         "sick",
         "illness",
         "symptom",
+        "health problem",
+        "abnormal",
+        "condition",
+        "disease consultation",
         "腹泻",
         "拉稀",
         "发烧",
@@ -48,6 +52,19 @@ class IntentRouter:
         "胸宽",
         "体重",
     }
+    general_context_keywords = {
+        "record",
+        "document",
+        "documented",
+        "observation",
+        "observations",
+        "management",
+        "managed",
+        "weaning",
+        "evidence",
+        "discussed",
+        "knowledge-base",
+    }
     livestock_keywords = {
         "cattle",
         "calf",
@@ -56,6 +73,7 @@ class IntentRouter:
         "livestock",
         "feeding",
         "feed",
+        "weaning",
         "farm",
         "牛",
         "犊牛",
@@ -87,6 +105,8 @@ class IntentRouter:
     def route(self, query: str) -> RouteResult:
         if self._contains_any(query, self.out_of_scope_keywords) and not self._contains_any(query, self.livestock_keywords):
             return RouteResult(intent="out_of_scope", confidence=0.9, reason="query is outside livestock domain")
+        if self._is_general_context_query(query):
+            return RouteResult(intent="general_qa", confidence=0.78, reason="general livestock management context matched")
         if self._contains_any(query, self.disease_keywords):
             return RouteResult(intent="disease_consultation", confidence=0.86, reason="disease symptom keyword matched")
         if self._contains_any(query, self.measurement_keywords):
@@ -98,3 +118,10 @@ class IntentRouter:
     def _contains_any(self, text: str, keywords: set[str]) -> bool:
         normalized = text.lower()
         return any(keyword.lower() in normalized for keyword in keywords)
+
+    def _is_general_context_query(self, query: str) -> bool:
+        if not self._contains_any(query, self.general_context_keywords):
+            return False
+        if "knowledge-base" in query.lower():
+            return True
+        return self._contains_any(query, self.livestock_keywords) and self._contains_any(query, self.disease_keywords)
