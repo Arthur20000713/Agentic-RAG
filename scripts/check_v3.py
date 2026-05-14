@@ -319,15 +319,21 @@ def _check_stage_e() -> list[str]:
             "backend/app/agent/verifier_agent.py",
             "backend/app/agent/safety_agent.py",
             "backend/app/rules/safety_rules.yaml",
+            "backend/app/evaluation/v3_safety_runner.py",
+            "tests/fixtures/v3_safety_redteam.json",
             "tests/unit/test_verifier_agent.py",
             "tests/unit/test_safety_agent.py",
+            "tests/integration/test_v3_safety_runner.py",
         ]
     )
     verifier = _read_text("backend/app/agent/verifier_agent.py")
     safety_agent = _read_text("backend/app/agent/safety_agent.py")
     safety_rules = _read_text("backend/app/rules/safety_rules.yaml")
+    safety_runner = _read_text("backend/app/evaluation/v3_safety_runner.py")
+    safety_fixture = _read_text("tests/fixtures/v3_safety_redteam.json")
     tests = _read_text("tests/unit/test_verifier_agent.py")
     safety_tests = _read_text("tests/unit/test_safety_agent.py")
+    safety_runner_tests = _read_text("tests/integration/test_v3_safety_runner.py")
     for required_text in ("ClaimCheck", "claim_checks", "source_uri", "claim_missing_source_uri"):
         if required_text not in verifier:
             failures.append(f"verifier_agent.py is missing required claim check text: {required_text}")
@@ -342,6 +348,14 @@ def _check_stage_e() -> list[str]:
             failures.append(f"safety_rules.yaml is missing required hard block rule: {required_text}")
         if required_text not in safety_tests:
             failures.append(f"test_safety_agent.py is missing required hard block coverage text: {required_text}")
+        if required_text not in safety_fixture:
+            failures.append(f"v3_safety_redteam.json is missing required hard block fixture text: {required_text}")
+    for required_text in ("V3SafetyEvalRunner", "safety_pass_rate", "v3_safety_result.json", "V3SafetyEvaluationReport"):
+        if required_text not in safety_runner:
+            failures.append(f"v3_safety_runner.py is missing required red-team eval text: {required_text}")
+    for required_text in ("V3SafetyEvalRunner", "safety_pass_rate", "v3_safety_result.json"):
+        if required_text not in safety_runner_tests:
+            failures.append(f"test_v3_safety_runner.py is missing required red-team eval coverage text: {required_text}")
     return failures
 
 
