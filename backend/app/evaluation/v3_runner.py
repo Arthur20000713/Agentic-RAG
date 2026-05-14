@@ -14,6 +14,7 @@ from backend.app.agent.workflow import run_disease_consultation, run_general_qa,
 from backend.app.core.config import PROJECT_ROOT, Settings
 from backend.app.evaluation.golden_runner import EvaluationCaseResult, GoldenCase, GoldenSetRunner
 from backend.app.evaluation.metrics import compute_metrics
+from backend.app.evaluation.v3_report import build_v3_report
 from backend.app.integrations.rag_server.base import RagServerClient
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
 
@@ -96,6 +97,7 @@ class V3EvalRunner:
         self._write_json(report)
         self._write_csv(report)
         self._write_summary(report)
+        self._write_v3_report(report)
 
     def _run_case(self, case: GoldenCase, scenario: V3EvalScenario) -> V3CaseResult:
         state = self._execute_case(case, scenario)
@@ -305,3 +307,10 @@ class V3EvalRunner:
         ):
             lines.append(f"| {key} | {metrics[key]:.2%} |")
         (self.output_dir / "eval_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def _write_v3_report(self, report: V3EvaluationReport) -> None:
+        v3_report = build_v3_report(report)
+        with (self.output_dir / "v3_report.json").open("w", encoding="utf-8") as file:
+            json.dump(v3_report.model_dump(), file, ensure_ascii=False, indent=2)
+            file.write("\n")
+        (self.output_dir / "v3_report.md").write_text(v3_report.to_markdown(), encoding="utf-8")

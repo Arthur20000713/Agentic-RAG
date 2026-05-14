@@ -192,6 +192,8 @@ def test_v3_eval_runner_compares_baseline_and_router_scenarios() -> None:
     assert low_risk_measurement.route_mode == "takeover"
     assert low_risk_measurement.selected_model == "local_small"
     assert (output_dir / "eval_result.json").exists()
+    assert (output_dir / "v3_report.json").exists()
+    assert (output_dir / "v3_report.md").exists()
     assert (output_dir / "eval_summary.md").read_text(encoding="utf-8").startswith("# V3 Evaluation Summary")
 
 

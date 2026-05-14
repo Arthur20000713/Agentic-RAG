@@ -462,13 +462,17 @@ def _check_stage_h() -> list[str]:
     failures = _missing_paths(
         [
             "backend/app/evaluation/v3_runner.py",
+            "backend/app/evaluation/v3_report.py",
             "scripts/run_eval.py",
             "tests/integration/test_eval_runner.py",
+            "tests/integration/test_v3_report.py",
         ]
     )
     v3_runner = _read_text("backend/app/evaluation/v3_runner.py")
+    v3_report = _read_text("backend/app/evaluation/v3_report.py")
     run_eval = _read_text("scripts/run_eval.py")
     eval_tests = _read_text("tests/integration/test_eval_runner.py")
+    report_tests = _read_text("tests/integration/test_v3_report.py")
     for required_text in (
         "V3EvalRunner",
         "v2_baseline",
@@ -484,6 +488,14 @@ def _check_stage_h() -> list[str]:
     for required_text in ('"v3"', "V3EvalRunner", "args.mode == \"v3\""):
         if required_text not in run_eval:
             failures.append(f"run_eval.py is missing required V3 mode text: {required_text}")
+    for required_text in ("build_v3_report", "route", "safety", "memory", "fallback", "to_markdown"):
+        if required_text not in v3_report:
+            failures.append(f"v3_report.py is missing required V3 report text: {required_text}")
+        if required_text not in report_tests:
+            failures.append(f"test_v3_report.py is missing required V3 report coverage text: {required_text}")
+    for required_text in ("v3_report.json", "v3_report.md", "build_v3_report"):
+        if required_text not in v3_runner:
+            failures.append(f"v3_runner.py is missing required V3 report output text: {required_text}")
     return failures
 
 
