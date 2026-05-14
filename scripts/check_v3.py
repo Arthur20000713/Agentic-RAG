@@ -41,7 +41,9 @@ def _check_stage(stage: str) -> list[str]:
         failures.extend(_check_stage_d())
     if stage in {"E", "full"}:
         failures.extend(_check_stage_e())
-    if stage in {"F", "G", "full"}:
+    if stage in {"F", "full"}:
+        failures.extend(_check_stage_f())
+    if stage in {"G", "full"}:
         failures.extend(_check_future_stage_declared(stage))
     return failures
 
@@ -356,6 +358,30 @@ def _check_stage_e() -> list[str]:
     for required_text in ("V3SafetyEvalRunner", "safety_pass_rate", "v3_safety_result.json"):
         if required_text not in safety_runner_tests:
             failures.append(f"test_v3_safety_runner.py is missing required red-team eval coverage text: {required_text}")
+    return failures
+
+
+def _check_stage_f() -> list[str]:
+    failures = _missing_paths(
+        [
+            "backend/app/lora/dataset.py",
+            "tests/unit/test_lora_dataset.py",
+        ]
+    )
+    dataset = _read_text("backend/app/lora/dataset.py")
+    tests = _read_text("tests/unit/test_lora_dataset.py")
+    for required_text in (
+        "LoraTrainingExample",
+        "FORBIDDEN_FIELD_NAMES",
+        "raw_rag_text",
+        "api_key",
+        "extra=\"forbid\"",
+    ):
+        if required_text not in dataset:
+            failures.append(f"lora/dataset.py is missing required dataset schema text: {required_text}")
+    for required_text in ("LoraTrainingExample", "raw_rag_text", "api_key", "required"):
+        if required_text not in tests:
+            failures.append(f"test_lora_dataset.py is missing required dataset coverage text: {required_text}")
     return failures
 
 
