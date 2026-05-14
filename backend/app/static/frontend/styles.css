@@ -145,6 +145,32 @@ input {
   white-space: pre-wrap;
 }
 
+.debug-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.debug-summary div {
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 8px;
+  background: #f8fafc;
+}
+
+.debug-summary strong,
+.debug-summary span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.debug-summary strong {
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: #475569;
+}
+
 .source-list,
 .tool-list {
   margin-top: 8px;

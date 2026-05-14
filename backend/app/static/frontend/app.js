@@ -15,18 +15,50 @@ function setActiveView(viewName) {
 function renderDebugPanel(payload) {
   state.lastResponse = payload;
   const summary = buildDebugSummary(payload || {});
+  renderDebugSummary(summary);
   document.querySelector("#debug-json").textContent = JSON.stringify({ summary, raw: payload || {} }, null, 2);
 }
 
 function buildDebugSummary(payload) {
   const data = payload.data || {};
+  const v3DebugSummary = data.v3_debug_summary || buildV3DebugSummary(data);
   return {
     request_id: payload.request_id || data.request_id || null,
     rag_mode: data.rag_mode_effective || data.rag_mode || state.ragStatus?.rag_mode_effective || state.ragStatus?.rag_mode || null,
     agent_path: data.agent_path || nodesFromTrace(data.agent_trace) || data.tools_used || [],
     safety: data.safety_result || data.safety || "not_available",
     verifier: data.verification_result || data.verifier_result || "not_available",
+    v3_debug_summary: v3DebugSummary,
   };
+}
+
+function buildV3DebugSummary(data) {
+  const flags = data.v3_debug?.flags || {};
+  return {
+    flags,
+    route: data.route || { status: "not_available" },
+    safety: data.safety_result || data.safety || { status: "not_available" },
+    memory: {
+      write_enabled: Boolean(flags.memory_write_enabled),
+      read_enabled: Boolean(flags.memory_read_enabled),
+    },
+  };
+}
+
+function renderDebugSummary(summary) {
+  const container = document.querySelector("#debug-summary");
+  if (!container) return;
+  const v3 = summary.v3_debug_summary || {};
+  const flags = v3.flags || {};
+  const route = v3.route || {};
+  const safety = v3.safety || {};
+  const memory = v3.memory || {};
+  container.innerHTML = `
+    <div><strong>Flags</strong><span>${escapeHtml(flags.v3_enabled ? "v3:on" : "v3:off")}</span></div>
+    <div><strong>Route</strong><span>${escapeHtml(route.route_mode || route.status || "not_available")}</span></div>
+    <div><strong>Safety</strong><span>${escapeHtml(String(safety.passed ?? safety.status ?? "not_available"))}</span></div>
+    <div><strong>Memory</strong><span>${escapeHtml(memory.write_enabled ? "write:on" : "write:off")}</span></div>
+  `;
 }
 
 function nodesFromTrace(agentTrace) {

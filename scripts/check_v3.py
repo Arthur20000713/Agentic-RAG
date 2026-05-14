@@ -463,16 +463,24 @@ def _check_stage_h() -> list[str]:
         [
             "backend/app/evaluation/v3_runner.py",
             "backend/app/evaluation/v3_report.py",
+            "backend/app/api/traces.py",
+            "backend/app/static/frontend/app.js",
             "scripts/run_eval.py",
             "tests/integration/test_eval_runner.py",
             "tests/integration/test_v3_report.py",
+            "tests/integration/test_trace_api.py",
+            "tests/integration/test_frontend_contract.py",
         ]
     )
     v3_runner = _read_text("backend/app/evaluation/v3_runner.py")
     v3_report = _read_text("backend/app/evaluation/v3_report.py")
+    traces_api = _read_text("backend/app/api/traces.py")
+    frontend_js = _read_text("backend/app/static/frontend/app.js")
     run_eval = _read_text("scripts/run_eval.py")
     eval_tests = _read_text("tests/integration/test_eval_runner.py")
     report_tests = _read_text("tests/integration/test_v3_report.py")
+    trace_tests = _read_text("tests/integration/test_trace_api.py")
+    frontend_tests = _read_text("tests/integration/test_frontend_contract.py")
     for required_text in (
         "V3EvalRunner",
         "v2_baseline",
@@ -496,6 +504,15 @@ def _check_stage_h() -> list[str]:
     for required_text in ("v3_report.json", "v3_report.md", "build_v3_report"):
         if required_text not in v3_runner:
             failures.append(f"v3_runner.py is missing required V3 report output text: {required_text}")
+    for required_text in ("v3_debug_summary", "flags", "route", "safety", "memory"):
+        if required_text not in traces_api:
+            failures.append(f"traces.py is missing required V3 debug API text: {required_text}")
+        if required_text not in trace_tests:
+            failures.append(f"test_trace_api.py is missing required V3 debug API coverage text: {required_text}")
+        if required_text not in frontend_js:
+            failures.append(f"app.js is missing required V3 debug frontend text: {required_text}")
+        if required_text not in frontend_tests:
+            failures.append(f"test_frontend_contract.py is missing required V3 debug frontend coverage text: {required_text}")
     return failures
 
 

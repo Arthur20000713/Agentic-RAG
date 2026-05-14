@@ -5,8 +5,9 @@ from fastapi.testclient import TestClient
 from backend.app.core.config import Settings
 from backend.app.db.connection import get_connection
 from backend.app.db.migrations import init_db
-from backend.app.db.repositories import AgentTraceRepository, RagTraceRepository
+from backend.app.db.repositories import AgentTraceRepository, MemoryRepository, RagTraceRepository
 from backend.app.main import create_app
+from backend.app.services.memory_service import MemoryEvent
 from backend.app.services.trace_service import TraceService
 
 
@@ -69,3 +70,65 @@ def test_trace_api_returns_agent_trace_bundle() -> None:
     assert payload["data"]["rag_trace"] == []
     assert payload["data"]["safety_result"] is None
     assert payload["data"]["verifier_result"] is None
+    assert payload["data"]["v3_debug_summary"]["flags"]["v3_enabled"] is False
+    assert payload["data"]["v3_debug_summary"]["route"]["status"] == "not_available"
+
+
+def test_trace_api_returns_v3_debug_summary_for_route_safety_and_memory() -> None:
+    settings = Settings(
+        database={"url": "sqlite:///:memory:"},
+        v3={"enabled": True},
+        model_router={"enabled": True, "shadow_mode": True},
+        long_term_memory={"write_enabled": True},
+    )
+    client = TestClient(create_app(settings=settings))
+    client.app.state.trace_service.record_agent_trace(
+        session_id="s1",
+        request_id="req_v3_debug",
+        trace=[
+            {
+                "node": "model_router_shadow",
+                "status": "success",
+                "route_mode": "shadow",
+                "selected_model": "primary",
+                "shadow_model": "local_small",
+                "safety_level": "S1",
+                "local_candidate_allowed": True,
+                "latency_ms": 1,
+            },
+            {
+                "node": "safety_agent",
+                "status": "blocked",
+                "passed": False,
+                "violations": ["dosage"],
+                "hard_blocked": True,
+                "violation_count": 1,
+                "latency_ms": 2,
+            },
+        ],
+        status="blocked",
+        latency_ms=3,
+    )
+    MemoryRepository(client.app.state.db_conn).append_event(
+        MemoryEvent(
+            event_id="mem_trace_debug",
+            subject_type="animal",
+            subject_id="yak_032",
+            event_type="upsert",
+            source="user_confirmed",
+            payload={"fact_type": "measurement", "value": {"current": {"weight_kg": 246.5}}, "metadata": {}},
+        )
+    )
+
+    response = client.get("/api/traces/req_v3_debug")
+    payload = response.json()
+    summary = payload["data"]["v3_debug_summary"]
+
+    assert response.status_code == 200
+    assert summary["flags"]["v3_enabled"] is True
+    assert summary["route"]["route_mode"] == "shadow"
+    assert summary["route"]["shadow_model"] == "local_small"
+    assert summary["safety"]["passed"] is False
+    assert summary["safety"]["hard_blocked"] is True
+    assert summary["memory"]["write_enabled"] is True
+    assert summary["memory"]["event_count"] == 1

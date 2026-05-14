@@ -79,13 +79,16 @@ def test_frontend_debug_panel_contract() -> None:
     rag_status = client.get("/api/rag/status").json()
 
     assert 'id="debug-json"' in html
+    assert 'id="debug-summary"' in html
     assert "function renderDebugPanel" in js
     assert "function buildDebugSummary" in js
+    assert "function renderDebugSummary" in js
     assert 'fetch("/api/rag/status"' in js
-    for field in ("request_id", "rag_mode", "agent_path", "safety", "verifier"):
+    for field in ("request_id", "rag_mode", "agent_path", "safety", "verifier", "v3_debug_summary"):
         assert field in js
     assert trace["data"]["request_id"] == "req_debug"
     assert "agent_trace" in trace["data"]
+    assert "v3_debug_summary" in trace["data"]
     assert rag_status["data"]["rag_mode"] == "fake"
 
 
@@ -97,4 +100,7 @@ def test_frontend_debug_panel_can_show_v3_debug_payload() -> None:
 
     assert "v3_debug" in chat["data"]
     assert chat["data"]["v3_debug"]["v3_enabled"] is False
+    assert "flags" in js
+    assert "route" in js
+    assert "memory" in js
     assert "raw" in js
