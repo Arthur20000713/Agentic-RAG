@@ -365,14 +365,18 @@ def _check_stage_f() -> list[str]:
     failures = _missing_paths(
         [
             "backend/app/lora/dataset.py",
+            "backend/app/lora/registry.py",
             "scripts/export_lora_dataset.py",
             "tests/unit/test_lora_dataset.py",
+            "tests/unit/test_lora_registry.py",
             "tests/integration/test_lora_export.py",
         ]
     )
     dataset = _read_text("backend/app/lora/dataset.py")
+    registry = _read_text("backend/app/lora/registry.py")
     exporter = _read_text("scripts/export_lora_dataset.py")
     tests = _read_text("tests/unit/test_lora_dataset.py")
+    registry_tests = _read_text("tests/unit/test_lora_registry.py")
     export_tests = _read_text("tests/integration/test_lora_export.py")
     for required_text in (
         "LoraTrainingExample",
@@ -392,6 +396,11 @@ def _check_stage_f() -> list[str]:
     for required_text in ("export_lora_dataset", "raw_rag_text", "api_key", "rag_context", "truncates"):
         if required_text not in export_tests:
             failures.append(f"test_lora_export.py is missing required export coverage text: {required_text}")
+    for required_text in ("ModelRegistry", "ModelRegistryEntry", "enabled_for_inference", "active_inference_models"):
+        if required_text not in registry:
+            failures.append(f"lora/registry.py is missing required registry text: {required_text}")
+        if required_text not in registry_tests:
+            failures.append(f"test_lora_registry.py is missing required registry coverage text: {required_text}")
     return failures
 
 
