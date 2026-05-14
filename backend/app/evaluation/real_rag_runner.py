@@ -136,7 +136,8 @@ class RealRagEvalRunner:
 
     def _write_json(self, report: EvaluationReport) -> None:
         with (self.output_dir / "eval_result.json").open("w", encoding="utf-8") as file:
-            json.dump(report.model_dump(), file, ensure_ascii=False, indent=2)
+            payload = {"mode": "real", **report.model_dump()}
+            json.dump(payload, file, ensure_ascii=False, indent=2)
             file.write("\n")
 
     def _write_csv(self, report: EvaluationReport) -> None:

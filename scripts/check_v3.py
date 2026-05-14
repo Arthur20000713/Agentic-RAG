@@ -463,6 +463,7 @@ def _check_stage_h() -> list[str]:
         [
             "backend/app/evaluation/v3_runner.py",
             "backend/app/evaluation/v3_report.py",
+            "backend/app/evaluation/real_rag_runner.py",
             "backend/app/api/traces.py",
             "backend/app/static/frontend/app.js",
             "scripts/run_eval.py",
@@ -474,6 +475,7 @@ def _check_stage_h() -> list[str]:
     )
     v3_runner = _read_text("backend/app/evaluation/v3_runner.py")
     v3_report = _read_text("backend/app/evaluation/v3_report.py")
+    real_rag_runner = _read_text("backend/app/evaluation/real_rag_runner.py")
     traces_api = _read_text("backend/app/api/traces.py")
     frontend_js = _read_text("backend/app/static/frontend/app.js")
     run_eval = _read_text("scripts/run_eval.py")
@@ -513,6 +515,12 @@ def _check_stage_h() -> list[str]:
             failures.append(f"app.js is missing required V3 debug frontend text: {required_text}")
         if required_text not in frontend_tests:
             failures.append(f"test_frontend_contract.py is missing required V3 debug frontend coverage text: {required_text}")
+    for required_text in ('"mode": "real"', "Real RAG Evaluation Summary"):
+        if required_text not in real_rag_runner:
+            failures.append(f"real_rag_runner.py is missing required real RAG report text: {required_text}")
+    for required_text in ("test_real_rag_runner_writes_real_mode_report", 'payload["mode"] == "real"'):
+        if required_text not in eval_tests:
+            failures.append(f"test_eval_runner.py is missing required real RAG report coverage text: {required_text}")
     return failures
 
 

@@ -12,6 +12,7 @@ from backend.app.evaluation.v3_runner import V3EvalRunner
 from backend.app.db.connection import get_connection
 from backend.app.db.migrations import init_db
 from backend.app.db.repositories import EvalRunRepository
+from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
 from backend.app.integrations.rag_server.mcp_stdio_client import RagServerMcpClient
 from scripts.run_eval import main as run_eval_main
 
@@ -262,6 +263,33 @@ def test_real_rag_runner_creates_mcp_client_when_path_is_configured(monkeypatch)
     assert isinstance(client, RagServerMcpClient)
     assert runner.settings.rag_server.query_mode == "real"
     assert runner.settings.rag_server.python_executable == sys.executable
+
+
+def test_real_rag_runner_writes_real_mode_report() -> None:
+    output_dir = _tmp_dir()
+    golden_set = output_dir / "real_mode_golden.json"
+    golden_set.write_text(
+        json.dumps(
+            [
+                {
+                    "case_id": "REAL_MODE_GENERAL",
+                    "category": "general_qa",
+                    "query": "How should cattle feeding be managed?",
+                    "expected": {"intent": "general_qa", "rag_call": True, "citation": True},
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    runner = RealRagEvalRunner(golden_set, output_dir=output_dir, rag_client=FakeRagServerClient())
+
+    report = runner.run()
+    runner.write_outputs(report)
+
+    payload = json.loads((output_dir / "eval_result.json").read_text(encoding="utf-8"))
+    assert payload["mode"] == "real"
+    assert payload["metrics"]["total_cases"] == 1
 
 
 def test_eval_run_log_repository_persists_metrics_and_failure_summary() -> None:
