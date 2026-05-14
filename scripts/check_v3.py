@@ -44,6 +44,8 @@ def _check_stage(stage: str) -> list[str]:
     if stage in {"F", "full"}:
         failures.extend(_check_stage_f())
     if stage in {"G", "full"}:
+        failures.extend(_check_stage_g())
+    if stage in {"full"}:
         failures.extend(_check_future_stage_declared(stage))
     return failures
 
@@ -401,6 +403,23 @@ def _check_stage_f() -> list[str]:
             failures.append(f"lora/registry.py is missing required registry text: {required_text}")
         if required_text not in registry_tests:
             failures.append(f"test_lora_registry.py is missing required registry coverage text: {required_text}")
+    return failures
+
+
+def _check_stage_g() -> list[str]:
+    failures = _missing_paths(
+        [
+            "backend/app/db/migrations.py",
+            "tests/integration/test_memory_schema.py",
+        ]
+    )
+    migrations = _read_text("backend/app/db/migrations.py")
+    tests = _read_text("tests/integration/test_memory_schema.py")
+    for required_text in ("memory_event", "payload_json", "supersedes_event_id"):
+        if required_text not in migrations:
+            failures.append(f"migrations.py is missing required memory event text: {required_text}")
+        if required_text not in tests:
+            failures.append(f"test_memory_schema.py is missing required memory schema coverage text: {required_text}")
     return failures
 
 

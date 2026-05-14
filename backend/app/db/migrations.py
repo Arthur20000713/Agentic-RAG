@@ -14,6 +14,7 @@ APPLICATION_TABLES = {
     "rag_trace_log",
     "model_route_log",
     "session_context",
+    "memory_event",
     "eval_run_log",
 }
 
@@ -176,6 +177,25 @@ CREATE TABLE IF NOT EXISTS session_context (
     status TEXT DEFAULT 'active',
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS memory_event (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT UNIQUE NOT NULL,
+    subject_type TEXT NOT NULL,
+    subject_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    source TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    supersedes_event_id TEXT,
+    status TEXT DEFAULT 'active',
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_event_subject
+ON memory_event(subject_type, subject_id);
+
+CREATE INDEX IF NOT EXISTS idx_memory_event_supersedes
+ON memory_event(supersedes_event_id);
 
 CREATE TABLE IF NOT EXISTS eval_run_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
