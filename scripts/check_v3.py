@@ -365,11 +365,15 @@ def _check_stage_f() -> list[str]:
     failures = _missing_paths(
         [
             "backend/app/lora/dataset.py",
+            "scripts/export_lora_dataset.py",
             "tests/unit/test_lora_dataset.py",
+            "tests/integration/test_lora_export.py",
         ]
     )
     dataset = _read_text("backend/app/lora/dataset.py")
+    exporter = _read_text("scripts/export_lora_dataset.py")
     tests = _read_text("tests/unit/test_lora_dataset.py")
+    export_tests = _read_text("tests/integration/test_lora_export.py")
     for required_text in (
         "LoraTrainingExample",
         "FORBIDDEN_FIELD_NAMES",
@@ -382,6 +386,12 @@ def _check_stage_f() -> list[str]:
     for required_text in ("LoraTrainingExample", "raw_rag_text", "api_key", "required"):
         if required_text not in tests:
             failures.append(f"test_lora_dataset.py is missing required dataset coverage text: {required_text}")
+    for required_text in ("export_lora_dataset", "ALLOWED_EXAMPLE_FIELDS", "max_text_chars", "FORBIDDEN_FIELD_NAMES"):
+        if required_text not in exporter:
+            failures.append(f"export_lora_dataset.py is missing required export text: {required_text}")
+    for required_text in ("export_lora_dataset", "raw_rag_text", "api_key", "rag_context", "truncates"):
+        if required_text not in export_tests:
+            failures.append(f"test_lora_export.py is missing required export coverage text: {required_text}")
     return failures
 
 
