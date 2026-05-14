@@ -444,5 +444,5 @@ V3.0-A3：新增 V3 配置开关并保持 V2 回归通过
 | V3.3 | 低风险结构化任务路由接管 | DONE（D1-D4 已完成） | `.venv\Scripts\python.exe -m pytest tests\unit\test_local_model_client.py tests\unit\test_query_normalizer.py tests\unit\test_disease_agent.py tests\unit\test_measurement_agent.py tests\e2e\test_measurement_report_flow.py` |
 | V3.4 | Verifier / Safety P0 增强 | DONE（E1-E3 已完成） | `.venv\Scripts\python.exe -m pytest tests\unit\test_verifier_agent.py tests\unit\test_safety_agent.py tests\integration\test_v3_safety_runner.py` |
 | V3.5 | LoRA 数据治理 dry-run | DONE（F1-F3 已完成） | `.venv\Scripts\python.exe -m pytest tests\unit\test_lora_dataset.py tests\integration\test_lora_export.py tests\unit\test_lora_registry.py` |
-| V3.6 | Memory MVP | IN_PROGRESS（G1-G3 已完成） | `.venv\Scripts\python.exe -m pytest tests\integration\test_memory_schema.py tests\integration\test_memory_repository.py tests\unit\test_memory_service.py` |
+| V3.6 | Memory MVP | DONE（G1-G4 已完成） | `.venv\Scripts\python.exe -m pytest tests\integration\test_memory_schema.py tests\integration\test_memory_repository.py tests\unit\test_memory_service.py tests\e2e\test_memory_flow.py` |
 | V3.7 | V3 Eval 与最小 Debug 展示 | TODO | `.venv\Scripts\python.exe scripts\run_eval.py --mode v3` |

@@ -412,16 +412,22 @@ def _check_stage_g() -> list[str]:
             "backend/app/db/migrations.py",
             "backend/app/db/repositories.py",
             "backend/app/services/memory_service.py",
+            "backend/app/agent/graph.py",
+            "backend/app/api/measurement.py",
             "tests/integration/test_memory_schema.py",
             "tests/integration/test_memory_repository.py",
+            "tests/e2e/test_memory_flow.py",
             "tests/unit/test_memory_service.py",
         ]
     )
     migrations = _read_text("backend/app/db/migrations.py")
     repositories = _read_text("backend/app/db/repositories.py")
     service = _read_text("backend/app/services/memory_service.py")
+    graph = _read_text("backend/app/agent/graph.py")
+    measurement_api = _read_text("backend/app/api/measurement.py")
     tests = _read_text("tests/integration/test_memory_schema.py")
     repository_tests = _read_text("tests/integration/test_memory_repository.py")
+    memory_flow_tests = _read_text("tests/e2e/test_memory_flow.py")
     service_tests = _read_text("tests/unit/test_memory_service.py")
     for required_text in ("memory_event", "payload_json", "supersedes_event_id", "farm_memory", "animal_memory"):
         if required_text not in migrations:
@@ -438,6 +444,15 @@ def _check_stage_g() -> list[str]:
             failures.append(f"memory_service.py is missing required memory service text: {required_text}")
         if required_text not in service_tests:
             failures.append(f"test_memory_service.py is missing required memory service coverage text: {required_text}")
+    for required_text in ("maybe_write_memory", "build_measurement_memory_fact", "user_confirmed_observation"):
+        if required_text not in graph:
+            failures.append(f"graph.py is missing required memory write text: {required_text}")
+    for required_text in ("MemoryRepository", "memory_write_enabled", "maybe_write_memory"):
+        if required_text not in measurement_api:
+            failures.append(f"measurement.py is missing required memory API text: {required_text}")
+    for required_text in ("maybe_write_memory", "abnormal_items", "risk_level", "diagnosis"):
+        if required_text not in memory_flow_tests:
+            failures.append(f"test_memory_flow.py is missing required memory E2E coverage text: {required_text}")
     return failures
 
 

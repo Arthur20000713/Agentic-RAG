@@ -19,6 +19,7 @@ from backend.app.model.router import ModelRouteRequest, ModelRouter, ModelTaskTy
 from backend.app.schemas.measurement import MeasurementInput
 from backend.app.schemas.rag_server import RagSearchResult
 from backend.app.services.feature_flag_service import FeatureFlagService
+from backend.app.services.memory_service import MemoryEvent, MemoryFact, MemoryService, build_measurement_memory_fact
 from backend.app.services.session_context_service import SessionContextData, SessionContextService
 
 
@@ -46,6 +47,8 @@ async def run_disease_graph(
     rag_client: RagServerClient | None = None,
     session_context_service: SessionContextService | None = None,
     session_id: str | None = None,
+    animal_id: str | None = None,
+    memory_service: MemoryService | None = None,
     unsafe_draft_for_test: str | None = None,
     settings: Settings | None = None,
 ) -> MultiAgentState:
@@ -62,6 +65,12 @@ async def run_disease_graph(
     DiseaseAgent(settings=settings).run(state)
     if session_context_service is not None:
         _save_disease_context(session_context_service, state)
+    _maybe_write_user_confirmed_facts(
+        state,
+        animal_id=animal_id,
+        memory_service=memory_service,
+        settings=settings,
+    )
     if state.rag_query:
         disease_draft = state.draft_answer or ""
         await RagAgent(rag_client or FakeRagServerClient()).run(state)
@@ -87,6 +96,7 @@ async def run_measurement_graph(
     measurement: MeasurementInput,
     *,
     session_id: str | None = None,
+    memory_service: MemoryService | None = None,
     settings: Settings | None = None,
 ) -> MultiAgentState:
     state = MultiAgentState(
@@ -96,6 +106,12 @@ async def run_measurement_graph(
     SupervisorAgent().route(state)
     record_shadow_route(state, settings=settings)
     MeasurementAgent(settings=settings).run(state, measurement)
+    _maybe_write_measurement_memory(
+        state,
+        measurement,
+        memory_service=memory_service,
+        settings=settings,
+    )
     VerifierAgent().verify(state)
     SafetyAgent().check(state)
     ResponseAgent().render(state)
@@ -150,6 +166,82 @@ def _model_task_type(state: MultiAgentState) -> ModelTaskType:
 
 def _requires_final_answer(state: MultiAgentState) -> bool:
     return state.intent in {"general_qa", "disease_consultation", "out_of_scope"}
+
+
+def _maybe_write_measurement_memory(
+    state: MultiAgentState,
+    measurement: MeasurementInput,
+    *,
+    memory_service: MemoryService | None,
+    settings: Settings | None,
+) -> None:
+    if not _memory_write_enabled(settings) or memory_service is None:
+        return
+    fact = build_measurement_memory_fact(
+        measurement,
+        source="user_confirmed",
+        metadata={"session_id": state.session_id, "agent": "measurement_agent"},
+    )
+    event = memory_service.maybe_write_memory(fact)
+    _record_memory_write(state, event)
+
+
+def _maybe_write_user_confirmed_facts(
+    state: MultiAgentState,
+    *,
+    animal_id: str | None,
+    memory_service: MemoryService | None,
+    settings: Settings | None,
+) -> None:
+    if not animal_id or not _memory_write_enabled(settings) or memory_service is None:
+        return
+    fact = _build_user_confirmed_observation_fact(state, animal_id)
+    if fact is None:
+        return
+    event = memory_service.maybe_write_memory(fact)
+    _record_memory_write(state, event)
+
+
+def _build_user_confirmed_observation_fact(state: MultiAgentState, animal_id: str) -> MemoryFact | None:
+    slots = state.extracted_slots or {}
+    value: dict[str, object] = {}
+    for field in ("species", "age_stage", "duration_days", "temperature_c", "group_outbreak"):
+        slot_value = slots.get(field)
+        if slot_value is not None:
+            value[field] = slot_value
+    symptoms = list(slots.get("symptoms") or [])
+    if symptoms:
+        value["symptoms"] = symptoms
+    if not value:
+        return None
+    return MemoryFact(
+        subject_type="animal",
+        subject_id=animal_id,
+        fact_type="user_confirmed_observation",
+        value=value,
+        source="user_confirmed",
+        metadata={"session_id": state.session_id, "agent": "disease_agent"},
+    )
+
+
+def _memory_write_enabled(settings: Settings | None) -> bool:
+    if settings is None:
+        return False
+    return FeatureFlagService(settings).memory_write_enabled
+
+
+def _record_memory_write(state: MultiAgentState, event: MemoryEvent | None) -> None:
+    if event is None:
+        return
+    state.tool_results.setdefault("long_term_memory", []).append(
+        {
+            "event_id": event.event_id,
+            "subject_type": event.subject_type,
+            "subject_id": event.subject_id,
+            "fact_type": event.payload.get("fact_type"),
+            "source": event.source,
+        }
+    )
 
 
 def _new_session_id() -> str:

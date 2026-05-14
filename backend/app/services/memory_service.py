@@ -5,6 +5,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
+from backend.app.schemas.measurement import MeasurementInput
+
 
 MemorySubjectType = Literal["farm", "animal"]
 MemorySource = Literal["user_confirmed", "tool_result", "ai_inferred"]
@@ -33,7 +35,7 @@ class MemoryEvent(BaseModel):
 class MemoryService:
     allowed_sources = {"user_confirmed", "tool_result"}
 
-    def __init__(self, event_writer: Callable[[MemoryEvent], None] | None = None) -> None:
+    def __init__(self, event_writer: Callable[[MemoryEvent], object] | None = None) -> None:
         self.event_writer = event_writer
 
     def maybe_write_memory(self, fact: MemoryFact) -> MemoryEvent | None:
@@ -54,3 +56,30 @@ class MemoryService:
         if self.event_writer is not None:
             self.event_writer(event)
         return event
+
+
+def build_measurement_memory_fact(
+    measurement: MeasurementInput,
+    *,
+    source: MemorySource = "user_confirmed",
+    metadata: dict[str, Any] | None = None,
+) -> MemoryFact:
+    current_values = {
+        field: value
+        for field, value in measurement.current.model_dump().items()
+        if value is not None
+    }
+    value: dict[str, Any] = {"current": current_values}
+    if measurement.age_month is not None:
+        value["age_month"] = measurement.age_month
+    if measurement.confidence is not None:
+        value["confidence"] = measurement.confidence
+
+    return MemoryFact(
+        subject_type="animal",
+        subject_id=measurement.animal_id,
+        fact_type="measurement",
+        value=value,
+        source=source,
+        metadata=metadata or {},
+    )
