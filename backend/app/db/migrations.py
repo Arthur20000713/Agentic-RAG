@@ -15,6 +15,8 @@ APPLICATION_TABLES = {
     "model_route_log",
     "session_context",
     "memory_event",
+    "farm_memory",
+    "animal_memory",
     "eval_run_log",
 }
 
@@ -196,6 +198,20 @@ ON memory_event(subject_type, subject_id);
 
 CREATE INDEX IF NOT EXISTS idx_memory_event_supersedes
 ON memory_event(supersedes_event_id);
+
+CREATE TABLE IF NOT EXISTS farm_memory (
+    farm_id TEXT PRIMARY KEY,
+    memory_json TEXT NOT NULL,
+    updated_event_id TEXT,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS animal_memory (
+    animal_id TEXT PRIMARY KEY,
+    memory_json TEXT NOT NULL,
+    updated_event_id TEXT,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 
 CREATE TABLE IF NOT EXISTS eval_run_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

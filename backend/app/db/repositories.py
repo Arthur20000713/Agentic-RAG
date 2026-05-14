@@ -5,6 +5,9 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
+from uuid import uuid4
+
+from backend.app.services.memory_service import MemoryEvent, MemorySource, MemorySubjectType
 
 
 @dataclass(frozen=True)
@@ -421,6 +424,135 @@ class ModelRouteLogRepository:
         if hasattr(value, "model_dump"):
             return value.model_dump()
         return dict(value)
+
+
+class MemoryRepository:
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self.conn = conn
+
+    def append_event(self, event: MemoryEvent) -> int:
+        cursor = self.conn.execute(
+            """
+            INSERT INTO memory_event (
+                event_id, subject_type, subject_id, event_type, source,
+                payload_json, supersedes_event_id, status
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'active')
+            """,
+            (
+                event.event_id,
+                event.subject_type,
+                event.subject_id,
+                event.event_type,
+                event.source,
+                json.dumps(event.payload, ensure_ascii=False),
+                event.supersedes_event_id,
+            ),
+        )
+        self._apply_projection(event)
+        self.conn.commit()
+        return int(cursor.lastrowid)
+
+    def supersede_fact(
+        self,
+        *,
+        subject_type: MemorySubjectType,
+        subject_id: str,
+        fact_type: str,
+        value: Any,
+        source: MemorySource,
+        supersedes_event_id: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> MemoryEvent:
+        event = MemoryEvent(
+            event_id=f"mem_{uuid4().hex}",
+            subject_type=subject_type,
+            subject_id=subject_id,
+            event_type="supersede",
+            source=source,
+            payload={"fact_type": fact_type, "value": value, "metadata": metadata or {}},
+            supersedes_event_id=supersedes_event_id,
+        )
+        self.append_event(event)
+        return event
+
+    def delete_fact(
+        self,
+        *,
+        subject_type: MemorySubjectType,
+        subject_id: str,
+        fact_type: str,
+        source: MemorySource,
+        supersedes_event_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> MemoryEvent:
+        event = MemoryEvent(
+            event_id=f"mem_{uuid4().hex}",
+            subject_type=subject_type,
+            subject_id=subject_id,
+            event_type="delete",
+            source=source,
+            payload={"fact_type": fact_type, "value": None, "metadata": metadata or {}},
+            supersedes_event_id=supersedes_event_id,
+        )
+        self.append_event(event)
+        return event
+
+    def get_event(self, event_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            "SELECT * FROM memory_event WHERE event_id = ?",
+            (event_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        data = dict(row)
+        data["payload"] = json.loads(data.pop("payload_json"))
+        return data
+
+    def get_projection(self, subject_type: MemorySubjectType, subject_id: str) -> dict[str, Any]:
+        table_name, key_column = self._projection_table(subject_type)
+        row = self.conn.execute(
+            f"SELECT memory_json FROM {table_name} WHERE {key_column} = ?",
+            (subject_id,),
+        ).fetchone()
+        if row is None:
+            return {}
+        return json.loads(row["memory_json"])
+
+    def _apply_projection(self, event: MemoryEvent) -> None:
+        fact_type = event.payload.get("fact_type")
+        if not isinstance(fact_type, str) or not fact_type:
+            raise ValueError("memory event payload must include fact_type")
+
+        projection = self.get_projection(event.subject_type, event.subject_id)
+        if event.event_type == "delete":
+            projection.pop(fact_type, None)
+        else:
+            projection[fact_type] = event.payload.get("value")
+
+        table_name, key_column = self._projection_table(event.subject_type)
+        self.conn.execute(
+            f"""
+            INSERT INTO {table_name} ({key_column}, memory_json, updated_event_id)
+            VALUES (?, ?, ?)
+            ON CONFLICT({key_column}) DO UPDATE SET
+                memory_json = excluded.memory_json,
+                updated_event_id = excluded.updated_event_id,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (
+                event.subject_id,
+                json.dumps(projection, ensure_ascii=False),
+                event.event_id,
+            ),
+        )
+
+    def _projection_table(self, subject_type: MemorySubjectType) -> tuple[str, str]:
+        if subject_type == "farm":
+            return "farm_memory", "farm_id"
+        if subject_type == "animal":
+            return "animal_memory", "animal_id"
+        raise ValueError(f"unsupported memory subject_type: {subject_type}")
 
 
 class EvalRunRepository:
