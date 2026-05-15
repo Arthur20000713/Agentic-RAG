@@ -9,24 +9,29 @@ from pathlib import Path
 from backend.app.core.config import PROJECT_ROOT, Settings, load_settings
 from backend.app.evaluation.failure_analysis import build_failure_report
 from backend.app.evaluation.golden_runner import EvaluationReport, GoldenSetRunner
+from backend.app.evaluation.real_rag_preflight import RealRagPreflightRunner
 from backend.app.integrations.rag_server import create_rag_server_client
 from backend.app.integrations.rag_server.base import RagServerClient
 from backend.app.integrations.rag_server.health import resolve_rag_server_path
 
 
 class RealRagEvalUnavailable(RuntimeError):
-    def __init__(self, error_code: str, message: str) -> None:
+    def __init__(self, error_code: str, message: str, *, preflight_summary: dict | None = None) -> None:
         super().__init__(message)
         self.error_code = error_code
         self.message = message
+        self.preflight_summary = preflight_summary
 
-    def to_payload(self) -> dict[str, str]:
-        return {
+    def to_payload(self) -> dict:
+        payload = {
             "status": "skipped",
             "mode": "real",
             "error_code": self.error_code,
             "reason": self.message,
         }
+        if self.preflight_summary is not None:
+            payload["preflight_summary"] = self.preflight_summary
+        return payload
 
 
 class RealRagEvalRunner:
@@ -40,6 +45,7 @@ class RealRagEvalRunner:
     ) -> None:
         self.settings = settings or load_settings()
         self.settings.rag_server.query_mode = "real"
+        self.settings.rag_server.timeout_seconds = max(self.settings.rag_server.timeout_seconds, 30)
         self.golden_set_path = golden_set_path
         self.output_dir = Path(output_dir) if output_dir else PROJECT_ROOT / "reports"
         if not self.output_dir.is_absolute():
@@ -47,6 +53,14 @@ class RealRagEvalRunner:
         self.rag_client = rag_client
 
     def run(self) -> EvaluationReport:
+        if self.rag_client is None:
+            preflight = asyncio.run(RealRagPreflightRunner(self.settings, output_dir=self.output_dir).run())
+            if preflight.status != "passed":
+                raise RealRagEvalUnavailable(
+                    preflight.error_code or "RAG_PREFLIGHT_FAILED",
+                    preflight.error_message or "real RAG preflight failed",
+                    preflight_summary=self._preflight_summary(preflight.model_dump()),
+                )
         client = self.create_rag_client()
         try:
             runner = GoldenSetRunner(self.golden_set_path, output_dir=self.output_dir, rag_client=client)
@@ -74,13 +88,19 @@ class RealRagEvalRunner:
     def write_skipped_report(self, unavailable: RealRagEvalUnavailable) -> None:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         payload = unavailable.to_payload()
+        payload.setdefault("preflight_summary", self._read_preflight_summary())
         with (self.output_dir / "eval_result.json").open("w", encoding="utf-8") as file:
             json.dump(payload, file, ensure_ascii=False, indent=2)
             file.write("\n")
         with (self.output_dir / "eval_result.csv").open("w", encoding="utf-8", newline="") as file:
-            writer = csv.DictWriter(file, fieldnames=["status", "mode", "error_code", "reason"])
+            writer = csv.DictWriter(file, fieldnames=["status", "mode", "error_code", "reason", "preflight_summary"])
             writer.writeheader()
-            writer.writerow(payload)
+            writer.writerow(
+                {
+                    **payload,
+                    "preflight_summary": json.dumps(payload.get("preflight_summary"), ensure_ascii=False, sort_keys=True),
+                }
+            )
         (self.output_dir / "eval_summary.md").write_text(
             "\n".join(
                 [
@@ -136,7 +156,11 @@ class RealRagEvalRunner:
 
     def _write_json(self, report: EvaluationReport) -> None:
         with (self.output_dir / "eval_result.json").open("w", encoding="utf-8") as file:
-            payload = {"mode": "real", **report.model_dump()}
+            payload = {
+                "mode": "real",
+                "preflight_summary": self._read_preflight_summary(),
+                **report.model_dump(),
+            }
             json.dump(payload, file, ensure_ascii=False, indent=2)
             file.write("\n")
 
@@ -193,3 +217,22 @@ class RealRagEvalRunner:
         for category, count in metrics.get("failure_categories", {}).items():
             lines.append(f"| {category} | {count} |")
         (self.output_dir / "eval_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def _read_preflight_summary(self) -> dict | None:
+        path = self.output_dir / "real_rag_preflight.json"
+        if not path.exists():
+            return None
+        with path.open("r", encoding="utf-8") as file:
+            payload = json.load(file)
+        return self._preflight_summary(payload)
+
+    def _preflight_summary(self, payload: dict) -> dict:
+        return {
+            "status": payload.get("status"),
+            "target_collection": payload.get("target_collection"),
+            "collections": payload.get("collections", []),
+            "tools": payload.get("tools", []),
+            "error_code": payload.get("error_code"),
+            "warnings": payload.get("warnings", []),
+            "duration_ms": payload.get("duration_ms", 0),
+        }

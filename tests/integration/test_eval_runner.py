@@ -236,6 +236,10 @@ def test_run_eval_real_rag_optional_writes_skipped_report_when_unconfigured(monk
     assert payload["status"] == "skipped"
     assert payload["mode"] == "real"
     assert payload["error_code"] == "RAG_SERVER_PATH_MISSING"
+    preflight = json.loads((output_dir / "real_rag_preflight.json").read_text(encoding="utf-8"))
+    assert preflight["mode"] == "real"
+    assert preflight["status"] == "failed"
+    assert preflight["error_code"] == "RAG_SERVER_PATH_MISSING"
     assert (output_dir / "eval_result.csv").exists()
     assert (output_dir / "eval_summary.md").read_text(encoding="utf-8").startswith("# Real RAG Evaluation Summary")
     assert "RAG_SERVER_UNAVAILABLE" in (output_dir / "failure_analysis.md").read_text(encoding="utf-8")
@@ -263,6 +267,7 @@ def test_real_rag_runner_creates_mcp_client_when_path_is_configured(monkeypatch)
     assert isinstance(client, RagServerMcpClient)
     assert runner.settings.rag_server.query_mode == "real"
     assert runner.settings.rag_server.python_executable == sys.executable
+    assert runner.settings.rag_server.timeout_seconds == 30
 
 
 def test_real_rag_runner_writes_real_mode_report() -> None:
