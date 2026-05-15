@@ -17,7 +17,7 @@ def _tmp_dir() -> Path:
     return path
 
 
-def _make_mock_rag_server(root: Path, *, collections: list[str]) -> Path:
+def _make_mock_rag_server(root: Path, *, collections: list[str] | None = None, collections_text: str | None = None) -> Path:
     server_dir = root / "src" / "mcp_server"
     config_dir = root / "config"
     server_dir.mkdir(parents=True, exist_ok=True)
@@ -40,7 +40,8 @@ def _make_mock_rag_server(root: Path, *, collections: list[str]) -> Path:
         ),
         encoding="utf-8",
     )
-    collections_json = json.dumps(collections, ensure_ascii=False)
+    collections_json = json.dumps(collections or [], ensure_ascii=False)
+    collections_text_literal = repr(collections_text)
     (server_dir / "server.py").write_text(
         dedent(
             f"""
@@ -50,6 +51,7 @@ def _make_mock_rag_server(root: Path, *, collections: list[str]) -> Path:
             import sys
 
             COLLECTIONS = {collections_json}
+            COLLECTIONS_TEXT = {collections_text_literal}
 
 
             def send(payload: dict) -> None:
@@ -74,7 +76,7 @@ def _make_mock_rag_server(root: Path, *, collections: list[str]) -> Path:
                 elif method == "tools/call":
                     params = message.get("params") or {{}}
                     if params.get("name") == "list_collections":
-                        payload = {{"collections": COLLECTIONS}}
+                        payload = {{"text": COLLECTIONS_TEXT}} if COLLECTIONS_TEXT is not None else {{"collections": COLLECTIONS}}
                         send({{
                             "jsonrpc": "2.0",
                             "id": request_id,
@@ -117,3 +119,24 @@ def test_preflight_detects_collection_mismatch_and_writes_report() -> None:
     assert "RAG_COLLECTION_MISMATCH" in report.warnings
     assert payload["diagnostics"]["llm_api_key_present"] is True
     assert "secret-value" not in str(payload)
+
+
+def test_preflight_treats_no_collections_text_as_empty_and_missing_target() -> None:
+    work_dir = _tmp_dir()
+    repo_path = _make_mock_rag_server(work_dir / "mock_rag_server", collections_text="No collections found.")
+    output_dir = work_dir / "reports"
+    settings = Settings(
+        rag_server={
+            "query_mode": "real",
+            "repo_path": str(repo_path),
+            "python_executable": sys.executable,
+            "collection": "default",
+            "timeout_seconds": 2,
+        }
+    )
+
+    report = asyncio.run(RealRagPreflightRunner(settings, output_dir=output_dir).run())
+
+    assert report.status == "failed"
+    assert report.collections == []
+    assert report.error_code == "RAG_COLLECTION_NOT_FOUND"

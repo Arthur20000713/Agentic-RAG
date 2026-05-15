@@ -40,6 +40,21 @@ class RagServerTimeoutPolicy:
         return "timed out" in str(exc)
 
 
+def parse_collection_names_from_text(text: str) -> list[str]:
+    names: list[str] = []
+    for line in text.splitlines():
+        cleaned = line.strip().lstrip("-*").strip()
+        if not cleaned:
+            continue
+        lowered = cleaned.lower()
+        if lowered.startswith("no collection") or lowered.startswith("no collections"):
+            continue
+        if cleaned.startswith("没有") or cleaned.startswith("未找到"):
+            continue
+        names.append(cleaned.split()[0])
+    return names
+
+
 class RagServerMcpClient(RagServerClient):
     def __init__(self, settings: Settings, trace_service: TraceService | None = None) -> None:
         self.settings = settings
@@ -277,11 +292,7 @@ class RagServerMcpClient(RagServerClient):
                 latency_ms=self._elapsed_ms(started_at),
             )
             return []
-        names: list[str] = []
-        for line in text.splitlines():
-            cleaned = line.strip().lstrip("-*").strip()
-            if cleaned:
-                names.append(cleaned.split()[0])
+        names = parse_collection_names_from_text(text)
         self._record_tool_trace(
             query="list_collections",
             status="success" if names else "empty",

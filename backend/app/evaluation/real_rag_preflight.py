@@ -10,7 +10,11 @@ from pydantic import BaseModel, Field
 
 from backend.app.core.config import PROJECT_ROOT, Settings
 from backend.app.integrations.rag_server.diagnostics import RagServerDiagnostics, build_rag_server_diagnostics
-from backend.app.integrations.rag_server.mcp_stdio_client import RagServerMcpClient, RagServerMcpError
+from backend.app.integrations.rag_server.mcp_stdio_client import (
+    RagServerMcpClient,
+    RagServerMcpError,
+    parse_collection_names_from_text,
+)
 
 
 class RealRagPreflightReport(BaseModel):
@@ -127,16 +131,9 @@ class RealRagPreflightRunner:
         text = payload.get("text")
         if not isinstance(text, str):
             return []
-        names: list[str] = []
-        for line in text.splitlines():
-            cleaned = line.strip().lstrip("-*").strip()
-            if cleaned:
-                names.append(cleaned.split()[0])
-        return names
+        return parse_collection_names_from_text(text)
 
     def _collection_error(self, target_collection: str, collections: list[str]) -> str | None:
-        if not collections:
-            return None
         if target_collection not in collections:
             return "RAG_COLLECTION_NOT_FOUND"
         return None
@@ -154,4 +151,3 @@ class RealRagPreflightRunner:
 
 def run_real_rag_preflight(settings: Settings, *, output_dir: str | Path | None = None) -> RealRagPreflightReport:
     return asyncio.run(RealRagPreflightRunner(settings, output_dir=output_dir).run())
-

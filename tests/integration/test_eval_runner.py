@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from textwrap import dedent
 from uuid import uuid4
 
 from backend.app.evaluation.golden_runner import GoldenSetRunner
@@ -269,6 +270,109 @@ def test_real_rag_runner_creates_mcp_client_when_path_is_configured(monkeypatch)
     assert runner.settings.rag_server.query_mode == "real"
     assert runner.settings.rag_server.python_executable == sys.executable
     assert runner.settings.rag_server.timeout_seconds == 30
+
+
+def test_real_rag_runner_resolves_python_before_preflight(monkeypatch) -> None:  # noqa: ANN001
+    repo_path = _tmp_dir()
+    server_dir = repo_path / "src" / "mcp_server"
+    server_dir.mkdir(parents=True)
+    (repo_path / "src" / "__init__.py").write_text("", encoding="utf-8")
+    (server_dir / "__init__.py").write_text("", encoding="utf-8")
+    (server_dir / "server.py").write_text(
+        dedent(
+            """
+            from __future__ import annotations
+
+            import json
+            import sys
+
+
+            def send(payload: dict) -> None:
+                sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\\n")
+                sys.stdout.flush()
+
+
+            for line in sys.stdin:
+                message = json.loads(line)
+                method = message.get("method")
+                request_id = message.get("id")
+                if method == "initialize":
+                    send({"jsonrpc": "2.0", "id": request_id, "result": {"protocolVersion": "2024-11-05"}})
+                elif method == "notifications/initialized":
+                    continue
+                elif method == "tools/list":
+                    from pathlib import Path
+                    Path("preflight_python.txt").write_text(sys.executable, encoding="utf-8")
+                    send({
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "result": {"tools": [{"name": "query_knowledge_hub"}, {"name": "list_collections"}]},
+                    })
+                elif method == "tools/call":
+                    name = (message.get("params") or {}).get("name")
+                    if name == "list_collections":
+                        payload = {"collections": ["default"]}
+                    else:
+                        from pathlib import Path
+                        Path("query_python.txt").write_text(sys.executable, encoding="utf-8")
+                        payload = {
+                            "query": "q",
+                            "status": "success",
+                            "hits": [
+                                {
+                                    "chunk_id": "chunk_1",
+                                    "document_id": "doc_1",
+                                    "document_title": "Doc",
+                                    "content": "content",
+                                    "score": 0.9,
+                                }
+                            ],
+                        }
+                    send({
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "result": {
+                            "isError": False,
+                            "content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False)}],
+                        },
+                    })
+            """
+        ),
+        encoding="utf-8",
+    )
+    run_local = repo_path / "scripts" / "run_local.ps1"
+    run_local.parent.mkdir(parents=True)
+    configured_python = Path("C:/ProgramData/anaconda3/python.exe")
+    if not configured_python.exists():
+        configured_python = Path(sys.executable)
+    run_local.write_text(f'$Python = "{configured_python}"\n', encoding="utf-8")
+    golden_set = repo_path / "golden.json"
+    golden_set.write_text(
+        json.dumps(
+            [
+                {
+                    "case_id": "PY_PREFLIGHT",
+                    "category": "general_qa",
+                    "query": "How should cattle feeding be managed?",
+                    "expected": {"intent": "general_qa", "rag_call": True, "citation": True},
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("RAG_SERVER_PATH", str(repo_path))
+    monkeypatch.delenv("RAG_SERVER_PYTHON", raising=False)
+    runner = RealRagEvalRunner(golden_set, output_dir=_tmp_dir())
+
+    report = runner.run()
+
+    assert report.metrics["total_cases"] == 1
+    assert runner.settings.rag_server.python_executable == str(configured_python)
+    preflight = json.loads((runner.output_dir / "real_rag_preflight.json").read_text(encoding="utf-8"))
+    assert preflight["status"] == "passed"
+    assert Path((repo_path / "preflight_python.txt").read_text(encoding="utf-8")) == configured_python
+    assert Path((repo_path / "query_python.txt").read_text(encoding="utf-8")) == configured_python
 
 
 def test_real_rag_runner_writes_real_mode_report() -> None:

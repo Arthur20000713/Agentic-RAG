@@ -54,6 +54,9 @@ class RealRagEvalRunner:
 
     def run(self) -> EvaluationReport:
         if self.rag_client is None:
+            repo_path = resolve_rag_server_path(self.settings)
+            if repo_path is not None and repo_path.exists():
+                self._resolve_python_executable(repo_path)
             preflight = asyncio.run(RealRagPreflightRunner(self.settings, output_dir=self.output_dir).run())
             if preflight.status != "passed":
                 raise RealRagEvalUnavailable(
