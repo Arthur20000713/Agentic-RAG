@@ -23,6 +23,7 @@ def test_rag_trace_repository_persists_success_trace() -> None:
         raw_response_id="rag_trace_001",
         status="success",
         latency_ms=120,
+        attempt_count=2,
     )
 
     row = traces.get(trace_id)
@@ -36,6 +37,7 @@ def test_rag_trace_repository_persists_success_trace() -> None:
     assert row["top_score"] == 0.82
     assert row["status"] == "success"
     assert row["error_code"] is None
+    assert row["attempt_count"] == 2
 
 
 def test_rag_trace_repository_persists_failed_and_fallback_traces() -> None:

@@ -68,6 +68,79 @@ def _make_slow_mock_rag_server() -> Path:
     return root.resolve()
 
 
+def _make_timeout_once_mock_rag_server() -> Path:
+    root = Path(".tmp_tests") / f"timeout_once_mock_rag_server_{uuid4().hex}"
+    server_dir = root / "src" / "mcp_server"
+    server_dir.mkdir(parents=True, exist_ok=True)
+    (root / "src" / "__init__.py").write_text("", encoding="utf-8")
+    (server_dir / "__init__.py").write_text("", encoding="utf-8")
+    (server_dir / "server.py").write_text(
+        dedent(
+            """
+            from __future__ import annotations
+
+            import json
+            from pathlib import Path
+            import sys
+            import time
+
+            COUNTER = Path("query_attempts.txt")
+
+
+            def send(payload: dict) -> None:
+                sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\\n")
+                sys.stdout.flush()
+
+
+            for line in sys.stdin:
+                message = json.loads(line)
+                method = message.get("method")
+                request_id = message.get("id")
+                if method == "initialize":
+                    send({
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "result": {
+                            "protocolVersion": "2024-11-05",
+                            "capabilities": {},
+                        },
+                    })
+                elif method == "notifications/initialized":
+                    continue
+                elif method == "tools/call":
+                    attempts = int(COUNTER.read_text(encoding="utf-8")) if COUNTER.exists() else 0
+                    COUNTER.write_text(str(attempts + 1), encoding="utf-8")
+                    if attempts == 0:
+                        time.sleep(1)
+                        continue
+                    payload = {
+                        "query": "calf diarrhea",
+                        "status": "success",
+                        "hits": [
+                            {
+                                "chunk_id": "retry_chunk",
+                                "document_id": "retry_doc",
+                                "document_title": "Retry Manual",
+                                "content": "Recovered after timeout.",
+                                "score": 0.88,
+                            }
+                        ],
+                    }
+                    send({
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "result": {
+                            "isError": False,
+                            "content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False)}],
+                        },
+                    })
+            """
+        ),
+        encoding="utf-8",
+    )
+    return root.resolve()
+
+
 def test_real_rag_adapter_is_created_with_trace_service() -> None:
     conn = get_connection("sqlite:///:memory:")
     init_db(conn)
@@ -117,3 +190,36 @@ def test_mcp_client_timeout_returns_empty_error_result_and_records_trace() -> No
     assert stored["mapped_result_count"] == 0
     assert stored["status"] == "error"
     assert stored["error_code"] == RagServerTimeoutPolicy.ERROR_CODE
+    assert stored["attempt_count"] == 2
+
+
+def test_mcp_client_restarts_and_retries_once_after_timeout() -> None:
+    conn = get_connection("sqlite:///:memory:")
+    init_db(conn)
+    traces = RagTraceRepository(conn)
+    repo_path = _make_timeout_once_mock_rag_server()
+    client = RagServerMcpClient(
+        Settings(
+            rag_server={
+                "query_mode": "real",
+                "repo_path": str(repo_path),
+                "python_executable": sys.executable,
+                "collection": "default",
+                "timeout_seconds": 0.2,
+            }
+        ),
+        trace_service=TraceService(traces),
+    )
+
+    result = asyncio.run(client.query("calf diarrhea", top_k=2, collection="default"))
+    stored = conn.execute(
+        "SELECT * FROM rag_trace_log WHERE raw_response_id = ?",
+        (result.raw_response_id,),
+    ).fetchone()
+
+    assert result.status == "success"
+    assert result.hits[0].chunk_id == "retry_chunk"
+    assert stored is not None
+    assert stored["status"] == "success"
+    assert stored["attempt_count"] == 2
+    assert (repo_path / "query_attempts.txt").read_text(encoding="utf-8") == "2"

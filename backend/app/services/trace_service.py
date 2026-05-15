@@ -30,6 +30,7 @@ class TraceService:
         top_score: float | None = None,
         raw_response_id: str | None = None,
         error_code: str | None = None,
+        attempt_count: int = 1,
         latency_ms: int | None = None,
     ) -> str:
         resolved_raw_response_id = raw_response_id or f"rag_trace_{uuid4().hex}"
@@ -46,6 +47,7 @@ class TraceService:
             raw_response_id=resolved_raw_response_id,
             status=status,
             error_code=error_code,
+            attempt_count=attempt_count,
             latency_ms=latency_ms,
         )
         return resolved_raw_response_id

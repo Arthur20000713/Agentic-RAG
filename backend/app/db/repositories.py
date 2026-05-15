@@ -305,6 +305,7 @@ class RagTraceRepository:
         raw_response_id: str | None = None,
         status: str,
         error_code: str | None = None,
+        attempt_count: int = 1,
         latency_ms: int | None = None,
     ) -> int:
         cursor = self.conn.execute(
@@ -312,9 +313,9 @@ class RagTraceRepository:
             INSERT INTO rag_trace_log (
                 session_id, request_id, rag_mode, collection, query, top_k,
                 result_count, mapped_result_count, top_score, raw_response_id,
-                status, error_code, latency_ms
+                status, error_code, attempt_count, latency_ms
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 session_id,
@@ -329,6 +330,7 @@ class RagTraceRepository:
                 raw_response_id,
                 status,
                 error_code,
+                attempt_count,
                 latency_ms,
             ),
         )

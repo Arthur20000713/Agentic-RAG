@@ -138,6 +138,7 @@ CREATE TABLE IF NOT EXISTS rag_trace_log (
     raw_response_id TEXT,
     status TEXT,
     error_code TEXT,
+    attempt_count INTEGER DEFAULT 1,
     latency_ms INTEGER,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
@@ -230,4 +231,11 @@ CREATE TABLE IF NOT EXISTS eval_run_log (
 
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_SQL)
+    _ensure_column(conn, "rag_trace_log", "attempt_count", "INTEGER DEFAULT 1")
     conn.commit()
+
+
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+    columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in columns:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")

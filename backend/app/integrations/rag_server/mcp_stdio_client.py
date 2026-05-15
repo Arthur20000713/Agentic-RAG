@@ -101,21 +101,50 @@ class RagServerMcpClient(RagServerClient):
     ) -> RagSearchResult:
         started_at = time.perf_counter()
         resolved_collection = collection or self.settings.rag_server.collection
-        try:
-            result = await self._call_tool(
-                "query_knowledge_hub",
-                {
-                    "query": query,
-                    "top_k": top_k,
-                    "collection": resolved_collection,
-                },
-            )
-        except RagServerMcpError as exc:
+        attempt_count = 0
+        result: dict[str, Any] | None = None
+        for attempt in range(1, 3):
+            attempt_count = attempt
+            try:
+                result = await self._call_tool(
+                    "query_knowledge_hub",
+                    {
+                        "query": query,
+                        "top_k": top_k,
+                        "collection": resolved_collection,
+                    },
+                )
+                break
+            except RagServerMcpError as exc:
+                error_code = self._error_code(exc)
+                if error_code == RagServerTimeoutPolicy.ERROR_CODE and attempt == 1:
+                    await self.close()
+                    continue
+                error_result = RagSearchResult(
+                    query=query,
+                    status="error",
+                    error_code=error_code,
+                    error_message=str(exc),
+                )
+                error_result.raw_response_id = self._record_query_trace(
+                    query=query,
+                    collection=resolved_collection,
+                    top_k=top_k,
+                    status="error",
+                    error_code=error_result.error_code,
+                    result_count=0,
+                    mapped_result_count=0,
+                    attempt_count=attempt_count,
+                    latency_ms=self._elapsed_ms(started_at),
+                )
+                return error_result
+
+        if result is None:
             error_result = RagSearchResult(
                 query=query,
                 status="error",
-                error_code=self._error_code(exc),
-                error_message=str(exc),
+                error_code="RAG_MCP_ERROR",
+                error_message="rag server query did not return a result",
             )
             error_result.raw_response_id = self._record_query_trace(
                 query=query,
@@ -125,6 +154,7 @@ class RagServerMcpClient(RagServerClient):
                 error_code=error_result.error_code,
                 result_count=0,
                 mapped_result_count=0,
+                attempt_count=attempt_count,
                 latency_ms=self._elapsed_ms(started_at),
             )
             return error_result
@@ -147,6 +177,7 @@ class RagServerMcpClient(RagServerClient):
                 error_code=error_result.error_code,
                 result_count=0,
                 mapped_result_count=0,
+                attempt_count=attempt_count,
                 latency_ms=self._elapsed_ms(started_at),
             )
             return error_result
@@ -161,6 +192,7 @@ class RagServerMcpClient(RagServerClient):
             mapped_result_count=len(mapped.hits),
             top_score=mapped.hits[0].score if mapped.hits else None,
             error_code=mapped.error_code,
+            attempt_count=attempt_count,
             latency_ms=self._elapsed_ms(started_at),
         )
         return mapped
@@ -432,6 +464,7 @@ class RagServerMcpClient(RagServerClient):
         mapped_result_count: int | None = None,
         top_score: float | None = None,
         error_code: str | None = None,
+        attempt_count: int = 1,
         latency_ms: int | None = None,
     ) -> str | None:
         if self.trace_service is None:
@@ -447,6 +480,7 @@ class RagServerMcpClient(RagServerClient):
             raw_response_id=raw_response_id,
             status=status,
             error_code=error_code,
+            attempt_count=attempt_count,
             latency_ms=latency_ms,
         )
 
