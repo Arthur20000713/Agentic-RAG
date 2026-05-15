@@ -122,6 +122,41 @@ def test_compute_metrics_outputs_failure_category_counts() -> None:
     assert all(category in metrics["failure_categories"] for category in FAILURE_CATEGORIES)
 
 
+def test_compute_metrics_outputs_real_rag_observability_counts() -> None:
+    results = [
+        EvaluationCaseResult(
+            case_id="with_sources",
+            category="general_qa",
+            passed=True,
+            checks={"rag_call": True, "citation": True},
+            rag_result_observed=True,
+            citation_count=1,
+            source_uri_count=2,
+            mapping_warnings=["RAG_CITATION_SYNTHESIZED_FROM_HIT"],
+        ),
+        EvaluationCaseResult(
+            case_id="timeout",
+            category="general_qa",
+            passed=False,
+            checks={"rag_call": True, "citation": False},
+            rag_result_observed=True,
+            citation_count=0,
+            source_uri_count=0,
+            mapping_warnings=["RAG_MAPPING_PARTIAL_SOURCE_URI"],
+            rag_error_code="RAG_TIMEOUT",
+            errors=["RAG_TIMEOUT", "RAG_MAPPING_PARTIAL_SOURCE_URI"],
+        ),
+    ]
+
+    metrics = compute_metrics(results)
+
+    assert metrics["rag_citation_coverage"] == 0.5
+    assert metrics["source_uri_coverage"] == 0.5
+    assert metrics["mapping_warning_counts"]["RAG_CITATION_SYNTHESIZED_FROM_HIT"] == 1
+    assert metrics["mapping_warning_counts"]["RAG_MAPPING_PARTIAL_SOURCE_URI"] == 1
+    assert metrics["rag_error_counts"]["RAG_TIMEOUT"] == 1
+
+
 def test_build_failure_report_outputs_categories_and_examples() -> None:
     results = [
         EvaluationCaseResult(

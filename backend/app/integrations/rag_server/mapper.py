@@ -13,6 +13,7 @@ from backend.app.schemas.rag_server import (
 
 
 PARTIAL_SOURCE_URI_WARNING = "RAG_MAPPING_PARTIAL_SOURCE_URI"
+SYNTHESIZED_CITATION_WARNING = "RAG_CITATION_SYNTHESIZED_FROM_HIT"
 
 
 def build_source_uri(
@@ -70,10 +71,13 @@ class RagServerMapper:
         raw_hits = payload.get("hits", payload.get("results", []))
         collection = payload.get("collection")
         hits: list[RagSearchHit] = []
+        complete_source_flags: list[bool] = []
         for index, item in enumerate(raw_hits, start=1):
+            has_partial_source = _has_partial_source(item)
             hit = RagServerMapper._to_hit(item, collection=collection, rank=index)
             hits.append(hit)
-            if _has_partial_source(item):
+            complete_source_flags.append(not has_partial_source)
+            if has_partial_source:
                 _append_warning(mapping_warnings, PARTIAL_SOURCE_URI_WARNING)
 
         if not hits and status == "success":
@@ -84,17 +88,22 @@ class RagServerMapper:
             for item in payload.get("citations", [])
         ]
         if not citations:
-            citations = [
-                RagCitation(
-                    source_id=str(hit.document_id) if hit.document_id is not None else None,
-                    source_uri=hit.source_uri,
-                    title=hit.document_title,
-                    page=hit.page,
-                    section_title=hit.section_title,
-                    chunk_id=hit.chunk_id,
+            citations = []
+            for hit, has_complete_source in zip(hits, complete_source_flags):
+                if not has_complete_source or not hit.source_uri:
+                    continue
+                citations.append(
+                    RagCitation(
+                        source_id=str(hit.document_id) if hit.document_id is not None else None,
+                        source_uri=hit.source_uri,
+                        title=hit.document_title,
+                        page=hit.page,
+                        section_title=hit.section_title,
+                        chunk_id=hit.chunk_id,
+                    )
                 )
-                for hit in hits
-            ]
+            if citations:
+                _append_warning(mapping_warnings, SYNTHESIZED_CITATION_WARNING)
 
         return RagSearchResult(
             query=query or payload.get("query", ""),

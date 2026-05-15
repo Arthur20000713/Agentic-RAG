@@ -14,6 +14,7 @@ from backend.app.db.migrations import init_db
 from backend.app.db.repositories import EvalRunRepository
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
 from backend.app.integrations.rag_server.mcp_stdio_client import RagServerMcpClient
+from backend.app.schemas.rag_server import RagSearchResult
 from scripts.run_eval import main as run_eval_main
 
 
@@ -295,6 +296,71 @@ def test_real_rag_runner_writes_real_mode_report() -> None:
     payload = json.loads((output_dir / "eval_result.json").read_text(encoding="utf-8"))
     assert payload["mode"] == "real"
     assert payload["metrics"]["total_cases"] == 1
+    assert "rag_citation_coverage" in payload["metrics"]
+    assert "source_uri_coverage" in payload["metrics"]
+    summary = (output_dir / "eval_summary.md").read_text(encoding="utf-8")
+    assert "## RAG Error Counts" in summary
+    assert "## Mapping Warnings" in summary
+
+
+def test_golden_runner_records_real_rag_observability_fields() -> None:
+    class MissingCitationClient(FakeRagServerClient):
+        async def query(
+            self,
+            query: str,
+            *,
+            top_k: int = 4,
+            collection: str | None = None,
+            domain: str | None = None,
+            species: str | None = None,
+        ) -> RagSearchResult:
+            return RagSearchResult.model_validate(
+                {
+                    "query": query,
+                    "status": "success",
+                    "hits": [
+                        {
+                            "chunk_id": "chunk_1",
+                            "document_id": "doc_1",
+                            "document_title": "Doc",
+                            "content": "content",
+                            "source_uri": "rag://default/doc_1/chunk_1",
+                            "score": 0.9,
+                        }
+                    ],
+                    "citations": [],
+                    "mapping_warnings": ["RAG_CITATION_SYNTHESIZED_FROM_HIT"],
+                }
+            )
+
+    output_dir = _tmp_dir()
+    golden_set = output_dir / "observability_golden.json"
+    golden_set.write_text(
+        json.dumps(
+            [
+                {
+                    "case_id": "OBS_GENERAL",
+                    "category": "general_qa",
+                    "query": "How should cattle feeding be managed?",
+                    "expected": {"intent": "general_qa", "rag_call": True, "citation": False},
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    runner = GoldenSetRunner(golden_set, output_dir=output_dir, rag_client=MissingCitationClient())
+
+    report = runner.run()
+    case = report.cases[0]
+
+    assert case.rag_result_observed is True
+    assert case.citation_count == 0
+    assert case.source_uri_count == 1
+    assert case.mapping_warnings == ["RAG_CITATION_SYNTHESIZED_FROM_HIT"]
+    assert "RAG_CITATION_SYNTHESIZED_FROM_HIT" in case.errors
+    assert report.metrics["source_uri_coverage"] == 1.0
+    assert report.metrics["mapping_warning_counts"]["RAG_CITATION_SYNTHESIZED_FROM_HIT"] == 1
 
 
 def test_eval_run_log_repository_persists_metrics_and_failure_summary() -> None:

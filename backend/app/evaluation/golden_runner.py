@@ -65,6 +65,11 @@ class EvaluationCaseResult(BaseModel):
     tools_used: list[str] = Field(default_factory=list)
     answer: str | None = None
     errors: list[str] = Field(default_factory=list)
+    rag_result_observed: bool = False
+    rag_error_code: str | None = None
+    citation_count: int = 0
+    source_uri_count: int = 0
+    mapping_warnings: list[str] = Field(default_factory=list)
 
 
 class EvaluationReport(BaseModel):
@@ -108,6 +113,7 @@ class GoldenSetRunner:
     def _run_case(self, case: GoldenCase) -> EvaluationCaseResult:
         state = self._execute_case(case)
         checks = self._evaluate_state(case, state)
+        rag_observability = self._rag_observability(state)
         return EvaluationCaseResult(
             case_id=case.case_id,
             category=case.category,
@@ -117,7 +123,8 @@ class GoldenSetRunner:
             risk_level=state.risk_level,
             tools_used=list(state.tool_results),
             answer=state.final_answer,
-            errors=[error.error_code for error in state.errors],
+            errors=self._result_errors(state, rag_observability),
+            **rag_observability,
         )
 
     def _execute_case(self, case: GoldenCase) -> AgentState:
@@ -165,6 +172,38 @@ class GoldenSetRunner:
             return False
         return all(key in result for key in ("summary", "abnormal_items", "evidence", "recommendation"))
 
+    def _rag_observability(self, state: AgentState) -> dict:
+        result = state.tool_results.get("livestock_rag_search")
+        if not isinstance(result, dict):
+            return {
+                "rag_result_observed": False,
+                "rag_error_code": None,
+                "citation_count": 0,
+                "source_uri_count": 0,
+                "mapping_warnings": [],
+            }
+        citations = [item for item in result.get("citations", []) if isinstance(item, dict)]
+        hits = [item for item in result.get("hits", []) if isinstance(item, dict)]
+        source_uris = {
+            str(uri)
+            for uri in [*(item.get("source_uri") for item in citations), *(item.get("source_uri") for item in hits)]
+            if uri
+        }
+        return {
+            "rag_result_observed": True,
+            "rag_error_code": result.get("error_code"),
+            "citation_count": len(citations),
+            "source_uri_count": len(source_uris),
+            "mapping_warnings": [str(item) for item in result.get("mapping_warnings", [])],
+        }
+
+    def _result_errors(self, state: AgentState, rag_observability: dict) -> list[str]:
+        errors = [error.error_code for error in state.errors]
+        if rag_observability.get("rag_error_code"):
+            errors.append(str(rag_observability["rag_error_code"]))
+        errors.extend(rag_observability.get("mapping_warnings", []))
+        return list(dict.fromkeys(errors))
+
     def _write_json(self, report: EvaluationReport) -> None:
         path = self.output_dir / "eval_result.json"
         with path.open("w", encoding="utf-8") as file:
@@ -176,7 +215,21 @@ class GoldenSetRunner:
         with path.open("w", encoding="utf-8", newline="") as file:
             writer = csv.DictWriter(
                 file,
-                fieldnames=["case_id", "category", "passed", "intent", "risk_level", "tools_used", "checks", "errors"],
+                fieldnames=[
+                    "case_id",
+                    "category",
+                    "passed",
+                    "intent",
+                    "risk_level",
+                    "tools_used",
+                    "checks",
+                    "errors",
+                    "rag_result_observed",
+                    "rag_error_code",
+                    "citation_count",
+                    "source_uri_count",
+                    "mapping_warnings",
+                ],
             )
             writer.writeheader()
             for item in report.cases:
@@ -190,6 +243,11 @@ class GoldenSetRunner:
                         "tools_used": "|".join(item.tools_used),
                         "checks": json.dumps(item.checks, ensure_ascii=False, sort_keys=True),
                         "errors": "|".join(item.errors),
+                        "rag_result_observed": item.rag_result_observed,
+                        "rag_error_code": item.rag_error_code or "",
+                        "citation_count": item.citation_count,
+                        "source_uri_count": item.source_uri_count,
+                        "mapping_warnings": "|".join(item.mapping_warnings),
                     }
                 )
 

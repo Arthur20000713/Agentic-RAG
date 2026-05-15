@@ -168,7 +168,21 @@ class RealRagEvalRunner:
         with (self.output_dir / "eval_result.csv").open("w", encoding="utf-8", newline="") as file:
             writer = csv.DictWriter(
                 file,
-                fieldnames=["case_id", "category", "passed", "intent", "risk_level", "tools_used", "checks", "errors"],
+                fieldnames=[
+                    "case_id",
+                    "category",
+                    "passed",
+                    "intent",
+                    "risk_level",
+                    "tools_used",
+                    "checks",
+                    "errors",
+                    "rag_result_observed",
+                    "rag_error_code",
+                    "citation_count",
+                    "source_uri_count",
+                    "mapping_warnings",
+                ],
             )
             writer.writeheader()
             for item in report.cases:
@@ -182,6 +196,11 @@ class RealRagEvalRunner:
                         "tools_used": "|".join(item.tools_used),
                         "checks": json.dumps(item.checks, ensure_ascii=False, sort_keys=True),
                         "errors": "|".join(item.errors),
+                        "rag_result_observed": item.rag_result_observed,
+                        "rag_error_code": item.rag_error_code or "",
+                        "citation_count": item.citation_count,
+                        "source_uri_count": item.source_uri_count,
+                        "mapping_warnings": "|".join(item.mapping_warnings),
                     }
                 )
 
@@ -208,6 +227,8 @@ class RealRagEvalRunner:
             "safety_pass_rate",
             "follow_up_accuracy",
             "structure_completeness",
+            "rag_citation_coverage",
+            "source_uri_coverage",
         ):
             lines.append(f"| {key} | {metrics[key]:.2%} |")
         lines.extend(["", "## Categories", "", "| Category | Passed | Total | Pass rate |", "|---|---:|---:|---:|"])
@@ -216,6 +237,12 @@ class RealRagEvalRunner:
         lines.extend(["", "## Failure Categories", "", "| Category | Count |", "|---|---:|"])
         for category, count in metrics.get("failure_categories", {}).items():
             lines.append(f"| {category} | {count} |")
+        lines.extend(["", "## RAG Error Counts", "", "| Error | Count |", "|---|---:|"])
+        for error_code, count in metrics.get("rag_error_counts", {}).items():
+            lines.append(f"| {error_code} | {count} |")
+        lines.extend(["", "## Mapping Warnings", "", "| Warning | Count |", "|---|---:|"])
+        for warning, count in metrics.get("mapping_warning_counts", {}).items():
+            lines.append(f"| {warning} | {count} |")
         (self.output_dir / "eval_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     def _read_preflight_summary(self) -> dict | None:
