@@ -292,7 +292,7 @@ quality_gate:
 
 | 阶段 | 目的 | 状态 |
 |---|---|---|
-| V4.2-A | 建立 corpus batch 数据模型 | 未开始 |
+| V4.2-A | 建立 corpus batch 数据模型 | 已完成 |
 | V4.2-B | 建立 V4.2 manifest 和 batch 目录 | 未开始 |
 | V4.2-C | 增强入库 dry-run 和命令生成 | 未开始 |
 | V4.2-D | 建立真实评测集 V4.2 | 未开始 |

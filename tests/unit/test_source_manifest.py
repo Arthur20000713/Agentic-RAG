@@ -144,6 +144,6 @@ sources:
 def test_project_source_manifest_validates() -> None:
     manifest = load_source_manifest("docs/rag_corpus/source_manifest.yaml")
 
-    assert manifest.collection == "livestock_v4_1"
-    assert len(manifest.sources) >= 8
+    assert manifest.collection == "livestock_v4_2"
+    assert len(manifest.sources) >= 15
     assert validate_source_manifest(manifest) == []
