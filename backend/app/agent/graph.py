@@ -15,6 +15,7 @@ from backend.app.core.config import Settings
 from backend.app.integrations.rag_server.base import RagServerClient
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
 from backend.app.model.answer_generator import AnswerGenerator
+from backend.app.model.query_normalizer import normalize_query_with_router
 from backend.app.model.router import ModelRouteRequest, ModelRouter, ModelTaskType
 from backend.app.schemas.measurement import MeasurementInput
 from backend.app.schemas.rag_server import RagSearchResult
@@ -32,6 +33,7 @@ async def run_general_qa_graph(
     settings: Settings | None = None,
 ) -> MultiAgentState:
     state = MultiAgentState(session_id=session_id or _new_session_id(), request_id=request_id, user_query=query)
+    await _maybe_normalize_query(state, settings=settings)
     SupervisorAgent().route(state)
     record_shadow_route(state, settings=settings)
     await RagAgent(rag_client or FakeRagServerClient()).run(state)
@@ -56,6 +58,7 @@ async def run_disease_graph(
 ) -> MultiAgentState:
     resolved_session_id = session_id or _new_session_id()
     state = MultiAgentState(session_id=resolved_session_id, request_id=request_id, user_query=query)
+    await _maybe_normalize_query(state, settings=settings)
     SupervisorAgent().route(state)
     record_shadow_route(state, settings=settings)
     if session_context_service is not None:
@@ -156,6 +159,35 @@ def record_shadow_route(state: MultiAgentState, *, settings: Settings | None = N
             "shadow_model": decision.shadow_model,
             "safety_level": safety.level,
             "local_candidate_allowed": decision.local_candidate_allowed,
+        }
+    )
+
+
+async def _maybe_normalize_query(state: MultiAgentState, *, settings: Settings | None = None) -> None:
+    app_settings = settings or Settings()
+    if not FeatureFlagService(app_settings).model_router_enabled:
+        return
+
+    result = await normalize_query_with_router(state.user_query, settings=app_settings)
+    state.normalized_query = result.normalized_query
+    if result.route_mode == "disabled":
+        return
+
+    state.tool_results["query_normalizer_router"] = {
+        "route_request": result.route_request,
+        "route_decision": result.route_decision,
+        "fallback_used": result.fallback_used,
+        "fallback_reason": result.fallback_reason,
+        "warnings": result.warnings,
+    }
+    state.agent_trace.append(
+        {
+            "node": "query_normalizer",
+            "status": "success",
+            "route_mode": result.route_mode,
+            "selected_model": result.selected_model,
+            "fallback_used": result.fallback_used,
+            "fallback_reason": result.fallback_reason,
         }
     )
 

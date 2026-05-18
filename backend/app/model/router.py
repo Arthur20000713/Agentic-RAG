@@ -11,7 +11,13 @@ from backend.app.services.feature_flag_service import FeatureFlagService
 
 
 ModelName = Literal["primary", "local_small"]
-ModelTaskType = Literal["final_answer", "structured_extraction", "measurement_analysis", "summarization"]
+ModelTaskType = Literal[
+    "final_answer",
+    "query_normalization",
+    "structured_extraction",
+    "measurement_analysis",
+    "summarization",
+]
 ModelRouteMode = Literal["disabled", "primary", "shadow", "takeover"]
 
 

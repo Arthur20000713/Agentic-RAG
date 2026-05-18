@@ -37,6 +37,33 @@ def test_general_qa_graph_runs_supervisor_rag_verifier_safety_response() -> None
     ]
 
 
+def test_general_qa_graph_records_query_normalizer_takeover_when_enabled() -> None:
+    settings = Settings(
+        v3={"enabled": True},
+        model_router={
+            "enabled": True,
+            "shadow_mode": False,
+            "allow_low_risk_takeover": True,
+            "takeover_task_types": ["query_normalization"],
+        },
+        local_model={"enabled": True},
+    )
+
+    state = asyncio.run(
+        run_general_qa_graph(
+            "  How should cattle feeding be managed?  ",
+            rag_client=FakeRagServerClient(),
+            session_id="s_general_query_norm",
+            settings=settings,
+        )
+    )
+
+    assert state.normalized_query == "How should cattle feeding be managed?"
+    assert state.tool_results["query_normalizer_router"]["route_decision"]["selected_model"] == "local_small"
+    assert state.tool_results["query_normalizer_router"]["fallback_used"] is False
+    assert [item["node"] for item in state.agent_trace][:2] == ["query_normalizer", "supervisor"]
+
+
 def test_general_qa_graph_keeps_low_confidence_no_answer_safe() -> None:
     state = asyncio.run(
         run_general_qa_graph(
