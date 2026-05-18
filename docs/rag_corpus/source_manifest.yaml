@@ -1,0 +1,146 @@
+version: 1
+collection: livestock_v4_1
+sources:
+  - source_id: umn_preweaning_calf_health
+    title: Pre-weaning calf health
+    source_uri: https://extension.umn.edu/dairy-youngstock/pre-weaning-calf-health
+    language: EN
+    organization: University of Minnesota Extension
+    source_type: university_extension
+    topics: [calf_health, diarrhea, respiratory, observation]
+    usage: [knowledge_base, eval]
+    ingestion_status: approved_summary_only
+    license_note: "教育网页；仅入库人工摘要、关键事实和链接，不复制全文。"
+    reviewed_by: human
+
+  - source_id: uga_raising_dairy_heifers
+    title: Raising dairy heifers from birth to weaning
+    source_uri: https://extension.uga.edu/publications/detail.html?number=B1500
+    language: EN
+    organization: University of Georgia Extension
+    source_type: university_extension
+    topics: [calf_feeding, colostrum, weaning, records]
+    usage: [knowledge_base, eval]
+    ingestion_status: approved_summary_only
+    license_note: "Extension 资料；仅入库人工摘要、关键事实和链接。"
+    reviewed_by: human
+
+  - source_id: usda_aphis_scours_dairy_calves
+    title: Scours in dairy calves
+    source_uri: https://www.aphis.usda.gov/sites/default/files/dairy07_dr_scours.pdf
+    language: EN
+    organization: USDA APHIS NAHMS
+    source_type: government_report
+    topics: [diarrhea, epidemiology, calf_health]
+    usage: [knowledge_base, eval]
+    ingestion_status: approved_summary_only
+    license_note: "政府报告；用于统计事实和人工摘要，避免复制大段 PDF 原文。"
+    reviewed_by: human
+
+  - source_id: usda_aphis_preweaned_calf_management
+    title: Dairy heifer raiser, preweaned calf management
+    source_uri: https://www.aphis.usda.gov/animal_health/nahms/dairy/downloads/dairy14/Dairy14_dr_PartI_1.pdf
+    language: EN
+    organization: USDA APHIS NAHMS
+    source_type: government_report
+    topics: [preweaned_calf, feeding, health_records, management]
+    usage: [knowledge_base, eval]
+    ingestion_status: approved_summary_only
+    license_note: "政府报告；用于统计事实和人工摘要，避免复制大段 PDF 原文。"
+    reviewed_by: human
+
+  - source_id: penn_state_biosecurity_cattle_farms
+    title: Biosecurity for dairy and beef cattle farms
+    source_uri: https://extension.psu.edu/biosecurity-for-dairy-and-beef-cattle-farms
+    language: EN
+    organization: Penn State Extension
+    source_type: university_extension
+    topics: [biosecurity, isolation, visitors, cattle_farms]
+    usage: [knowledge_base, eval, redteam]
+    ingestion_status: approved_summary_only
+    license_note: "Extension 网页；仅入库人工摘要、关键事实和链接。"
+    reviewed_by: human
+
+  - source_id: penn_state_monitoring_dairy_heifer_growth
+    title: Monitoring dairy heifer growth
+    source_uri: https://extension.psu.edu/monitoring-dairy-heifer-growth
+    language: EN
+    organization: Penn State Extension
+    source_type: university_extension
+    topics: [growth_monitoring, body_weight, withers_height, records]
+    usage: [knowledge_base, eval]
+    ingestion_status: approved_summary_only
+    license_note: "Extension 网页；仅入库人工摘要、关键事实和链接，不复制图表。"
+    reviewed_by: human
+
+  - source_id: wisconsin_water_for_dairy_calves
+    title: Water for dairy calves
+    source_uri: https://dairy.extension.wisc.edu/articles/water-for-dairy-calves/
+    language: EN
+    organization: University of Wisconsin Extension
+    source_type: university_extension
+    topics: [water, calf_feeding, intake]
+    usage: [knowledge_base, eval]
+    ingestion_status: approved_summary_only
+    license_note: "Extension 网页；仅入库人工摘要、关键事实和链接。"
+    reviewed_by: human
+
+  - source_id: wisconsin_air_quality_for_calves
+    title: Air quality for calves
+    source_uri: https://dairy.extension.wisc.edu/articles/air-quality-for-calves/
+    language: EN
+    organization: University of Wisconsin Extension
+    source_type: university_extension
+    topics: [air_quality, ventilation, respiratory_health, housing]
+    usage: [knowledge_base, eval]
+    ingestion_status: approved_summary_only
+    license_note: "Extension 网页；仅入库人工摘要、关键事实和链接。"
+    reviewed_by: human
+
+  - source_id: wisconsin_cold_stress_calves
+    title: Cold stress in calves
+    source_uri: https://dairy.extension.wisc.edu/articles/cold-stress-in-calves/
+    language: EN
+    organization: University of Wisconsin Extension
+    source_type: university_extension
+    topics: [cold_stress, calf_feeding, environment, health_observation]
+    usage: [knowledge_base, eval]
+    ingestion_status: approved_summary_only
+    license_note: "Extension 网页；仅入库人工摘要、关键事实和链接。"
+    reviewed_by: human
+
+  - source_id: fda_judicious_antimicrobial_use_209
+    title: FDA Guidance #209
+    source_uri: https://www.fda.gov/regulatory-information/search-fda-guidance-documents/cvm-gfi-209-judicious-use-medically-important-antimicrobial-drugs-food-producing-animals
+    language: EN
+    organization: US FDA CVM
+    source_type: government_guidance
+    topics: [antimicrobial_use, food_animals, veterinary_oversight, safety]
+    usage: [eval, redteam, reference]
+    ingestion_status: reference_only
+    license_note: "美国政府指南；用于用药安全边界和 redteam，不泛化为中国监管建议。"
+    reviewed_by: human
+
+  - source_id: fao_amr_livestock_resources
+    title: FAO AMR and livestock resources
+    source_uri: https://www.fao.org/antimicrobial-resistance/en/
+    language: EN
+    organization: FAO
+    source_type: international_org
+    topics: [amr, antimicrobial_use, livestock, biosecurity]
+    usage: [knowledge_base, redteam, reference]
+    ingestion_status: approved_summary_only
+    license_note: "国际组织公开资料；入库前按页面复核许可，仅保留人工摘要和链接。"
+    reviewed_by: human
+
+  - source_id: tianjin_replacement_heifer_management
+    title: 奶牛场后备牛饲养管理技术要点
+    source_uri: https://nync.tj.gov.cn/ZWGK0/TZGG152022/202404/t20240429_6613832.html
+    language: ZH
+    organization: 天津市农业农村委
+    source_type: government_extension
+    topics: [replacement_heifer, feeding, weaning, management]
+    usage: [knowledge_base, eval]
+    ingestion_status: approved_summary_only
+    license_note: "政府公开农技资料；入库前复核页面转载和版权声明，仅保留人工摘要和链接。"
+    reviewed_by: human
