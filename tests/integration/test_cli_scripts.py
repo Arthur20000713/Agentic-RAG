@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
+from pathlib import Path
 
 
 def test_query_script_outputs_fake_rag_citations() -> None:
@@ -91,3 +93,40 @@ def test_check_v3_accepts_full_stage_baseline() -> None:
 
     assert completed.returncode == 0
     assert "V3 checks passed for stage full" in completed.stdout
+
+
+def test_check_real_batch_script_requires_explicit_inputs_and_has_no_api_key() -> None:
+    script = Path("scripts/check_real_batch.ps1")
+
+    text = script.read_text(encoding="utf-8")
+
+    assert "param(" in text
+    assert "[string]$Batch" in text
+    assert "[string]$OutputDir" in text
+    assert "API_KEY" not in text.upper()
+
+
+def test_check_real_batch_script_reports_missing_rag_server_path() -> None:
+    env = dict(os.environ)
+    env.pop("RAG_SERVER_PATH", None)
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "scripts/check_real_batch.ps1",
+            "-Batch",
+            "docs\\rag_corpus\\batches\\batch_002.yaml",
+            "-OutputDir",
+            ".tmp_tests\\real_batch_missing_path",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+        env=env,
+    )
+
+    assert completed.returncode == 2
+    assert "RAG_SERVER_PATH" in completed.stderr

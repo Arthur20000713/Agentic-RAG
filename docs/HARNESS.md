@@ -34,6 +34,23 @@ V4.1 语料入库 dry-run：
 
 该命令只输出计划，不写 RAG-SERVER，不读取或打印 API key。
 
+V4.2 批次化真实 RAG 回归：
+
+```powershell
+$env:RAG_SERVER_PATH="C:\Users\DELL\PycharmProjects\PythonProject\RAG-SERVER"
+.\scripts\check_real_batch.ps1 -Batch docs\rag_corpus\batches\batch_002.yaml -OutputDir reports\real_v4_2_batch
+```
+
+该脚本只编排本项目命令：`check_v4_2 --stage full`、`pytest -m rag_server`、`run_eval.py --mode real --optional --batch ...` 和 `check_v4_2 --stage gate ...`。它要求显式传入 batch 与 output-dir；缺少 `RAG_SERVER_PATH` 时直接退出，不会切换到 fake，也不会打印密钥。
+
+V4.2 batch dry-run：
+
+```powershell
+.venv\Scripts\python.exe scripts\check_rag_corpus.py --batch docs\rag_corpus\batches\batch_002.yaml --dry-run
+```
+
+该命令只输出计划入库命令，包含 collection、文件路径和 source_id，不执行 RAG-SERVER 入库。
+
 阶段 D 局部检查：
 
 ```powershell
