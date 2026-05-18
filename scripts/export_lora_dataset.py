@@ -8,6 +8,7 @@ from typing import Any, Iterable, Mapping
 from pydantic import BaseModel, Field, ValidationError
 
 from backend.app.lora.dataset import FORBIDDEN_FIELD_NAMES, LoraTrainingExample
+from backend.app.lora.dataset_quality import build_lora_dataset_quality_report, split_lora_dataset
 
 
 ALLOWED_EXAMPLE_FIELDS = {
@@ -28,6 +29,7 @@ class LoraDatasetExportReport(BaseModel):
     skipped_records: int
     output_path: str
     warnings: list[str] = Field(default_factory=list)
+    quality_report_path: str | None = None
 
 
 def export_lora_dataset(
@@ -35,9 +37,11 @@ def export_lora_dataset(
     output_path: str | Path,
     *,
     max_text_chars: int = 500,
+    report_path: str | Path | None = None,
+    split_ratios: dict[str, float] | None = None,
 ) -> LoraDatasetExportReport:
     output = Path(output_path)
-    examples: list[dict[str, Any]] = []
+    examples: list[LoraTrainingExample] = []
     warnings: list[str] = []
     total = 0
     for total, record in enumerate(records, start=1):
@@ -47,16 +51,25 @@ def export_lora_dataset(
         except ValidationError as exc:
             warnings.append(f"record {total} skipped: {exc.errors()[0]['msg']}")
             continue
-        examples.append(example.model_dump())
+        examples.append(example)
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(examples, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    output.write_text(json.dumps([example.model_dump() for example in examples], ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    resolved_report_path = Path(report_path) if report_path is not None else output.with_name("lora_dataset_report.json")
+    splits = split_lora_dataset(examples, split_ratios or {"train": 0.8, "validation": 0.1, "test": 0.1})
+    quality_report = build_lora_dataset_quality_report(examples, max_text_chars=max_text_chars, splits=splits)
+    resolved_report_path.parent.mkdir(parents=True, exist_ok=True)
+    resolved_report_path.write_text(
+        json.dumps(quality_report.model_dump(), ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
     return LoraDatasetExportReport(
         total_records=total,
         exported_records=len(examples),
         skipped_records=total - len(examples),
         output_path=str(output),
         warnings=warnings,
+        quality_report_path=str(resolved_report_path),
     )
 
 
@@ -103,6 +116,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Export a sanitized LoRA dataset dry-run JSON file.")
     parser.add_argument("--input", required=True, help="source JSON list")
     parser.add_argument("--output", required=True, help="sanitized output JSON file")
+    parser.add_argument("--report-output", default=None, help="quality report JSON path")
     parser.add_argument("--max-text-chars", type=int, default=500)
     parser.add_argument("--json", action="store_true", help="print export report JSON")
     args = parser.parse_args(argv)
@@ -111,6 +125,7 @@ def main(argv: list[str] | None = None) -> int:
         _load_records(args.input),
         args.output,
         max_text_chars=args.max_text_chars,
+        report_path=args.report_output,
     )
     if args.json:
         print(json.dumps(report.model_dump(), ensure_ascii=False, indent=2))

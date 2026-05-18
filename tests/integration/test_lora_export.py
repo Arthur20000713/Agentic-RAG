@@ -35,9 +35,12 @@ def test_export_lora_dataset_sanitizes_secrets_and_raw_rag_text() -> None:
     )
 
     exported = json.loads(output_path.read_text(encoding="utf-8"))
+    quality_report = json.loads(Path(report.quality_report_path).read_text(encoding="utf-8"))
     assert report.total_records == 1
     assert report.exported_records == 1
     assert report.skipped_records == 0
+    assert quality_report["total_examples"] == 1
+    assert quality_report["split_distribution"] == {"train": 0, "validation": 0, "test": 1}
     assert exported[0]["metadata"] == {"intent": "general_qa"}
     serialized = json.dumps(exported, ensure_ascii=False)
     assert "secret" not in serialized
