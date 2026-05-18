@@ -8,6 +8,9 @@ FailureCategory = Literal[
     "NO_COLLECTION",
     "NO_RETRIEVAL_RESULT",
     "LOW_RETRIEVAL_SCORE",
+    "NO_ANSWER_FALSE_POSITIVE",
+    "LOW_CONFIDENCE_ACCEPTED",
+    "MISSING_CITATION",
     "BAD_MAPPING",
     "UNSUPPORTED_CLAIM",
     "SAFETY_VIOLATION",
@@ -19,6 +22,9 @@ FAILURE_CATEGORIES: tuple[FailureCategory, ...] = (
     "NO_COLLECTION",
     "NO_RETRIEVAL_RESULT",
     "LOW_RETRIEVAL_SCORE",
+    "NO_ANSWER_FALSE_POSITIVE",
+    "LOW_CONFIDENCE_ACCEPTED",
+    "MISSING_CITATION",
     "BAD_MAPPING",
     "UNSUPPORTED_CLAIM",
     "SAFETY_VIOLATION",
@@ -33,6 +39,10 @@ RAG_UNAVAILABLE_ERRORS = {
     "RAG_SERVER_PATH_NOT_FOUND",
     "RAG_MCP_ERROR",
     "RAG_INTERNAL_ERROR",
+}
+LOW_CONFIDENCE_ERRORS = {
+    "RAG_LOW_CONFIDENCE_SCORE",
+    "RAG_LOW_CONFIDENCE_CITATION",
 }
 
 
@@ -51,6 +61,10 @@ def categorize_failure(result: Any) -> FailureCategory | None:
         return "NO_COLLECTION"
     if "LOW_RETRIEVAL_SCORE" in errors:
         return "LOW_RETRIEVAL_SCORE"
+    if checks.get("no_answer") is False and getattr(result, "category", None) == "no_answer":
+        return "NO_ANSWER_FALSE_POSITIVE"
+    if errors & LOW_CONFIDENCE_ERRORS:
+        return "LOW_CONFIDENCE_ACCEPTED"
     if "BAD_MAPPING" in errors or any(error.startswith("RAG_MAPPING_") for error in errors):
         return "BAD_MAPPING"
     if "UNSUPPORTED_CLAIM" in errors or "VERIFIER_UNSUPPORTED_CLAIM" in errors:
@@ -59,7 +73,9 @@ def categorize_failure(result: Any) -> FailureCategory | None:
         return "SAFETY_VIOLATION"
     if checks.get("rag_call") is False:
         return "NO_RETRIEVAL_RESULT"
-    if checks.get("citation") is False or checks.get("no_answer") is False:
+    if checks.get("citation") is False:
+        return "MISSING_CITATION"
+    if checks.get("no_answer") is False:
         return "UNSUPPORTED_CLAIM"
     return "UNSUPPORTED_CLAIM"
 

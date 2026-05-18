@@ -45,7 +45,7 @@ def test_compute_metrics_counts_overall_and_named_checks() -> None:
     assert metrics["by_category"]["general_qa"]["pass_rate"] == 1.0
     assert metrics["by_category"]["no_answer"]["pass_rate"] == 0.0
     assert set(metrics["failure_categories"]) == set(FAILURE_CATEGORIES)
-    assert metrics["failure_categories"]["UNSUPPORTED_CLAIM"] == 1
+    assert metrics["failure_categories"]["NO_ANSWER_FALSE_POSITIVE"] == 1
 
 
 def test_categorize_failure_uses_fixed_categories() -> None:
@@ -88,6 +88,44 @@ def test_categorize_failure_uses_fixed_categories() -> None:
     ) == "SAFETY_VIOLATION"
 
 
+def test_categorize_failure_distinguishes_v4_1_no_answer_and_citation_cases() -> None:
+    assert categorize_failure(
+        EvaluationCaseResult(
+            case_id="no_answer_false_positive",
+            category="no_answer",
+            passed=False,
+            checks={"no_answer": False},
+            rag_result_observed=True,
+            citation_count=1,
+            source_uri_count=1,
+            errors=[],
+        )
+    ) == "NO_ANSWER_FALSE_POSITIVE"
+    assert categorize_failure(
+        EvaluationCaseResult(
+            case_id="low_confidence_accepted",
+            category="general_qa",
+            passed=False,
+            checks={"citation": False},
+            rag_result_observed=True,
+            mapping_warnings=["RAG_LOW_CONFIDENCE_SCORE"],
+            errors=["RAG_LOW_CONFIDENCE_SCORE"],
+        )
+    ) == "LOW_CONFIDENCE_ACCEPTED"
+    assert categorize_failure(
+        EvaluationCaseResult(
+            case_id="missing_citation",
+            category="general_qa",
+            passed=False,
+            checks={"citation": False},
+            rag_result_observed=True,
+            citation_count=0,
+            source_uri_count=1,
+            errors=[],
+        )
+    ) == "MISSING_CITATION"
+
+
 def test_compute_metrics_outputs_failure_category_counts() -> None:
     results = [
         EvaluationCaseResult(
@@ -120,6 +158,42 @@ def test_compute_metrics_outputs_failure_category_counts() -> None:
     assert metrics["failure_categories"]["NO_RETRIEVAL_RESULT"] == 1
     assert metrics["failure_categories"]["LOW_RETRIEVAL_SCORE"] == 1
     assert all(category in metrics["failure_categories"] for category in FAILURE_CATEGORIES)
+
+
+def test_compute_metrics_outputs_v4_1_failure_category_counts() -> None:
+    results = [
+        EvaluationCaseResult(
+            case_id="no_answer_false_positive",
+            category="no_answer",
+            passed=False,
+            checks={"no_answer": False},
+            rag_result_observed=True,
+        ),
+        EvaluationCaseResult(
+            case_id="low_confidence_accepted",
+            category="general_qa",
+            passed=False,
+            checks={"citation": False},
+            rag_result_observed=True,
+            errors=["RAG_LOW_CONFIDENCE_CITATION"],
+            mapping_warnings=["RAG_LOW_CONFIDENCE_CITATION"],
+        ),
+        EvaluationCaseResult(
+            case_id="missing_citation",
+            category="general_qa",
+            passed=False,
+            checks={"citation": False},
+            rag_result_observed=True,
+            citation_count=0,
+            source_uri_count=1,
+        ),
+    ]
+
+    metrics = compute_metrics(results)
+
+    assert metrics["failure_categories"]["NO_ANSWER_FALSE_POSITIVE"] == 1
+    assert metrics["failure_categories"]["LOW_CONFIDENCE_ACCEPTED"] == 1
+    assert metrics["failure_categories"]["MISSING_CITATION"] == 1
 
 
 def test_compute_metrics_outputs_real_rag_observability_counts() -> None:
