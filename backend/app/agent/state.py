@@ -12,6 +12,7 @@ EvidenceStatus = Literal["success", "empty", "low_confidence", "error"]
 
 class MultiAgentState(BaseModel):
     session_id: str
+    request_id: str | None = None
     user_query: str
     normalized_query: str | None = None
     intent: IntentType | None = None

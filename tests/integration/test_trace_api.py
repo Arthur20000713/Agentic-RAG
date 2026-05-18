@@ -74,6 +74,61 @@ def test_trace_api_returns_agent_trace_bundle() -> None:
     assert payload["data"]["v3_debug_summary"]["route"]["status"] == "not_available"
 
 
+def test_trace_api_returns_rag_trace_bundle() -> None:
+    client = TestClient(create_app(settings=Settings(database={"url": "sqlite:///:memory:"})))
+    client.app.state.trace_service.record_rag_call(
+        session_id="s1",
+        request_id="req_rag",
+        rag_mode="real",
+        collection="livestock_v4_1",
+        query="calf diarrhea",
+        top_k=4,
+        result_count=2,
+        mapped_result_count=2,
+        top_score=0.82,
+        raw_response_id="raw_1",
+        status="success",
+        attempt_count=1,
+        latency_ms=120,
+    )
+
+    response = client.get("/api/traces/req_rag")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["data"]["rag_trace"][0]["request_id"] == "req_rag"
+    assert payload["data"]["rag_trace"][0]["rag_mode"] == "real"
+    assert payload["data"]["rag_trace"][0]["collection"] == "livestock_v4_1"
+    assert payload["data"]["rag_trace"][0]["attempt_count"] == 1
+
+
+def test_chat_request_id_can_query_v3_agent_trace() -> None:
+    settings = Settings(database={"url": "sqlite:///:memory:"}, v3={"enabled": True})
+    client = TestClient(create_app(settings=settings))
+
+    chat_response = client.post("/api/chat", json={"query": "How should cattle feeding be managed?", "session_id": "s_trace"})
+    chat_payload = chat_response.json()
+    request_id = chat_payload["request_id"]
+
+    trace_response = client.get(f"/api/traces/{request_id}")
+    trace_payload = trace_response.json()
+    data = trace_payload["data"]
+
+    assert chat_response.status_code == 200
+    assert trace_response.status_code == 200
+    assert data["request_id"] == request_id
+    assert data["agent_trace"][0]["request_id"] == request_id
+    assert data["v3_debug_summary"]["agent_path"] == [
+        "supervisor",
+        "rag_agent",
+        "verifier_agent",
+        "safety_agent",
+        "response_agent",
+    ]
+    assert data["safety_result"]["passed"] is True
+    assert data["verifier_result"]["passed"] is True
+
+
 def test_trace_api_returns_v3_debug_summary_for_route_safety_and_memory() -> None:
     settings = Settings(
         database={"url": "sqlite:///:memory:"},

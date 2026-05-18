@@ -77,3 +77,6 @@ class TraceService:
         if self.agent_trace_repository is None:
             return []
         return self.agent_trace_repository.list_by_request_id(request_id)
+
+    def list_rag_traces(self, request_id: str) -> list[dict[str, Any]]:
+        return self.rag_trace_repository.list_by_request_id(request_id)

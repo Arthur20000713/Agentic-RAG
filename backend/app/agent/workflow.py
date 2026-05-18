@@ -20,11 +20,12 @@ async def run_general_qa(
     *,
     rag_client: RagServerClient | None = None,
     session_id: str | None = None,
+    request_id: str | None = None,
 ) -> AgentState:
     rag_client = rag_client or FakeRagServerClient()
     state = AgentState(session_id=session_id or _new_session_id(), user_query=query, intent="general_qa", intent_confidence=0.8)
 
-    rag_result = await rag_client.query(query, top_k=4)
+    rag_result = await rag_client.query(query, top_k=4, request_id=request_id)
     state.tool_results["livestock_rag_search"] = rag_result.model_dump()
     _attach_rag_result(state, rag_result)
 
@@ -40,6 +41,7 @@ async def run_disease_consultation(
     *,
     rag_client: RagServerClient | None = None,
     session_id: str | None = None,
+    request_id: str | None = None,
     unsafe_draft_for_test: str | None = None,
 ) -> AgentState:
     rag_client = rag_client or FakeRagServerClient()
@@ -64,7 +66,7 @@ async def run_disease_consultation(
     state.tool_results["disease_risk_evaluator"] = risk_result.model_dump()
 
     rag_query = f"{query} 风险等级 {risk_result.risk_level} 处理原则"
-    rag_result = await rag_client.query(rag_query, top_k=4, domain="disease", species=slots.species)
+    rag_result = await rag_client.query(rag_query, top_k=4, domain="disease", species=slots.species, request_id=request_id)
     state.tool_results["livestock_rag_search"] = rag_result.model_dump()
     _attach_rag_result(state, rag_result)
 
@@ -145,4 +147,3 @@ def _verify_answer(
 
 def _new_session_id() -> str:
     return f"s_{uuid4().hex}"
-

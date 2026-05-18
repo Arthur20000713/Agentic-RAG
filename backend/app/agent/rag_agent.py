@@ -31,7 +31,12 @@ class RagAgent:
         state.active_agent = "rag_agent"
 
         try:
-            result = await self.rag_client.query(query, top_k=self.top_k, collection=self.collection)
+            result = await self.rag_client.query(
+                query,
+                top_k=self.top_k,
+                collection=self.collection,
+                request_id=state.request_id,
+            )
         except Exception as exc:
             latency_ms = self._latency_ms(started_at)
             self._record_exception(state, query=query, exc=exc, latency_ms=latency_ms)

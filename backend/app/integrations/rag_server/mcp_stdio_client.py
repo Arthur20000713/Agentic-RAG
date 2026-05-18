@@ -137,6 +137,7 @@ class RagServerMcpClient(RagServerClient):
         collection: str | None = None,
         domain: str | None = None,
         species: str | None = None,
+        request_id: str | None = None,
     ) -> RagSearchResult:
         started_at = time.perf_counter()
         resolved_collection = collection or self.settings.rag_server.collection
@@ -178,6 +179,7 @@ class RagServerMcpClient(RagServerClient):
                     error_code=error_result.error_code,
                     result_count=0,
                     mapped_result_count=0,
+                    request_id=request_id,
                     attempt_count=attempt_count,
                     latency_ms=self._elapsed_ms(started_at),
                 )
@@ -198,6 +200,7 @@ class RagServerMcpClient(RagServerClient):
                 error_code=error_result.error_code,
                 result_count=0,
                 mapped_result_count=0,
+                request_id=request_id,
                 attempt_count=attempt_count,
                 latency_ms=self._elapsed_ms(started_at),
             )
@@ -231,6 +234,7 @@ class RagServerMcpClient(RagServerClient):
                 error_code=error_result.error_code,
                 result_count=0,
                 mapped_result_count=0,
+                request_id=request_id,
                 attempt_count=attempt_count,
                 latency_ms=self._elapsed_ms(started_at),
             )
@@ -251,6 +255,7 @@ class RagServerMcpClient(RagServerClient):
             result_count=len(payload.get("hits", payload.get("results", []))),
             mapped_result_count=len(mapped.hits),
             top_score=mapped.hits[0].score if mapped.hits else None,
+            request_id=request_id,
             error_code=mapped.error_code,
             attempt_count=attempt_count,
             latency_ms=self._elapsed_ms(started_at),
@@ -770,6 +775,7 @@ asyncio.run(main())
         mapped_result_count: int | None = None,
         top_score: float | None = None,
         error_code: str | None = None,
+        request_id: str | None = None,
         attempt_count: int = 1,
         latency_ms: int | None = None,
     ) -> str | None:
@@ -777,6 +783,7 @@ asyncio.run(main())
             return raw_response_id
         return self.trace_service.record_rag_call(
             rag_mode=self.settings.rag_server.normalized_query_mode,
+            request_id=request_id,
             collection=collection,
             query=query,
             top_k=top_k,

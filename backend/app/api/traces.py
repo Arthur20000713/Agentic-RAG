@@ -12,14 +12,18 @@ router = APIRouter(prefix="/api/traces", tags=["traces"])
 @router.get("/{request_id}")
 async def get_trace_bundle(request: Request, request_id: str) -> dict:
     agent_trace = request.app.state.trace_service.list_agent_traces(request_id)
+    rag_trace = request.app.state.trace_service.list_rag_traces(request_id)
+    trace_items = _flatten_agent_trace(agent_trace)
+    safety_summary = _safety_summary(trace_items)
+    verifier_summary = _verifier_summary(trace_items)
     return ApiResponse.ok(
         {
             "request_id": request_id,
             "agent_trace": agent_trace,
             "tool_trace": [],
-            "rag_trace": [],
-            "safety_result": None,
-            "verifier_result": None,
+            "rag_trace": rag_trace,
+            "safety_result": None if safety_summary["status"] == "not_available" else safety_summary,
+            "verifier_result": None if verifier_summary["status"] == "not_available" else verifier_summary,
             "v3_debug_summary": v3_debug_summary(request, request_id, agent_trace),
         }
     ).model_dump()
@@ -79,6 +83,20 @@ def _safety_summary(trace_items: list[dict]) -> dict:
         "violation_count": latest.get("violation_count", 0),
         "hard_blocked": latest.get("hard_blocked", False),
         "violations": latest.get("violations", []),
+    }
+
+
+def _verifier_summary(trace_items: list[dict]) -> dict:
+    verifier_nodes = [item for item in trace_items if item.get("node") == "verifier_agent"]
+    if not verifier_nodes:
+        return {"status": "not_available"}
+    latest = verifier_nodes[-1]
+    return {
+        "status": latest.get("status"),
+        "passed": latest.get("passed"),
+        "issue_count": latest.get("issue_count", 0),
+        "citation_issue_count": latest.get("citation_issue_count", 0),
+        "unsupported_claim_count": latest.get("unsupported_claim_count", 0),
     }
 
 

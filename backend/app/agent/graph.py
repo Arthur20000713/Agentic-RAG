@@ -28,9 +28,10 @@ async def run_general_qa_graph(
     *,
     rag_client: RagServerClient | None = None,
     session_id: str | None = None,
+    request_id: str | None = None,
     settings: Settings | None = None,
 ) -> MultiAgentState:
-    state = MultiAgentState(session_id=session_id or _new_session_id(), user_query=query)
+    state = MultiAgentState(session_id=session_id or _new_session_id(), request_id=request_id, user_query=query)
     SupervisorAgent().route(state)
     record_shadow_route(state, settings=settings)
     await RagAgent(rag_client or FakeRagServerClient()).run(state)
@@ -47,13 +48,14 @@ async def run_disease_graph(
     rag_client: RagServerClient | None = None,
     session_context_service: SessionContextService | None = None,
     session_id: str | None = None,
+    request_id: str | None = None,
     animal_id: str | None = None,
     memory_service: MemoryService | None = None,
     unsafe_draft_for_test: str | None = None,
     settings: Settings | None = None,
 ) -> MultiAgentState:
     resolved_session_id = session_id or _new_session_id()
-    state = MultiAgentState(session_id=resolved_session_id, user_query=query)
+    state = MultiAgentState(session_id=resolved_session_id, request_id=request_id, user_query=query)
     SupervisorAgent().route(state)
     record_shadow_route(state, settings=settings)
     if session_context_service is not None:

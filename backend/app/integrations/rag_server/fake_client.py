@@ -21,6 +21,7 @@ class FakeRagServerClient(RagServerClient):
         collection: str | None = None,
         domain: str | None = None,
         species: str | None = None,
+        request_id: str | None = None,
     ) -> RagSearchResult:
         fixture_name = self._select_query_fixture(query)
         payload = self._load_json(fixture_name)

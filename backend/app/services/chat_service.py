@@ -19,7 +19,7 @@ class ChatService:
         self.settings = settings or Settings()
         self.router = IntentRouter()
 
-    async def ask(self, request: ChatRequest) -> AgentState | MultiAgentState:
+    async def ask(self, request: ChatRequest, *, request_id: str | None = None) -> AgentState | MultiAgentState:
         route = self.router.route(request.query)
         if FeatureFlagService(self.settings).v3_enabled:
             if route.intent == "disease_consultation":
@@ -27,6 +27,7 @@ class ChatService:
                     request.query,
                     rag_client=self.rag_client,
                     session_id=request.session_id,
+                    request_id=request_id,
                     settings=self.settings,
                 )
             if route.intent == "general_qa":
@@ -34,6 +35,7 @@ class ChatService:
                     request.query,
                     rag_client=self.rag_client,
                     session_id=request.session_id,
+                    request_id=request_id,
                     settings=self.settings,
                 )
         if route.intent == "disease_consultation":
@@ -41,12 +43,14 @@ class ChatService:
                 request.query,
                 rag_client=self.rag_client,
                 session_id=request.session_id,
+                request_id=request_id,
             )
         if route.intent == "general_qa":
             return await run_general_qa(
                 request.query,
                 rag_client=self.rag_client,
                 session_id=request.session_id,
+                request_id=request_id,
             )
         state = AgentState(
             session_id=request.session_id or "s_api",

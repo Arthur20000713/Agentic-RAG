@@ -15,6 +15,7 @@ class RagServerClient(ABC):
         collection: str | None = None,
         domain: str | None = None,
         species: str | None = None,
+        request_id: str | None = None,
     ) -> RagSearchResult:
         """Search the RAG-SERVER knowledge hub."""
 
@@ -30,4 +31,3 @@ class RagServerClient(ABC):
     @abstractmethod
     async def list_collections(self, *, include_stats: bool = True) -> list[str]:
         """Return available RAG-SERVER collections."""
-
