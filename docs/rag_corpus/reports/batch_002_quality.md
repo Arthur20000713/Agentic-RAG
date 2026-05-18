@@ -4,9 +4,9 @@
 - collection: livestock_v4_2
 - source count: 10
 - ingestion status: planned
-- preflight status: not_run
-- eval summary: not_run
-- failure categories: not_run
+- preflight status: failed
+- eval summary: skipped: `RAG_COLLECTION_NOT_FOUND`
+- failure categories: `RAG_COLLECTION_NOT_FOUND`
 
 ## Scope
 
@@ -16,9 +16,9 @@
 
 - Local corpus files: not prepared in this repository.
 - RAG-SERVER ingest: not executed.
-- Real RAG preflight: not run for this collection.
-- Real eval: not run for this collection.
-- Quality gate: not evaluated.
+- Real RAG preflight: failed because `livestock_v4_2` is not present in RAG-SERVER collections.
+- Real eval: skipped in optional real mode with `RAG_COLLECTION_NOT_FOUND`.
+- Quality gate: failed because skipped real eval reports cannot pass the gate.
 
 ## Trend
 
@@ -27,10 +27,10 @@
 
 | Metric | Before | After | Delta |
 |---|---:|---:|---:|
-| pass_rate | n/a | not_run | n/a |
-| no_answer_accuracy | n/a | not_run | n/a |
-| source_uri_coverage | n/a | not_run | n/a |
-| safety_pass_rate | n/a | not_run | n/a |
+| pass_rate | n/a | skipped | n/a |
+| no_answer_accuracy | n/a | skipped | n/a |
+| source_uri_coverage | n/a | skipped | n/a |
+| safety_pass_rate | n/a | skipped | n/a |
 
 ## Required Follow-Up
 
@@ -38,4 +38,4 @@
 2. Run `scripts/check_rag_corpus.py --batch docs\rag_corpus\batches\batch_002.yaml --dry-run`.
 3. After user confirmation, run the generated RAG-SERVER ingest commands outside fake mode.
 4. Run real preflight, real eval, and quality gate checks.
-5. Replace the `not_run` fields above with measured results.
+5. Replace the skipped fields above with measured metric values after `livestock_v4_2` exists in RAG-SERVER.
