@@ -12,6 +12,6 @@ router = APIRouter(prefix="/api", tags=["chat"])
 
 @router.post("/chat")
 async def chat(payload: ChatRequest, request: Request) -> dict:
-    service = ChatService(request.app.state.rag_client)
+    service = ChatService(request.app.state.rag_client, settings=request.app.state.settings)
     state = await service.ask(payload)
     return ApiResponse.ok(state_to_chat_data(state, settings=request.app.state.settings)).model_dump()

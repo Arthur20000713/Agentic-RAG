@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from typing import Any
+
+from backend.app.agent.graph import run_disease_graph, run_general_qa_graph
 from backend.app.agent.router import IntentRouter
+from backend.app.agent.state import MultiAgentState
 from backend.app.core.config import Settings
 from backend.app.agent.workflow import run_disease_consultation, run_general_qa
 from backend.app.integrations.rag_server.base import RagServerClient
@@ -10,12 +14,28 @@ from backend.app.services.feature_flag_service import FeatureFlagService, Featur
 
 
 class ChatService:
-    def __init__(self, rag_client: RagServerClient) -> None:
+    def __init__(self, rag_client: RagServerClient, settings: Settings | None = None) -> None:
         self.rag_client = rag_client
+        self.settings = settings or Settings()
         self.router = IntentRouter()
 
-    async def ask(self, request: ChatRequest) -> AgentState:
+    async def ask(self, request: ChatRequest) -> AgentState | MultiAgentState:
         route = self.router.route(request.query)
+        if FeatureFlagService(self.settings).v3_enabled:
+            if route.intent == "disease_consultation":
+                return await run_disease_graph(
+                    request.query,
+                    rag_client=self.rag_client,
+                    session_id=request.session_id,
+                    settings=self.settings,
+                )
+            if route.intent == "general_qa":
+                return await run_general_qa_graph(
+                    request.query,
+                    rag_client=self.rag_client,
+                    session_id=request.session_id,
+                    settings=self.settings,
+                )
         if route.intent == "disease_consultation":
             return await run_disease_consultation(
                 request.query,
@@ -41,29 +61,39 @@ class ChatService:
         return state
 
 
-def state_to_chat_data(state: AgentState, *, settings: Settings | None = None) -> dict:
+def state_to_chat_data(state: AgentState | MultiAgentState, *, settings: Settings | None = None) -> dict:
     return {
         "answer": state.final_answer,
         "intent": state.intent,
         "risk_level": state.risk_level,
         "sources": _state_sources(state),
         "tools_used": list(state.tool_results),
-        "need_follow_up": state.need_follow_up,
-        "follow_up_questions": state.follow_up_questions,
+        "need_follow_up": getattr(state, "need_follow_up", False),
+        "follow_up_questions": getattr(state, "follow_up_questions", []),
         "errors": [error.model_dump() for error in state.errors],
-        "v3_debug": build_debug_payload(settings),
+        "v3_debug": build_debug_payload(settings, state=state),
     }
 
 
-def build_debug_payload(settings: Settings | None = None) -> dict:
+def build_debug_payload(settings: Settings | None = None, *, state: AgentState | MultiAgentState | None = None) -> dict:
     snapshot = FeatureFlagService(settings or Settings()).snapshot()
-    return {
+    payload: dict[str, Any] = {
         "v3_enabled": snapshot.v3_enabled,
         "flags": snapshot.model_dump(),
     }
+    if isinstance(state, MultiAgentState):
+        payload.update(
+            {
+                "agent_path": [item.get("node") for item in state.agent_trace if item.get("node")],
+                "safety": state.safety_result,
+                "verifier": state.verification_result,
+                "evidence_status": state.evidence_status,
+            }
+        )
+    return payload
 
 
-def _state_sources(state: AgentState) -> list[dict]:
+def _state_sources(state: AgentState | MultiAgentState) -> list[dict]:
     rag_result = state.tool_results.get("livestock_rag_search")
     if isinstance(rag_result, dict) and rag_result.get("status") == "success":
         hits = list(rag_result.get("hits") or [])

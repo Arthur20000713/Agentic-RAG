@@ -64,6 +64,32 @@ def test_chat_api_reports_v3_debug_flags_without_changing_v2_fields() -> None:
     assert payload["data"]["v3_debug"]["flags"]["memory_write_enabled"] is True
 
 
+def test_chat_api_uses_v3_graph_when_feature_flag_enabled() -> None:
+    settings = Settings(
+        database={"url": "sqlite:///:memory:"},
+        v3={"enabled": True},
+    )
+    client = TestClient(create_app(settings=settings))
+
+    response = client.post("/api/chat", json={"query": "How should cattle feeding be managed?", "session_id": "s_v3_graph"})
+
+    payload = response.json()
+    assert response.status_code == 200
+    _assert_response_contract(payload)
+    assert payload["code"] == 0
+    assert payload["data"]["intent"] == "general_qa"
+    assert payload["data"]["v3_debug"]["v3_enabled"] is True
+    assert payload["data"]["v3_debug"]["agent_path"] == [
+        "supervisor",
+        "rag_agent",
+        "verifier_agent",
+        "safety_agent",
+        "response_agent",
+    ]
+    assert payload["data"]["v3_debug"]["verifier"]["passed"] is True
+    assert payload["data"]["v3_debug"]["safety"]["passed"] is True
+
+
 def test_measurement_api_contract() -> None:
     client = _client()
 
