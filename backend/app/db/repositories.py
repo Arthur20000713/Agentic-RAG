@@ -360,7 +360,7 @@ class ModelRouteLogRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self.conn = conn
 
-    def add(
+    def create(
         self,
         *,
         session_id: str | None = None,
@@ -375,9 +375,10 @@ class ModelRouteLogRepository:
             INSERT INTO model_route_log (
                 session_id, request_id, task_type, safety_level, selected_model,
                 route_mode, shadow_model, local_candidate_allowed, blocked_reason,
-                reason, route_request_json, route_decision_json
+                reason, fallback_required, fallback_reason, latency_ms, model_version,
+                route_request_json, route_decision_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 session_id,
@@ -390,12 +391,31 @@ class ModelRouteLogRepository:
                 1 if decision_data.get("local_candidate_allowed") else 0,
                 decision_data.get("blocked_reason"),
                 decision_data.get("reason"),
+                1 if decision_data.get("fallback_required") else 0,
+                decision_data.get("fallback_reason"),
+                decision_data.get("latency_ms"),
+                decision_data.get("model_version"),
                 json.dumps(request_data, ensure_ascii=False),
                 json.dumps(decision_data, ensure_ascii=False),
             ),
         )
         self.conn.commit()
         return int(cursor.lastrowid)
+
+    def add(
+        self,
+        *,
+        session_id: str | None = None,
+        request_id: str | None = None,
+        route_request: Any,
+        route_decision: Any,
+    ) -> int:
+        return self.create(
+            session_id=session_id,
+            request_id=request_id,
+            route_request=route_request,
+            route_decision=route_decision,
+        )
 
     def get(self, log_id: int) -> dict[str, Any] | None:
         row = self.conn.execute(
@@ -418,6 +438,7 @@ class ModelRouteLogRepository:
     def _decode(self, row: sqlite3.Row) -> dict[str, Any]:
         data = dict(row)
         data["local_candidate_allowed"] = bool(data["local_candidate_allowed"])
+        data["fallback_required"] = bool(data.get("fallback_required"))
         data["route_request"] = json.loads(data.pop("route_request_json"))
         data["route_decision"] = json.loads(data.pop("route_decision_json"))
         return data

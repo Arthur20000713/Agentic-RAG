@@ -161,6 +161,10 @@ CREATE TABLE IF NOT EXISTS model_route_log (
     local_candidate_allowed INTEGER DEFAULT 0,
     blocked_reason TEXT,
     reason TEXT,
+    fallback_required INTEGER DEFAULT 0,
+    fallback_reason TEXT,
+    latency_ms INTEGER,
+    model_version TEXT,
     route_request_json TEXT NOT NULL,
     route_decision_json TEXT NOT NULL,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -232,6 +236,10 @@ CREATE TABLE IF NOT EXISTS eval_run_log (
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_SQL)
     _ensure_column(conn, "rag_trace_log", "attempt_count", "INTEGER DEFAULT 1")
+    _ensure_column(conn, "model_route_log", "fallback_required", "INTEGER DEFAULT 0")
+    _ensure_column(conn, "model_route_log", "fallback_reason", "TEXT")
+    _ensure_column(conn, "model_route_log", "latency_ms", "INTEGER")
+    _ensure_column(conn, "model_route_log", "model_version", "TEXT")
     conn.commit()
 
 
