@@ -2,8 +2,42 @@ from __future__ import annotations
 
 import asyncio
 
+from backend.app.core.config import Settings
 from backend.app.model.base import BaseModelClient
+from backend.app.model.local_backends import BaseLocalBackend, LocalBackendRequest, LocalBackendResponse
 from backend.app.model.local_client import LocalModelClient
+
+
+class RecordingBackend(BaseLocalBackend):
+    provider = "ollama"
+
+    def __init__(self) -> None:
+        self.requests: list[LocalBackendRequest] = []
+
+    async def generate(self, request: LocalBackendRequest) -> LocalBackendResponse:
+        self.requests.append(request)
+        return LocalBackendResponse(
+            status="success",
+            schema_name=request.schema_name,
+            content={
+                "status": "success",
+                "schema_name": request.schema_name,
+                "fallback_required": False,
+                "fields": {"species": "calf"},
+            },
+            fallback_required=False,
+            provider=self.provider,
+            latency_ms=12,
+        )
+
+
+class RecordingClient(LocalModelClient):
+    def __init__(self, settings: Settings, backend: BaseLocalBackend) -> None:
+        super().__init__(settings=settings)
+        self._backend = backend
+
+    def _select_backend(self) -> BaseLocalBackend | None:
+        return self._backend
 
 
 def test_local_model_client_implements_base_model_client() -> None:
@@ -67,3 +101,66 @@ def test_local_model_client_returns_fixed_json_for_generic_structured_task() -> 
         "provider": "mock",
         "context_keys": ["intent", "session_id"],
     }
+
+
+def test_local_model_client_calls_ollama_backend_for_real_provider() -> None:
+    settings = Settings(
+        local_model={
+            "enabled": True,
+            "provider": "ollama",
+            "endpoint": "http://127.0.0.1:11434",
+            "model": "qwen2.5:7b-instruct",
+            "timeout_seconds": 8,
+        }
+    )
+    backend = RecordingBackend()
+    client = RecordingClient(settings, backend)
+
+    result = asyncio.run(client.generate_json("extract calf slots", schema_name="slot_extraction"))
+
+    assert result["status"] == "success"
+    assert result["fallback_required"] is False
+    assert result["provider"] == "ollama"
+    assert result["model"] == "qwen2.5:7b-instruct"
+    assert backend.requests == [
+        LocalBackendRequest(
+            prompt="extract calf slots",
+            schema_name="slot_extraction",
+            endpoint="http://127.0.0.1:11434",
+            model="qwen2.5:7b-instruct",
+            timeout_seconds=8,
+            context=None,
+        )
+    ]
+
+
+def test_local_model_client_blocks_final_answer_when_not_allowed() -> None:
+    settings = Settings(
+        local_model={
+            "enabled": True,
+            "provider": "ollama",
+            "endpoint": "http://127.0.0.1:11434",
+            "model": "qwen2.5:7b-instruct",
+            "allow_final_answer": False,
+        }
+    )
+    backend = RecordingBackend()
+    client = RecordingClient(settings, backend)
+
+    result = asyncio.run(client.generate_json("answer directly", schema_name="final_answer"))
+
+    assert result["status"] == "unsupported"
+    assert result["fallback_required"] is True
+    assert result["reason"] == "local model final_answer takeover is disabled"
+    assert backend.requests == []
+
+
+def test_local_model_client_returns_fallback_when_real_provider_config_missing() -> None:
+    settings = Settings(local_model={"enabled": True, "provider": "ollama"})
+    client = LocalModelClient(settings=settings)
+
+    result = asyncio.run(client.generate_json("extract slots", schema_name="slot_extraction"))
+
+    assert result["status"] == "error"
+    assert result["fallback_required"] is True
+    assert result["error_code"] == "LOCAL_MODEL_CONFIG_ERROR"
