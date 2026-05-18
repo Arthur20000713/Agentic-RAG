@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 
 from backend.app.core.config import PROJECT_ROOT, Settings, load_settings
+from backend.app.evaluation.corpus_batch import CorpusBatch, load_corpus_batch, validate_corpus_batch
 from backend.app.evaluation.failure_analysis import build_failure_report
 from backend.app.evaluation.golden_runner import EvaluationReport, GoldenSetRunner
 from backend.app.evaluation.real_rag_preflight import RealRagPreflightRunner
@@ -42,6 +43,7 @@ class RealRagEvalRunner:
         output_dir: str | Path | None = None,
         settings: Settings | None = None,
         rag_client: RagServerClient | None = None,
+        batch: str | Path | None = None,
     ) -> None:
         self.settings = settings or load_settings()
         self.settings.rag_server.query_mode = "real"
@@ -51,6 +53,12 @@ class RealRagEvalRunner:
         if not self.output_dir.is_absolute():
             self.output_dir = PROJECT_ROOT / self.output_dir
         self.rag_client = rag_client
+        self.batch_path = Path(batch) if batch is not None else None
+        if self.batch_path is not None and not self.batch_path.is_absolute():
+            self.batch_path = PROJECT_ROOT / self.batch_path
+        self.batch = self._load_batch(self.batch_path) if self.batch_path is not None else None
+        if self.batch is not None and self.batch.collection:
+            self.settings.rag_server.collection = self.batch.collection
 
     def run(self) -> EvaluationReport:
         if self.rag_client is None:
@@ -92,16 +100,23 @@ class RealRagEvalRunner:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         payload = unavailable.to_payload()
         payload.setdefault("preflight_summary", self._read_preflight_summary())
+        batch_summary = self._batch_summary()
+        if batch_summary is not None:
+            payload["batch"] = batch_summary
         with (self.output_dir / "eval_result.json").open("w", encoding="utf-8") as file:
             json.dump(payload, file, ensure_ascii=False, indent=2)
             file.write("\n")
         with (self.output_dir / "eval_result.csv").open("w", encoding="utf-8", newline="") as file:
-            writer = csv.DictWriter(file, fieldnames=["status", "mode", "error_code", "reason", "preflight_summary"])
+            writer = csv.DictWriter(
+                file,
+                fieldnames=["status", "mode", "error_code", "reason", "preflight_summary", "batch"],
+            )
             writer.writeheader()
             writer.writerow(
                 {
                     **payload,
                     "preflight_summary": json.dumps(payload.get("preflight_summary"), ensure_ascii=False, sort_keys=True),
+                    "batch": json.dumps(payload.get("batch"), ensure_ascii=False, sort_keys=True),
                 }
             )
         (self.output_dir / "eval_summary.md").write_text(
@@ -112,6 +127,7 @@ class RealRagEvalRunner:
                     "- Status: skipped",
                     f"- Error code: {unavailable.error_code}",
                     f"- Reason: {unavailable.message}",
+                    *self._batch_summary_lines(),
                     "",
                 ]
             ),
@@ -164,6 +180,9 @@ class RealRagEvalRunner:
                 "preflight_summary": self._read_preflight_summary(),
                 **report.model_dump(),
             }
+            batch_summary = self._batch_summary()
+            if batch_summary is not None:
+                payload["batch"] = batch_summary
             json.dump(payload, file, ensure_ascii=False, indent=2)
             file.write("\n")
 
@@ -210,6 +229,7 @@ class RealRagEvalRunner:
     def _write_summary(self, report: EvaluationReport) -> None:
         metrics = report.metrics
         preflight = self._read_preflight_summary() or {}
+        batch_lines = self._batch_summary_lines()
         lines = [
             "# Real RAG Evaluation Summary",
             "",
@@ -217,6 +237,7 @@ class RealRagEvalRunner:
             f"- Passed cases: {metrics['passed_cases']}",
             f"- Failed cases: {metrics['failed_cases']}",
             f"- Pass rate: {metrics['pass_rate']:.2%}",
+            *batch_lines,
             "",
             "## Metrics",
             "",
@@ -286,3 +307,33 @@ class RealRagEvalRunner:
             "warnings": payload.get("warnings", []),
             "duration_ms": payload.get("duration_ms", 0),
         }
+
+    def _load_batch(self, batch_path: Path | None) -> CorpusBatch | None:
+        if batch_path is None:
+            return None
+        batch = load_corpus_batch(batch_path)
+        failures = validate_corpus_batch(batch, require_files=False)
+        if failures:
+            raise ValueError(f"invalid corpus batch {batch_path}: {'; '.join(failures)}")
+        return batch
+
+    def _batch_summary(self) -> dict | None:
+        if self.batch is None:
+            return None
+        return {
+            "batch_id": self.batch.batch_id,
+            "collection": self.batch.collection,
+            "manifest": self.batch.manifest,
+            "source_count": len(self.batch.sources),
+            "quality_gate": self.batch.quality_gate.model_dump(),
+        }
+
+    def _batch_summary_lines(self) -> list[str]:
+        summary = self._batch_summary()
+        if summary is None:
+            return []
+        return [
+            f"- Batch id: {summary['batch_id']}",
+            f"- Batch collection: {summary['collection']}",
+            f"- Batch manifest: {summary['manifest']}",
+        ]

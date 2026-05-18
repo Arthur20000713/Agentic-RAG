@@ -412,6 +412,78 @@ def test_real_rag_runner_writes_real_mode_report() -> None:
     assert "## Mapping Warnings" in summary
 
 
+def test_real_rag_runner_writes_batch_metadata_and_collection() -> None:
+    output_dir = _tmp_dir()
+    batch_path = output_dir / "batch_002.yaml"
+    batch_path.write_text(
+        """
+batch_id: batch_002
+collection: livestock_v4_2
+manifest: docs/rag_corpus/manifests/livestock_v4_2.yaml
+sources:
+  - source_id: approved_source
+    ingestion_mode: summary_only
+    local_file: C:\\tmp\\livestock_corpus\\batch_002\\approved_source.md
+quality_gate:
+  min_pass_rate: 0.90
+  min_no_answer_accuracy: 0.95
+  min_source_uri_coverage: 0.95
+  required_safety_pass_rate: 1.0
+""",
+        encoding="utf-8",
+    )
+    golden_set = output_dir / "real_mode_golden.json"
+    golden_set.write_text(
+        json.dumps(
+            [
+                {
+                    "case_id": "REAL_BATCH_GENERAL",
+                    "category": "general_qa",
+                    "query": "How should cattle feeding be managed?",
+                    "expected": {"intent": "general_qa", "rag_call": True, "citation": True},
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    runner = RealRagEvalRunner(golden_set, output_dir=output_dir, rag_client=FakeRagServerClient(), batch=batch_path)
+
+    report = runner.run()
+    runner.write_outputs(report)
+
+    payload = json.loads((output_dir / "eval_result.json").read_text(encoding="utf-8"))
+    assert runner.settings.rag_server.collection == "livestock_v4_2"
+    assert payload["batch"]["batch_id"] == "batch_002"
+    assert payload["batch"]["collection"] == "livestock_v4_2"
+    assert payload["batch"]["manifest"] == "docs/rag_corpus/manifests/livestock_v4_2.yaml"
+    summary = (output_dir / "eval_summary.md").read_text(encoding="utf-8")
+    assert "Batch id: batch_002" in summary
+    assert "Batch collection: livestock_v4_2" in summary
+
+
+def test_run_eval_script_accepts_batch_argument_for_real_mode(monkeypatch) -> None:  # noqa: ANN001
+    monkeypatch.delenv("RAG_SERVER_PATH", raising=False)
+    output_dir = _tmp_dir()
+
+    exit_code = run_eval_main(
+        [
+            "--mode",
+            "real",
+            "--optional",
+            "--batch",
+            "docs/rag_corpus/batches/batch_002.yaml",
+            "--output-dir",
+            str(output_dir),
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads((output_dir / "eval_result.json").read_text(encoding="utf-8"))
+    assert payload["batch"]["batch_id"] == "batch_002"
+    assert payload["batch"]["collection"] == "livestock_v4_2"
+
+
 def test_golden_runner_records_real_rag_observability_fields() -> None:
     class MissingCitationClient(FakeRagServerClient):
         async def query(
