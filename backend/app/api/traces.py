@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request
 
 from backend.app.core.response import ApiResponse
 from backend.app.services.feature_flag_service import FeatureFlagService
+from backend.app.services.chat_service import build_rag_status_payload
 
 
 router = APIRouter(prefix="/api/traces", tags=["traces"])
@@ -38,6 +39,7 @@ def v3_debug_summary(request: Request, request_id: str, agent_trace: list[dict])
         "route": _route_summary(trace_items),
         "safety": _safety_summary(trace_items),
         "memory": _memory_summary(request, flags),
+        "rag_status": build_rag_status_payload(request.app.state.settings),
         "agent_path": [str(item.get("node")) for item in trace_items if item.get("node")],
     }
 

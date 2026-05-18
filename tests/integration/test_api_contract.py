@@ -62,6 +62,25 @@ def test_chat_api_reports_v3_debug_flags_without_changing_v2_fields() -> None:
     assert payload["data"]["v3_debug"]["flags"]["model_router_enabled"] is True
     assert payload["data"]["v3_debug"]["flags"]["model_router_shadow_mode"] is True
     assert payload["data"]["v3_debug"]["flags"]["memory_write_enabled"] is True
+    assert payload["data"]["v3_debug"]["rag_status"]["quality_gate_status"] == "not_configured"
+
+
+def test_chat_api_debug_includes_v4_2_rag_status_fields() -> None:
+    settings = Settings(
+        database={"url": "sqlite:///:memory:"},
+        rag_server={"query_mode": "real", "repo_path": None, "collection": "livestock_v4_2"},
+    )
+    client = TestClient(create_app(settings=settings))
+
+    response = client.post("/api/chat", json={"query": "How should cattle feeding be managed?", "session_id": "s_v4_2"})
+
+    payload = response.json()
+    rag_status = payload["data"]["v3_debug"]["rag_status"]
+    assert response.status_code == 200
+    assert rag_status["rag_mode"] == "real"
+    assert rag_status["collection"] == "livestock_v4_2"
+    assert rag_status["batch_id"] == "batch_002"
+    assert rag_status["quality_gate_status"] == "not_configured"
 
 
 def test_chat_api_uses_v3_graph_when_feature_flag_enabled() -> None:

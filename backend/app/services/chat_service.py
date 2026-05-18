@@ -5,7 +5,7 @@ from typing import Any
 from backend.app.agent.graph import run_disease_graph, run_general_qa_graph
 from backend.app.agent.router import IntentRouter
 from backend.app.agent.state import MultiAgentState
-from backend.app.core.config import Settings
+from backend.app.core.config import PROJECT_ROOT, Settings
 from backend.app.agent.workflow import run_disease_consultation, run_general_qa
 from backend.app.integrations.rag_server.base import RagServerClient
 from backend.app.schemas.agent import AgentState
@@ -84,6 +84,7 @@ def build_debug_payload(settings: Settings | None = None, *, state: AgentState |
     payload: dict[str, Any] = {
         "v3_enabled": snapshot.v3_enabled,
         "flags": snapshot.model_dump(),
+        "rag_status": build_rag_status_payload(settings or Settings()),
     }
     if isinstance(state, MultiAgentState):
         payload.update(
@@ -95,6 +96,37 @@ def build_debug_payload(settings: Settings | None = None, *, state: AgentState |
             }
         )
     return payload
+
+
+def build_rag_status_payload(settings: Settings) -> dict:
+    rag_settings = settings.rag_server
+    collection = rag_settings.collection
+    batch_summary = v4_2_quality_summary(collection=collection, real_configured=bool(rag_settings.repo_path))
+    return {
+        "rag_mode": rag_settings.normalized_query_mode,
+        "collection": collection,
+        "batch_id": batch_summary["batch_id"],
+        "quality_gate_status": batch_summary["quality_gate_status"],
+    }
+
+
+def v4_2_quality_summary(*, collection: str, real_configured: bool) -> dict:
+    if collection != "livestock_v4_2":
+        return {"batch_id": None, "quality_gate_status": "not_configured"}
+    batch_id = "batch_002"
+    if not real_configured:
+        return {"batch_id": batch_id, "quality_gate_status": "not_configured"}
+    report_path = PROJECT_ROOT / "docs" / "rag_corpus" / "reports" / "batch_002_quality.md"
+    if not report_path.exists():
+        return {"batch_id": batch_id, "quality_gate_status": "missing_report"}
+    text = report_path.read_text(encoding="utf-8").lower()
+    if "quality gate: not evaluated" in text:
+        return {"batch_id": batch_id, "quality_gate_status": "not_evaluated"}
+    if "quality gate: passed" in text:
+        return {"batch_id": batch_id, "quality_gate_status": "passed"}
+    if "quality gate: failed" in text:
+        return {"batch_id": batch_id, "quality_gate_status": "failed"}
+    return {"batch_id": batch_id, "quality_gate_status": "unknown"}
 
 
 def _state_sources(state: AgentState | MultiAgentState) -> list[dict]:

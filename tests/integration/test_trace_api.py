@@ -187,3 +187,6 @@ def test_trace_api_returns_v3_debug_summary_for_route_safety_and_memory() -> Non
     assert summary["safety"]["hard_blocked"] is True
     assert summary["memory"]["write_enabled"] is True
     assert summary["memory"]["event_count"] == 1
+    assert summary["rag_status"]["rag_mode"] == "fake"
+    assert summary["rag_status"]["collection"] == "default"
+    assert summary["rag_status"]["quality_gate_status"] == "not_configured"
