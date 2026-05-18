@@ -83,8 +83,20 @@ def test_frontend_debug_panel_contract() -> None:
     assert "function renderDebugPanel" in js
     assert "function buildDebugSummary" in js
     assert "function renderDebugSummary" in js
+    assert "function renderRagStatus" in js
     assert 'fetch("/api/rag/status"' in js
-    for field in ("request_id", "rag_mode", "agent_path", "safety", "verifier", "v3_debug_summary"):
+    for field in (
+        "request_id",
+        "rag_mode",
+        "agent_path",
+        "safety",
+        "verifier",
+        "v3_debug_summary",
+        "rag_status",
+        "collection",
+        "batch_id",
+        "quality_gate_status",
+    ):
         assert field in js
     assert trace["data"]["request_id"] == "req_debug"
     assert "agent_trace" in trace["data"]

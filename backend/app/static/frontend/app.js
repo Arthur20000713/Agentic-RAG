@@ -22,9 +22,11 @@ function renderDebugPanel(payload) {
 function buildDebugSummary(payload) {
   const data = payload.data || {};
   const v3DebugSummary = data.v3_debug_summary || buildV3DebugSummary(data);
+  const ragStatus = data.v3_debug?.rag_status || v3DebugSummary.rag_status || state.ragStatus || {};
   return {
     request_id: payload.request_id || data.request_id || null,
-    rag_mode: data.rag_mode_effective || data.rag_mode || state.ragStatus?.rag_mode_effective || state.ragStatus?.rag_mode || null,
+    rag_mode: data.rag_mode_effective || data.rag_mode || ragStatus.rag_mode_effective || ragStatus.rag_mode || null,
+    rag_status: normalizeRagStatus(ragStatus),
     agent_path: data.agent_path || nodesFromTrace(data.agent_trace) || data.tools_used || [],
     safety: data.safety_result || data.safety || "not_available",
     verifier: data.verification_result || data.verifier_result || "not_available",
@@ -42,6 +44,7 @@ function buildV3DebugSummary(data) {
       write_enabled: Boolean(flags.memory_write_enabled),
       read_enabled: Boolean(flags.memory_read_enabled),
     },
+    rag_status: data.v3_debug?.rag_status || {},
   };
 }
 
@@ -58,7 +61,28 @@ function renderDebugSummary(summary) {
     <div><strong>Route</strong><span>${escapeHtml(route.route_mode || route.status || "not_available")}</span></div>
     <div><strong>Safety</strong><span>${escapeHtml(String(safety.passed ?? safety.status ?? "not_available"))}</span></div>
     <div><strong>Memory</strong><span>${escapeHtml(memory.write_enabled ? "write:on" : "write:off")}</span></div>
+    ${renderRagStatus(summary.rag_status)}
   `;
+}
+
+function normalizeRagStatus(ragStatus) {
+  return {
+    rag_mode: ragStatus.rag_mode_effective || ragStatus.rag_mode || "unknown",
+    collection: ragStatus.collection || ragStatus.default_collection || "unknown",
+    batch_id: ragStatus.batch_id || null,
+    quality_gate_status: ragStatus.quality_gate_status || "not_configured",
+  };
+}
+
+function renderRagStatus(ragStatus) {
+  const status = normalizeRagStatus(ragStatus || {});
+  const parts = [
+    status.rag_mode,
+    status.collection,
+    status.batch_id || "no_batch",
+    status.quality_gate_status,
+  ];
+  return `<div class="rag-status"><strong>RAG</strong><span>${escapeHtml(parts.join(" / "))}</span></div>`;
 }
 
 function nodesFromTrace(agentTrace) {

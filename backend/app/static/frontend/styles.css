@@ -159,6 +159,11 @@ input {
   background: #f8fafc;
 }
 
+.debug-summary .rag-status {
+  border-color: #0f766e;
+  background: #f0fdfa;
+}
+
 .debug-summary strong,
 .debug-summary span {
   display: block;
