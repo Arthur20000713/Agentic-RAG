@@ -29,4 +29,14 @@ Outputs:
 
 Real RAG evaluation is explicit and optional. It requires `RAG_SERVER_PATH` or `rag_server.repo_path`; when `--optional` is set and the path is missing, the runner writes a skipped report instead of falling back to fake RAG.
 
-Evaluation metrics include fixed failure category counts under `metrics.failure_categories`: `NO_COLLECTION`, `NO_RETRIEVAL_RESULT`, `LOW_RETRIEVAL_SCORE`, `BAD_MAPPING`, `UNSUPPORTED_CLAIM`, `SAFETY_VIOLATION`, `TOOL_TIMEOUT`, and `RAG_SERVER_UNAVAILABLE`.
+V4.1 adds grouped real RAG fixtures:
+
+- `tests/fixtures/real_golden_v4_1/answerable.json`
+- `tests/fixtures/real_golden_v4_1/no_answer.json`
+- `tests/fixtures/real_golden_v4_1/safety.json`
+
+Real eval summary now includes source quality fields: preflight status, target collection, manifest collection, manifest source count, source URI coverage, RAG citation coverage, no-answer accuracy, mapping warning counts, and RAG error counts.
+
+Evaluation metrics include fixed failure category counts under `metrics.failure_categories`: `NO_COLLECTION`, `NO_RETRIEVAL_RESULT`, `LOW_RETRIEVAL_SCORE`, `NO_ANSWER_FALSE_POSITIVE`, `LOW_CONFIDENCE_ACCEPTED`, `MISSING_CITATION`, `BAD_MAPPING`, `UNSUPPORTED_CLAIM`, `SAFETY_VIOLATION`, `TOOL_TIMEOUT`, and `RAG_SERVER_UNAVAILABLE`.
+
+`local_model.provider="mock"` and LoRA dry-run outputs are not real production model quality evidence; use them only for routing/debug/data-governance regression.

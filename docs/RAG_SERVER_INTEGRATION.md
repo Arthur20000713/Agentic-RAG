@@ -46,6 +46,35 @@ CLI 在 V1 仅用于 ingestion 代理，不从 CLI query stdout 推断 hits、sc
 - 默认测试使用本地 mock MCP server，不要求真实 RAG-SERVER。
 - 真实接入测试标记为 `rag_server`，未设置 `RAG_SERVER_PATH` 时跳过。
 
+## V4.1 真实知识库边界
+
+- 资料源治理清单位于 `docs/rag_corpus/source_manifest.yaml`。
+- 第一批入库计划位于 `docs/rag_corpus/ingestion_plan.md`。
+- 当前批次默认只入库人工摘要、关键事实和链接，不复制网页或 PDF 全文。
+- `reference_only` 和 `redteam` 来源不得作为处方、剂量、停药期或确定性诊断答案来源。
+- 执行 RAG-SERVER 入库前必须由用户确认本地资料路径、collection 和 RAG-SERVER 环境。
+
+V4.1 语料 dry-run：
+
+```powershell
+.venv\Scripts\python.exe scripts\check_rag_corpus.py --manifest docs\rag_corpus\source_manifest.yaml --dry-run
+```
+
+该命令只输出计划命令，不修改 RAG-SERVER，不读取或打印 RAG-SERVER 配置中的敏感字段。
+
+## V4.1 低置信策略
+
+Agentic RAG 应用层新增低置信策略：
+
+```yaml
+rag_server:
+  min_mapped_score: 0.35
+  min_citation_count_for_answer: 1
+  low_confidence_no_answer: true
+```
+
+这些阈值只影响应用层是否保守拒答，不修改 RAG-SERVER 的检索、rerank 或向量库算法。
+
 ## V2.1 source_uri 规则
 
 业务层引用、Verifier、Trace、Eval 统一使用 `source_uri` 作为来源 ID，格式固定为：

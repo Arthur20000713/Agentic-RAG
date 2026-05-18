@@ -20,6 +20,7 @@
 - `local_model.provider="mock"` 是结构化 mock，不是真实本地大模型推理。
 - LoRA 当前是数据治理和导出 dry-run，不包含真实训练或推理启用。
 - 当前真实 RAG 的主要质量问题是知识库样本偏弱和 no-answer/弱相关召回，不是链路不可用。
+- V4.1 已新增真实资料源 manifest、第一批真实评测集、低置信拒答策略、可选 V3 主路径和请求级 trace 查询。
 
 ## 快速运行
 
@@ -58,10 +59,13 @@ $env:RAG_SERVER_PATH="C:\Users\DELL\PycharmProjects\PythonProject\RAG-SERVER"
 .venv\Scripts\python.exe scripts\run_eval.py --mode fake --output-dir reports\fake
 .venv\Scripts\python.exe scripts\run_eval.py --mode real --optional --output-dir reports\real
 .venv\Scripts\python.exe scripts\run_eval.py --mode multi_agent --golden-set tests\fixtures\golden_set.json --output-dir reports\multi_agent
+.venv\Scripts\python.exe scripts\check_v4_1.py --stage full
 .venv\Scripts\python.exe scripts\check_v2.py --offline --frontend-contract --docs
 ```
 
 说明：当前通用 golden set 主要用于 V1/fake regression；`multi_agent` 模式会计算 route/path/safety/trace 指标，默认 golden set 中部分英文泛化样本会暴露路由质量差异，这是评测结果，不代表脚本不可用。
+
+V4.1 真实评测集位于 `tests/fixtures/real_golden_v4_1/`，按 `answerable`、`no_answer`、`safety` 分组。真实入库资料源由 `docs/rag_corpus/source_manifest.yaml` 管理，执行 RAG-SERVER 入库前必须由用户确认资料文件和 collection。
 
 ## 文档入口
 

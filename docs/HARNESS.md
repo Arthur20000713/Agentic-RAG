@@ -12,8 +12,27 @@
 本轮可用检查：
 
 ```powershell
-py -3.11 -m pytest -m "not rag_server"
+.venv\Scripts\python.exe -m pytest -m "not rag_server"
 ```
+
+V4.1 阶段检查：
+
+```powershell
+.venv\Scripts\python.exe scripts\check_v4_1.py --stage baseline
+.venv\Scripts\python.exe scripts\check_v4_1.py --stage corpus
+.venv\Scripts\python.exe scripts\check_v4_1.py --stage full
+.venv\Scripts\python.exe scripts\check_v4_1.py --stage full --real-rag --real-rag-output-dir .tmp_tests\v4_1_real_rag_smoke
+```
+
+`--stage full` 默认只跑本仓库只读检查，不启动真实 RAG。只有显式传入 `--real-rag` 才会运行 `pytest -m rag_server` 和 real eval optional。
+
+V4.1 语料入库 dry-run：
+
+```powershell
+.venv\Scripts\python.exe scripts\check_rag_corpus.py --manifest docs\rag_corpus\source_manifest.yaml --dry-run
+```
+
+该命令只输出计划，不写 RAG-SERVER，不读取或打印 API key。
 
 阶段 D 局部检查：
 
