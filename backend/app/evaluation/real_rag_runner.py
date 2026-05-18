@@ -260,6 +260,9 @@ class RealRagEvalRunner:
         return {
             "status": payload.get("status"),
             "target_collection": payload.get("target_collection"),
+            "expected_collection": payload.get("expected_collection"),
+            "manifest_collection": payload.get("manifest_collection"),
+            "manifest_source_count": payload.get("manifest_source_count", 0),
             "collections": payload.get("collections", []),
             "tools": payload.get("tools", []),
             "error_code": payload.get("error_code"),

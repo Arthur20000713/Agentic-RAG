@@ -136,6 +136,67 @@ def _make_mock_rag_server_with_direct_collections(root: Path) -> Path:
     return repo_path
 
 
+def _write_source_manifest(root: Path, *, collection: str = "livestock_v4_1") -> Path:
+    path = root / "source_manifest.yaml"
+    path.write_text(
+        f"""
+version: 1
+collection: {collection}
+sources:
+  - source_id: source_a
+    title: Source A
+    source_uri: https://example.com/a
+    language: EN
+    organization: Example
+    topics: [calf_health]
+    usage: [eval]
+    ingestion_status: eval_only
+    license_note: Link only.
+  - source_id: source_b
+    title: Source B
+    source_uri: https://example.com/b
+    language: ZH
+    organization: Example
+    topics: [biosecurity]
+    usage: [knowledge_base]
+    ingestion_status: approved_summary_only
+    license_note: Summary only.
+""",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_preflight_includes_manifest_summary_and_collection_warning() -> None:
+    work_dir = _tmp_dir()
+    repo_path = _make_mock_rag_server(work_dir / "mock_rag_server", collections=["default"])
+    manifest_path = _write_source_manifest(work_dir, collection="livestock_v4_1")
+    output_dir = work_dir / "reports"
+    settings = Settings(
+        rag_server={
+            "query_mode": "real",
+            "repo_path": str(repo_path),
+            "python_executable": sys.executable,
+            "collection": "default",
+            "timeout_seconds": 2,
+        }
+    )
+
+    report = asyncio.run(
+        RealRagPreflightRunner(settings, output_dir=output_dir, source_manifest_path=manifest_path).run()
+    )
+    payload = json.loads((output_dir / "real_rag_preflight.json").read_text(encoding="utf-8"))
+
+    assert report.status == "passed"
+    assert report.target_collection == "default"
+    assert report.expected_collection == "livestock_v4_1"
+    assert report.manifest_collection == "livestock_v4_1"
+    assert report.manifest_source_count == 2
+    assert "SOURCE_MANIFEST_COLLECTION_MISMATCH" in report.warnings
+    assert payload["manifest_collection"] == "livestock_v4_1"
+    assert payload["manifest_source_count"] == 2
+
+
 def test_preflight_detects_collection_mismatch_and_writes_report() -> None:
     work_dir = _tmp_dir()
     repo_path = _make_mock_rag_server(work_dir / "mock_rag_server", collections=["knowledge_hub"])

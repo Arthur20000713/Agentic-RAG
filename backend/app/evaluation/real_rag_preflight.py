@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from backend.app.core.config import PROJECT_ROOT, Settings
+from backend.app.evaluation.source_manifest import load_source_manifest, validate_source_manifest
 from backend.app.integrations.rag_server.diagnostics import RagServerDiagnostics, build_rag_server_diagnostics
 from backend.app.integrations.rag_server.mcp_stdio_client import (
     RagServerMcpClient,
@@ -21,6 +22,9 @@ class RealRagPreflightReport(BaseModel):
     mode: str = "real"
     status: str
     target_collection: str
+    expected_collection: str | None = None
+    manifest_collection: str | None = None
+    manifest_source_count: int = 0
     tools: list[str] = Field(default_factory=list)
     collections: list[str] = Field(default_factory=list)
     duration_ms: int = 0
@@ -37,26 +41,39 @@ class RealRagPreflightRunner:
         *,
         output_dir: str | Path | None = None,
         client: RagServerMcpClient | None = None,
+        source_manifest_path: str | Path | None = None,
     ) -> None:
         self.settings = settings
         self.output_dir = Path(output_dir) if output_dir else PROJECT_ROOT / "reports"
         if not self.output_dir.is_absolute():
             self.output_dir = PROJECT_ROOT / self.output_dir
         self.client = client
+        self.source_manifest_path = (
+            Path(source_manifest_path)
+            if source_manifest_path is not None
+            else PROJECT_ROOT / "docs" / "rag_corpus" / "source_manifest.yaml"
+        )
+        if not self.source_manifest_path.is_absolute():
+            self.source_manifest_path = PROJECT_ROOT / self.source_manifest_path
 
     async def run(self) -> RealRagPreflightReport:
         started_at = time.perf_counter()
         diagnostics = build_rag_server_diagnostics(self.settings)
         target_collection = self.settings.rag_server.collection
+        manifest_context = self._manifest_context(target_collection)
+        warnings = [*diagnostics.warnings, *manifest_context["warnings"]]
         if not diagnostics.repo_path_configured:
             return self._write_report(
                 RealRagPreflightReport(
                     status="failed",
                     target_collection=target_collection,
+                    expected_collection=manifest_context["expected_collection"],
+                    manifest_collection=manifest_context["manifest_collection"],
+                    manifest_source_count=manifest_context["manifest_source_count"],
                     error_code="RAG_SERVER_PATH_MISSING",
                     error_message="RAG_SERVER_PATH or rag_server.repo_path is required",
                     diagnostics=diagnostics,
-                    warnings=diagnostics.warnings,
+                    warnings=warnings,
                     duration_ms=self._elapsed_ms(started_at),
                 )
             )
@@ -65,10 +82,13 @@ class RealRagPreflightRunner:
                 RealRagPreflightReport(
                     status="failed",
                     target_collection=target_collection,
+                    expected_collection=manifest_context["expected_collection"],
+                    manifest_collection=manifest_context["manifest_collection"],
+                    manifest_source_count=manifest_context["manifest_source_count"],
                     error_code="RAG_SERVER_PATH_NOT_FOUND",
                     error_message=f"RAG-SERVER path does not exist: {diagnostics.repo_path}",
                     diagnostics=diagnostics,
-                    warnings=diagnostics.warnings,
+                    warnings=warnings,
                     duration_ms=self._elapsed_ms(started_at),
                 )
             )
@@ -82,6 +102,9 @@ class RealRagPreflightRunner:
                 RealRagPreflightReport(
                     status="failed" if error_code else "passed",
                     target_collection=target_collection,
+                    expected_collection=manifest_context["expected_collection"],
+                    manifest_collection=manifest_context["manifest_collection"],
+                    manifest_source_count=manifest_context["manifest_source_count"],
                     tools=tools,
                     collections=collections,
                     error_code=error_code,
@@ -91,7 +114,7 @@ class RealRagPreflightRunner:
                         else None
                     ),
                     diagnostics=diagnostics,
-                    warnings=diagnostics.warnings,
+                    warnings=warnings,
                     duration_ms=self._elapsed_ms(started_at),
                 )
             )
@@ -100,10 +123,13 @@ class RealRagPreflightRunner:
                 RealRagPreflightReport(
                     status="failed",
                     target_collection=target_collection,
+                    expected_collection=manifest_context["expected_collection"],
+                    manifest_collection=manifest_context["manifest_collection"],
+                    manifest_source_count=manifest_context["manifest_source_count"],
                     error_code=client._error_code(exc),
                     error_message=str(exc),
                     diagnostics=diagnostics,
-                    warnings=diagnostics.warnings,
+                    warnings=warnings,
                     duration_ms=self._elapsed_ms(started_at),
                 )
             )
@@ -140,6 +166,35 @@ class RealRagPreflightRunner:
         if target_collection not in collections:
             return "RAG_COLLECTION_NOT_FOUND"
         return None
+
+    def _manifest_context(self, target_collection: str) -> dict[str, Any]:
+        if not self.source_manifest_path.exists():
+            return {
+                "expected_collection": None,
+                "manifest_collection": None,
+                "manifest_source_count": 0,
+                "warnings": [],
+            }
+        try:
+            manifest = load_source_manifest(self.source_manifest_path)
+            validation_failures = validate_source_manifest(manifest)
+        except (OSError, ValueError) as exc:
+            return {
+                "expected_collection": None,
+                "manifest_collection": None,
+                "manifest_source_count": 0,
+                "warnings": [f"SOURCE_MANIFEST_INVALID: {exc}"],
+            }
+        warnings = [f"SOURCE_MANIFEST_INVALID: {failure}" for failure in validation_failures]
+        manifest_collection = manifest.collection
+        if manifest_collection and manifest_collection != target_collection:
+            warnings.append("SOURCE_MANIFEST_COLLECTION_MISMATCH")
+        return {
+            "expected_collection": manifest_collection,
+            "manifest_collection": manifest_collection,
+            "manifest_source_count": len(manifest.sources),
+            "warnings": warnings,
+        }
 
     def _write_report(self, report: RealRagPreflightReport) -> RealRagPreflightReport:
         self.output_dir.mkdir(parents=True, exist_ok=True)
