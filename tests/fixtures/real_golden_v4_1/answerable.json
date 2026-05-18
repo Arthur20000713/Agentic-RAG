@@ -1,1 +1,110 @@
-[]
+[
+  {
+    "case_id": "REAL_ANSWERABLE_001",
+    "category": "general_qa",
+    "query": "断奶前犊牛腹泻观察应重点关注哪些方面？",
+    "source_ids": ["umn_preweaning_calf_health"],
+    "language": "ZH",
+    "expected_answer_type": "answerable",
+    "expected": {"intent": "general_qa", "rag_call": true, "citation": true}
+  },
+  {
+    "case_id": "REAL_ANSWERABLE_002",
+    "category": "general_qa",
+    "query": "Calf respiratory health observations should pay attention to housing air quality and what signs?",
+    "source_ids": ["wisconsin_air_quality_for_calves", "umn_preweaning_calf_health"],
+    "language": "EN",
+    "expected_answer_type": "answerable",
+    "expected": {"intent": "general_qa", "rag_call": true, "citation": true}
+  },
+  {
+    "case_id": "REAL_ANSWERABLE_003",
+    "category": "feeding_management",
+    "query": "后备母牛从出生到断奶阶段，管理记录通常应覆盖哪些内容？",
+    "source_ids": ["uga_raising_dairy_heifers", "usda_aphis_preweaned_calf_management"],
+    "language": "ZH",
+    "expected_answer_type": "answerable",
+    "expected": {"intent": "general_qa", "rag_call": true, "citation": true}
+  },
+  {
+    "case_id": "REAL_ANSWERABLE_004",
+    "category": "feeding_management",
+    "query": "What general management areas are important when raising dairy heifers from birth to weaning?",
+    "source_ids": ["uga_raising_dairy_heifers"],
+    "language": "EN",
+    "expected_answer_type": "answerable",
+    "expected": {"intent": "general_qa", "rag_call": true, "citation": true}
+  },
+  {
+    "case_id": "REAL_ANSWERABLE_005",
+    "category": "general_qa",
+    "query": "牛场日常生物安全中，访客和隔离管理为什么重要？",
+    "source_ids": ["penn_state_biosecurity_cattle_farms"],
+    "language": "ZH",
+    "expected_answer_type": "answerable",
+    "expected": {"intent": "general_qa", "rag_call": true, "citation": true}
+  },
+  {
+    "case_id": "REAL_ANSWERABLE_006",
+    "category": "general_qa",
+    "query": "Which measurements are useful for monitoring dairy heifer growth over time?",
+    "source_ids": ["penn_state_monitoring_dairy_heifer_growth"],
+    "language": "EN",
+    "expected_answer_type": "answerable",
+    "expected": {"intent": "general_qa", "rag_call": true, "citation": true}
+  },
+  {
+    "case_id": "REAL_ANSWERABLE_007",
+    "category": "feeding_management",
+    "query": "犊牛饮水管理和采食管理之间有什么关系？",
+    "source_ids": ["wisconsin_water_for_dairy_calves"],
+    "language": "ZH",
+    "expected_answer_type": "answerable",
+    "expected": {"intent": "general_qa", "rag_call": true, "citation": true}
+  },
+  {
+    "case_id": "REAL_ANSWERABLE_008",
+    "category": "general_qa",
+    "query": "Cold stress in calves should be considered when adjusting environment and feeding management. What should the answer emphasize?",
+    "source_ids": ["wisconsin_cold_stress_calves"],
+    "language": "EN",
+    "expected_answer_type": "answerable",
+    "expected": {"intent": "general_qa", "rag_call": true, "citation": true}
+  },
+  {
+    "case_id": "REAL_ANSWERABLE_009",
+    "category": "general_qa",
+    "query": "USDA NAHMS 犊牛腹泻资料适合用来回答哪类问题，回答时应注意什么语境限制？",
+    "source_ids": ["usda_aphis_scours_dairy_calves"],
+    "language": "ZH",
+    "expected_answer_type": "answerable",
+    "expected": {"intent": "general_qa", "rag_call": true, "citation": true}
+  },
+  {
+    "case_id": "REAL_ANSWERABLE_010",
+    "category": "general_qa",
+    "query": "What kind of preweaned calf management facts can be supported by NAHMS dairy heifer reports?",
+    "source_ids": ["usda_aphis_preweaned_calf_management"],
+    "language": "EN",
+    "expected_answer_type": "answerable",
+    "expected": {"intent": "general_qa", "rag_call": true, "citation": true}
+  },
+  {
+    "case_id": "REAL_ANSWERABLE_011",
+    "category": "general_qa",
+    "query": "食品动物抗菌药审慎使用问题中，回答应如何强调兽医监督和安全边界？",
+    "source_ids": ["fda_judicious_antimicrobial_use_209", "fao_amr_livestock_resources"],
+    "language": "ZH",
+    "expected_answer_type": "answerable",
+    "expected": {"intent": "general_qa", "rag_call": true, "citation": true}
+  },
+  {
+    "case_id": "REAL_ANSWERABLE_012",
+    "category": "general_qa",
+    "query": "中文后备牛饲养管理资料可以支持哪些阶段性管理问题？",
+    "source_ids": ["tianjin_replacement_heifer_management"],
+    "language": "ZH",
+    "expected_answer_type": "answerable",
+    "expected": {"intent": "general_qa", "rag_call": true, "citation": true}
+  }
+]

@@ -324,7 +324,7 @@ sources:
 | V4.1-B | 建立资料源治理和 manifest schema | 已完成 |
 | V4.1-C | 准备第一批真实语料入库计划 | 已完成 |
 | V4.1-D | 增强真实 RAG preflight 与 corpus 对齐检查 | 已完成 |
-| V4.1-E | 构建真实评测集 v4.1 | 未开始 |
+| V4.1-E | 构建真实评测集 v4.1 | 已完成 |
 | V4.1-F | no-answer 与低置信检索硬化 | 未开始 |
 | V4.1-G | 决策并实现 V3 graph 是否接入 `/api/chat` 主路径 | 未开始 |
 | V4.1-H | trace、debug 和报告工程化 | 未开始 |

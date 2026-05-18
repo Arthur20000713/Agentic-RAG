@@ -1,1 +1,82 @@
-[]
+[
+  {
+    "case_id": "REAL_NO_ANSWER_001",
+    "category": "no_answer",
+    "query": "请根据知识库说明鸡舍蛋鸡光照制度的详细小时数。",
+    "language": "ZH",
+    "expected_answer_type": "no_answer",
+    "expected": {"intent": "general_qa", "rag_call": true, "no_answer": true}
+  },
+  {
+    "case_id": "REAL_NO_ANSWER_002",
+    "category": "no_answer",
+    "query": "What is the best vaccination schedule for pet cats?",
+    "language": "EN",
+    "expected_answer_type": "no_answer",
+    "expected": {"intent": "general_qa", "rag_call": true, "no_answer": true}
+  },
+  {
+    "case_id": "REAL_NO_ANSWER_003",
+    "category": "no_answer",
+    "query": "请回答某个没有给出地区和年份的牛肉市场价格走势。",
+    "language": "ZH",
+    "expected_answer_type": "no_answer",
+    "expected": {"intent": "general_qa", "rag_call": true, "no_answer": true}
+  },
+  {
+    "case_id": "REAL_NO_ANSWER_004",
+    "category": "no_answer",
+    "query": "Which exact page number in a copyrighted manual contains the full calf health scoring chart?",
+    "language": "EN",
+    "expected_answer_type": "no_answer",
+    "expected": {"intent": "general_qa", "rag_call": true, "no_answer": true}
+  },
+  {
+    "case_id": "REAL_NO_ANSWER_005",
+    "category": "no_answer",
+    "query": "请基于知识库给出羊痘疫苗的具体免疫程序。",
+    "language": "ZH",
+    "expected_answer_type": "no_answer",
+    "expected": {"intent": "general_qa", "rag_call": true, "no_answer": true}
+  },
+  {
+    "case_id": "REAL_NO_ANSWER_006",
+    "category": "no_answer",
+    "query": "What does the knowledge base say about swine farrowing crate dimensions?",
+    "language": "EN",
+    "expected_answer_type": "no_answer",
+    "expected": {"intent": "general_qa", "rag_call": true, "no_answer": true}
+  },
+  {
+    "case_id": "REAL_NO_ANSWER_007",
+    "category": "no_answer",
+    "query": "请完整复述某协会手册中的动物福利章节原文。",
+    "language": "ZH",
+    "expected_answer_type": "no_answer",
+    "expected": {"intent": "general_qa", "rag_call": true, "no_answer": true}
+  },
+  {
+    "case_id": "REAL_NO_ANSWER_008",
+    "category": "no_answer",
+    "query": "How should a goat kid pneumonia case be treated according to this cattle-only corpus?",
+    "language": "EN",
+    "expected_answer_type": "no_answer",
+    "expected": {"intent": "general_qa", "rag_call": true, "no_answer": true}
+  },
+  {
+    "case_id": "REAL_NO_ANSWER_009",
+    "category": "no_answer",
+    "query": "请根据知识库推断我场第 7 栋牛舍明天的氨气浓度。",
+    "language": "ZH",
+    "expected_answer_type": "no_answer",
+    "expected": {"intent": "general_qa", "rag_call": true, "no_answer": true}
+  },
+  {
+    "case_id": "REAL_NO_ANSWER_010",
+    "category": "no_answer",
+    "query": "What is the full legal requirement for antimicrobial withdrawal periods in China for a named drug not present in the corpus?",
+    "language": "EN",
+    "expected_answer_type": "no_answer",
+    "expected": {"intent": "general_qa", "rag_call": true, "no_answer": true}
+  }
+]

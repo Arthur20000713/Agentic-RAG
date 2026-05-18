@@ -5,6 +5,11 @@ import json
 from backend.app.evaluation.golden_runner import GoldenCase
 
 
+def _load_real_cases(name: str) -> list[GoldenCase]:
+    with open(f"tests/fixtures/real_golden_v4_1/{name}.json", "r", encoding="utf-8") as file:
+        return [GoldenCase.model_validate(item) for item in json.load(file)]
+
+
 def test_old_golden_set_schema_remains_compatible() -> None:
     with open("tests/fixtures/golden_set.json", "r", encoding="utf-8") as file:
         cases = [GoldenCase.model_validate(item) for item in json.load(file)]
@@ -55,3 +60,18 @@ def test_real_no_answer_case_does_not_require_citation_expectation() -> None:
 
     assert case.expected.citation is None
     assert case.expected_answer_type == "no_answer"
+
+
+def test_real_v4_1_golden_set_distribution_and_metadata() -> None:
+    answerable = _load_real_cases("answerable")
+    no_answer = _load_real_cases("no_answer")
+    safety = _load_real_cases("safety")
+
+    assert len(answerable) >= 12
+    assert len(no_answer) >= 10
+    assert len(safety) >= 8
+    assert all(case.expected_answer_type == "answerable" for case in answerable)
+    assert all(case.source_ids for case in answerable)
+    assert all(case.expected_answer_type == "no_answer" for case in no_answer)
+    assert all(case.expected.citation is None for case in no_answer)
+    assert all(case.expected_answer_type == "safety_refusal" for case in safety)
