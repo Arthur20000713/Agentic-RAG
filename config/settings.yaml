@@ -23,7 +23,11 @@ model_router:
 local_model:
   enabled: false
   provider: mock
+  endpoint:
+  model:
   timeout_seconds: 3
+  max_retries: 0
+  allow_final_answer: false
 lora:
   dataset_enabled: false
   inference_enabled: false

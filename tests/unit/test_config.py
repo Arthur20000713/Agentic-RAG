@@ -136,6 +136,8 @@ def test_v3_settings_default_to_disabled_without_changing_v2_behavior() -> None:
     assert settings.model_router.allow_low_risk_takeover is False
     assert settings.local_model.enabled is False
     assert settings.local_model.provider == "mock"
+    assert settings.local_model.endpoint is None
+    assert settings.local_model.model is None
     assert settings.lora.dataset_enabled is False
     assert settings.lora.inference_enabled is False
     assert settings.long_term_memory.write_enabled is False
@@ -188,3 +190,33 @@ def test_v3_settings_can_be_enabled_from_existing_config_root() -> None:
     assert settings.lora.registry_path == "data/v3/test_registry.json"
     assert settings.long_term_memory.write_enabled is True
     assert settings.long_term_memory.ttl_days == 30
+
+
+def test_v5_local_model_settings_load_real_backend_fields() -> None:
+    root = _test_dir()
+    config_path = root / "settings.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "local_model:",
+                "  enabled: true",
+                "  provider: ollama",
+                "  endpoint: http://127.0.0.1:11434",
+                "  model: qwen2.5:7b-instruct",
+                "  timeout_seconds: 8",
+                "  max_retries: 1",
+                "  allow_final_answer: false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.local_model.enabled is True
+    assert settings.local_model.provider == "ollama"
+    assert settings.local_model.endpoint == "http://127.0.0.1:11434"
+    assert settings.local_model.model == "qwen2.5:7b-instruct"
+    assert settings.local_model.timeout_seconds == 8
+    assert settings.local_model.max_retries == 1
+    assert settings.local_model.allow_final_answer is False

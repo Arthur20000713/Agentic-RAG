@@ -61,7 +61,11 @@ class ModelRouterSettings(BaseModel):
 class LocalModelSettings(BaseModel):
     enabled: bool = False
     provider: str = "mock"
+    endpoint: str | None = None
+    model: str | None = None
     timeout_seconds: float = 3.0
+    max_retries: int = 0
+    allow_final_answer: bool = False
 
 
 class LoraSettings(BaseModel):
