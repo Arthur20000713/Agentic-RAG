@@ -22,7 +22,7 @@ from backend.app.evaluation.quality_gate import (
 from backend.app.evaluation.source_manifest import load_source_manifest, validate_source_manifest
 
 
-STAGES = ("batch", "eval", "gate", "full")
+STAGES = ("batch", "eval", "gate", "report", "full")
 BATCH_DIR = Path("docs") / "rag_corpus" / "batches"
 REPORT_DIR = Path("docs") / "rag_corpus" / "reports"
 REAL_GOLDEN_V4_2_DIR = Path("tests") / "fixtures" / "real_golden_v4_2"
@@ -143,7 +143,17 @@ def check_batch_report(batch_id: str, root: Path) -> list[str]:
     for marker in REQUIRED_REPORT_MARKERS:
         if marker not in text:
             failures.append(f"{report_path}: missing required report field: {marker.rstrip(':')}")
+    failures.extend(check_quality_report_has_delta(report_path))
     return failures
+
+
+def check_quality_report_has_delta(report_path: Path) -> list[str]:
+    text = report_path.read_text(encoding="utf-8").lower()
+    has_baseline_none = "baseline: none" in text
+    has_delta_table = "metric delta" in text or "| metric | before | after | delta |" in text
+    if has_baseline_none or has_delta_table:
+        return []
+    return [f"{report_path}: missing quality trend summary; include metric delta table or baseline: none"]
 
 
 def check_real_golden_v4_2(root: Path) -> list[str]:
@@ -245,6 +255,9 @@ def _check_stage(stage: str, root: Path) -> list[str]:
 
     if stage in {"eval", "full"}:
         failures.extend(check_real_golden_v4_2(root))
+
+    if stage == "report":
+        failures.extend(_check_batch_reports(root))
 
     if stage == "full":
         failures.extend(_run_existing_check(root, ["scripts/check_v4_1.py", "--stage", "full"]))

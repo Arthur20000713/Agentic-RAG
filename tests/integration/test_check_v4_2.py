@@ -10,6 +10,7 @@ from scripts.check_v4_2 import (
     check_batch_report,
     check_golden_distribution,
     check_golden_source_ids,
+    check_quality_report_has_delta,
     check_manifest_alignment,
 )
 
@@ -150,10 +151,29 @@ def test_check_batch_report_accepts_planned_report_template() -> None:
 - preflight status: not_run
 - eval summary: not_run
 - failure categories: not_run
+- baseline: none
 """,
     )
 
     assert check_batch_report("batch_002", root) == []
+
+
+def test_check_quality_report_has_delta_requires_baseline_or_delta() -> None:
+    root = _tmp_root()
+    report_path = root / "batch_002_quality.md"
+    _write(report_path, "# Batch 002 Quality Report\n")
+
+    assert check_quality_report_has_delta(report_path) == [
+        f"{report_path}: missing quality trend summary; include metric delta table or baseline: none"
+    ]
+
+
+def test_check_quality_report_has_delta_accepts_baseline_none() -> None:
+    root = _tmp_root()
+    report_path = root / "batch_002_quality.md"
+    _write(report_path, "## Trend\n\n- baseline: none\n")
+
+    assert check_quality_report_has_delta(report_path) == []
 
 
 def test_check_golden_source_ids_reports_unknown_sources() -> None:
