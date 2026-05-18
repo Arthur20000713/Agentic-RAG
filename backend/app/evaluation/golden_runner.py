@@ -25,6 +25,7 @@ GoldenCategory = Literal[
     "measurement_analysis",
     "no_answer",
 ]
+ExpectedAnswerType = Literal["answerable", "no_answer", "safety_refusal"]
 
 
 class ExpectedChecks(BaseModel):
@@ -43,6 +44,9 @@ class GoldenCase(BaseModel):
     category: GoldenCategory
     query: str
     expected: ExpectedChecks
+    source_ids: list[str] = Field(default_factory=list)
+    language: str | None = None
+    expected_answer_type: ExpectedAnswerType | None = None
     measurement: MeasurementInput | None = None
     unsafe_draft_for_test: str | None = None
 
