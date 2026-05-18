@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -11,12 +12,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from backend.app.evaluation.corpus_batch import load_corpus_batch, validate_corpus_batch
+from backend.app.evaluation.golden_runner import GoldenCase
 from backend.app.evaluation.source_manifest import load_source_manifest, validate_source_manifest
 
 
 STAGES = ("batch", "eval", "gate", "full")
 BATCH_DIR = Path("docs") / "rag_corpus" / "batches"
 REPORT_DIR = Path("docs") / "rag_corpus" / "reports"
+REAL_GOLDEN_V4_2_DIR = Path("tests") / "fixtures" / "real_golden_v4_2"
 REQUIRED_FILES = (
     "DEV_SPEC_v4_2.md",
     "docs/rag_corpus/source_manifest.yaml",
@@ -29,6 +32,13 @@ REQUIRED_REPORT_MARKERS = (
     "preflight status:",
     "eval summary:",
     "failure categories:",
+)
+REAL_GOLDEN_V4_2_FILES = (
+    "answerable.json",
+    "no_answer.json",
+    "safety.json",
+    "bilingual.json",
+    "all.json",
 )
 
 
@@ -121,6 +131,43 @@ def check_batch_report(batch_id: str, root: Path) -> list[str]:
     return failures
 
 
+def check_real_golden_v4_2(root: Path) -> list[str]:
+    failures: list[str] = []
+    fixture_dir = root / REAL_GOLDEN_V4_2_DIR
+    grouped_cases: dict[str, list[GoldenCase]] = {}
+
+    for filename in REAL_GOLDEN_V4_2_FILES:
+        path = fixture_dir / filename
+        if not path.exists():
+            failures.append(f"missing V4.2 real golden file: {path}")
+            continue
+        try:
+            grouped_cases[filename] = _load_golden_cases(path)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            failures.append(f"{path}: {exc}")
+
+    if failures:
+        return failures
+
+    distribution_requirements = {
+        "answerable.json": 35,
+        "no_answer.json": 20,
+        "safety.json": 15,
+        "bilingual.json": 10,
+        "all.json": 80,
+    }
+    for filename, minimum in distribution_requirements.items():
+        actual = len(grouped_cases[filename])
+        if actual < minimum:
+            failures.append(f"{fixture_dir / filename}: expected at least {minimum} cases, got {actual}")
+
+    for filename, cases in grouped_cases.items():
+        for case in cases:
+            if case.expected_answer_type == "answerable" and not case.source_ids:
+                failures.append(f"{fixture_dir / filename}: answerable case {case.case_id} missing source_ids")
+    return failures
+
+
 def _check_stage(stage: str, root: Path) -> list[str]:
     failures = _missing_paths(root, REQUIRED_FILES)
 
@@ -128,6 +175,9 @@ def _check_stage(stage: str, root: Path) -> list[str]:
         failures.extend(check_batch_files(root))
         failures.extend(check_manifest_alignment(root))
         failures.extend(_check_batch_reports(root))
+
+    if stage in {"eval", "full"}:
+        failures.extend(check_real_golden_v4_2(root))
 
     if stage == "full":
         failures.extend(_run_existing_check(root, ["scripts/check_v4_1.py", "--stage", "full"]))
@@ -184,6 +234,14 @@ def _run_existing_check(root: Path, args: list[str]) -> list[str]:
         return []
     output = "\n".join(part for part in (completed.stdout.strip(), completed.stderr.strip()) if part)
     return [f"{' '.join(args)} failed: {output}"]
+
+
+def _load_golden_cases(path: Path) -> list[GoldenCase]:
+    with path.open("r", encoding="utf-8") as file:
+        payload = json.load(file)
+    if not isinstance(payload, list):
+        raise ValueError("golden set must be a JSON list")
+    return [GoldenCase.model_validate(item) for item in payload]
 
 
 if __name__ == "__main__":
