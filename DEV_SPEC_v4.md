@@ -42,3 +42,12 @@ V4.0 只修改当前 `Agentic RAG` 仓库；`RAG-SERVER` 仅允许只读诊断�
 ## 后续建议
 
 真实 RAG 当前被 preflight 阻断的主要原因不是 fake fallback，而是 collection 对齐问题：Agentic RAG 目标 collection 是 `default`，RAG-SERVER 配置 collection 是 `knowledge_hub`，且 `list_collections` 当前未返回 `default`。下一步应由人工确认是否把 Agentic RAG `rag_server.collection` 调整为 `knowledge_hub`，或先在 RAG-SERVER 中完成目标 collection 的真实入库。
+## V4.0-E 真实端到端稳定化补充
+
+- 状态：已完成。
+- 只修改 Agentic RAG，不修改 RAG-SERVER 代码或配置。
+- 新增 RAG-SERVER Markdown 集合列表解析，支持 `## Available Collections` / `1. **default**` 格式。
+- 新增 RAG-SERVER `References (JSON)` fenced JSON 解析，把真实 MCP 返回映射为标准 hits/citations/source_uri。
+- 当原始 RAG-SERVER 目录在当前运行环境触发 Chroma `readonly database` 或日志 `Permission denied` 时，Agentic RAG 会在 `.tmp_tests/rag_server_runtime/<hash>` 准备可写运行时副本，并从副本启动 MCP stdio；不会回退到 fake。
+- 验证结果：真实 RAG 预检通过，`default` collection 可发现；单次真实 query 成功返回 1 个 hit 和 1 个 citation；完整 real eval 稳定跑完，无 timeout、无 RAG error、rag citation/source_uri coverage 均为 100%。
+- 已知剩余质量问题：当前 RAG-SERVER 真实库只有 `simple.pdf` 样本文档，local-hash embedding 会对 `no_answer` 类问题也召回该样本文档，所以 real eval 为 55/60，通过率 91.67%，5 个失败均为 no_answer 质量问题，不是链路不可用问题。

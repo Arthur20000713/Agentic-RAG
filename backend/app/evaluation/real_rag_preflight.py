@@ -127,11 +127,14 @@ class RealRagPreflightRunner:
         payload = client._tool_result_payload(result)
         collections = payload.get("collections")
         if isinstance(collections, list):
-            return [str(item) for item in collections]
+            names = [str(item) for item in collections]
+            if names:
+                return names
         text = payload.get("text")
-        if not isinstance(text, str):
-            return []
-        return parse_collection_names_from_text(text)
+        names = parse_collection_names_from_text(text) if isinstance(text, str) else []
+        if names:
+            return names
+        return await client.list_collections(include_stats=False)
 
     def _collection_error(self, target_collection: str, collections: list[str]) -> str | None:
         if target_collection not in collections:

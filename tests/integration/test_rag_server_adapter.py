@@ -141,6 +141,155 @@ def _make_timeout_once_mock_rag_server() -> Path:
     return root.resolve()
 
 
+def _make_direct_fallback_mock_rag_server() -> Path:
+    root = Path(".tmp_tests") / f"direct_fallback_mock_rag_server_{uuid4().hex}"
+    server_dir = root / "src" / "mcp_server"
+    server_dir.mkdir(parents=True, exist_ok=True)
+    (root / "src" / "__init__.py").write_text("", encoding="utf-8")
+    (server_dir / "__init__.py").write_text("", encoding="utf-8")
+    (server_dir / "server.py").write_text(
+        dedent(
+            """
+            from __future__ import annotations
+
+            import json
+            import sys
+            import time
+
+
+            def send(payload: dict) -> None:
+                sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\\n")
+                sys.stdout.flush()
+
+
+            for line in sys.stdin:
+                message = json.loads(line)
+                method = message.get("method")
+                request_id = message.get("id")
+                if method == "initialize":
+                    send({
+                        "jsonrpc": "2.0",
+                        "id": request_id,
+                        "result": {
+                            "protocolVersion": "2024-11-05",
+                            "capabilities": {},
+                        },
+                    })
+                elif method == "notifications/initialized":
+                    continue
+                elif method == "tools/call":
+                    time.sleep(1)
+            """
+        ),
+        encoding="utf-8",
+    )
+    (server_dir / "protocol_handler.py").write_text(
+        dedent(
+            """
+            from __future__ import annotations
+
+            import json
+
+
+            class TextContent:
+                def __init__(self, text: str) -> None:
+                    self.text = text
+
+                def model_dump(self) -> dict:
+                    return {"type": "text", "text": self.text}
+
+
+            class ToolResult:
+                def __init__(self, text: str) -> None:
+                    self.isError = False
+                    self.content = [TextContent(text)]
+
+
+            class ProtocolHandler:
+                def __init__(self, name: str, version: str) -> None:
+                    self.name = name
+                    self.version = version
+
+                async def execute_tool(self, name: str, arguments: dict) -> ToolResult:
+                    if name == "query_knowledge_hub":
+                        payload = {
+                            "query": arguments.get("query"),
+                            "status": "success",
+                            "collection": arguments.get("collection"),
+                            "hits": [
+                                {
+                                    "chunk_id": "direct_chunk",
+                                    "document_id": "direct_doc",
+                                    "document_title": "Direct Manual",
+                                    "content": "Direct fallback result.",
+                                    "score": 0.77,
+                                }
+                            ],
+                        }
+                        return ToolResult(json.dumps(payload, ensure_ascii=False))
+                    return ToolResult(json.dumps({"collections": ["default"]}, ensure_ascii=False))
+
+
+            def _register_default_tools(handler: ProtocolHandler) -> None:
+                return None
+            """
+        ),
+        encoding="utf-8",
+    )
+    return root.resolve()
+
+
+def _make_readonly_then_runtime_mock_rag_server() -> Path:
+    root = Path(".tmp_tests") / f"readonly_runtime_mock_rag_server_{uuid4().hex}"
+    server_dir = root / "src" / "mcp_server"
+    server_dir.mkdir(parents=True, exist_ok=True)
+    (root / "src" / "__init__.py").write_text("", encoding="utf-8")
+    (server_dir / "__init__.py").write_text("", encoding="utf-8")
+    (server_dir / "protocol_handler.py").write_text(
+        dedent(
+            """
+            from __future__ import annotations
+
+            import json
+            import os
+            import sys
+
+
+            class TextContent:
+                def __init__(self, text: str) -> None:
+                    self.text = text
+
+                def model_dump(self) -> dict:
+                    return {"type": "text", "text": self.text}
+
+
+            class ToolResult:
+                def __init__(self, text: str) -> None:
+                    self.isError = False
+                    self.content = [TextContent(text)]
+
+
+            class ProtocolHandler:
+                def __init__(self, name: str, version: str) -> None:
+                    self.name = name
+                    self.version = version
+
+                async def execute_tool(self, name: str, arguments: dict) -> ToolResult:
+                    if "rag_server_runtime" not in os.getcwd():
+                        sys.stderr.write("attempt to write a readonly database\\n")
+                        return ToolResult("No collections found in the knowledge base.")
+                    return ToolResult(json.dumps({"collections": ["default"]}, ensure_ascii=False))
+
+
+            def _register_default_tools(handler: ProtocolHandler) -> None:
+                return None
+            """
+        ),
+        encoding="utf-8",
+    )
+    return root.resolve()
+
+
 def test_real_rag_adapter_is_created_with_trace_service() -> None:
     conn = get_connection("sqlite:///:memory:")
     init_db(conn)
@@ -223,3 +372,44 @@ def test_mcp_client_restarts_and_retries_once_after_timeout() -> None:
     assert stored["status"] == "success"
     assert stored["attempt_count"] == 2
     assert (repo_path / "query_attempts.txt").read_text(encoding="utf-8") == "2"
+
+
+def test_mcp_client_uses_direct_tool_fallback_after_stdio_timeout() -> None:
+    repo_path = _make_direct_fallback_mock_rag_server()
+    client = RagServerMcpClient(
+        Settings(
+            rag_server={
+                "query_mode": "real",
+                "repo_path": str(repo_path),
+                "python_executable": sys.executable,
+                "collection": "default",
+                "timeout_seconds": 0.05,
+            }
+        )
+    )
+
+    result = asyncio.run(client.query("calf diarrhea", top_k=2, collection="default"))
+
+    assert result.status == "success"
+    assert result.hits[0].chunk_id == "direct_chunk"
+    assert "RAG_DIRECT_FALLBACK_USED" in result.mapping_warnings
+
+
+def test_direct_tool_retries_from_writable_runtime_copy_after_readonly_stderr() -> None:
+    repo_path = _make_readonly_then_runtime_mock_rag_server()
+    client = RagServerMcpClient(
+        Settings(
+            rag_server={
+                "query_mode": "real",
+                "repo_path": str(repo_path),
+                "python_executable": sys.executable,
+                "collection": "default",
+                "timeout_seconds": 1,
+            }
+        )
+    )
+
+    raw = client._call_direct_tool("list_collections", {"include_stats": False})
+    payload = client._tool_result_payload(raw)
+
+    assert payload["collections"] == ["default"]

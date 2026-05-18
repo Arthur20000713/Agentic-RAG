@@ -12,7 +12,10 @@ from backend.app.core.config import Settings
 from backend.app.db.connection import get_connection
 from backend.app.db.migrations import init_db
 from backend.app.db.repositories import RagTraceRepository
-from backend.app.integrations.rag_server.mcp_stdio_client import RagServerMcpClient
+from backend.app.integrations.rag_server.mcp_stdio_client import (
+    RagServerMcpClient,
+    parse_collection_names_from_text,
+)
 from backend.app.services.trace_service import TraceService
 
 
@@ -151,6 +154,65 @@ def _settings(repo_path: Path) -> Settings:
     )
 
 
+def test_parse_collection_names_handles_real_rag_server_markdown() -> None:
+    text = """
+    ## Available Collections (1 total)
+
+    1. **default** - 1 documents
+    """
+
+    assert parse_collection_names_from_text(text) == ["default"]
+
+
+def test_tool_result_payload_parses_real_rag_server_references_json() -> None:
+    client = RagServerMcpClient(Settings(rag_server={"query_mode": "mcp_stdio", "repo_path": None}))
+    result = {
+        "isError": False,
+        "content": [
+            {"type": "text", "text": "## Query Results\n\nSample Document answer."},
+            {
+                "type": "text",
+                "text": dedent(
+                    """
+                    ---
+                    **References (JSON):**
+                    ```json
+                    {
+                      "citations": [
+                        {
+                          "chunk_id": "8ec60778_0000_fafadaee",
+                          "source": "tests\\\\fixtures\\\\sample_documents\\\\simple.pdf",
+                          "score": 0.0328,
+                          "text_snippet": "This is a sample document for RAG testing.",
+                          "metadata": {"page": 1}
+                        }
+                      ],
+                      "metadata": {
+                        "query": "Sample Document",
+                        "collection": "default",
+                        "result_count": 1
+                      },
+                      "has_images": false,
+                      "image_count": 0
+                    }
+                    ```
+                    """
+                ),
+            },
+        ],
+    }
+
+    payload = client._tool_result_payload(result)
+
+    assert payload["query"] == "Sample Document"
+    assert payload["collection"] == "default"
+    assert payload["answer_text"].startswith("## Query Results")
+    assert payload["hits"][0]["chunk_id"] == "8ec60778_0000_fafadaee"
+    assert payload["hits"][0]["document_title"] == "simple.pdf"
+    assert payload["hits"][0]["content"] == "This is a sample document for RAG testing."
+    assert payload["citations"][0]["title"] == "simple.pdf"
+
+
 def test_mcp_client_lifecycle_starts_with_repo_cwd_and_closes() -> None:
     repo_path = _make_mock_rag_server()
     client = RagServerMcpClient(_settings(repo_path))
@@ -166,6 +228,22 @@ def test_mcp_client_lifecycle_starts_with_repo_cwd_and_closes() -> None:
 
         await client.close()
         assert client.process is None
+
+    asyncio.run(scenario())
+
+
+def test_mcp_client_starts_from_runtime_copy_when_available() -> None:
+    repo_path = _make_mock_rag_server()
+    client = RagServerMcpClient(_settings(repo_path))
+    runtime_path = client._prepare_runtime_repo_copy(repo_path)
+
+    async def scenario() -> None:
+        await client.start()
+        collections = await client.list_collections()
+        await client.close()
+
+        assert collections == ["default", "mock"]
+        assert (runtime_path / "cwd_marker.txt").read_text(encoding="utf-8") == str(runtime_path)
 
     asyncio.run(scenario())
 

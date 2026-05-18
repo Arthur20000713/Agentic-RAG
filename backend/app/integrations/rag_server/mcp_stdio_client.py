@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 import time
 from pathlib import Path
 from typing import Any, Awaitable
 
-from backend.app.core.config import Settings
+from backend.app.core.config import PROJECT_ROOT, Settings
 from backend.app.integrations.rag_server.base import RagServerClient
 from backend.app.integrations.rag_server.health import resolve_rag_server_path
 from backend.app.integrations.rag_server.mapper import RagServerMapper
@@ -40,16 +43,34 @@ class RagServerTimeoutPolicy:
         return "timed out" in str(exc)
 
 
+DIRECT_FALLBACK_WARNING = "RAG_DIRECT_FALLBACK_USED"
+_JSON_FENCE_PATTERN = re.compile(r"```json\s*(.*?)\s*```", re.IGNORECASE | re.DOTALL)
+_RUNTIME_COPY_DIRS = ("src", "config", "data")
+_RUNTIME_COPY_FILES = ("pyproject.toml", "main.py")
+
+
 def parse_collection_names_from_text(text: str) -> list[str]:
     names: list[str] = []
     for line in text.splitlines():
-        cleaned = line.strip().lstrip("-*").strip()
+        cleaned = line.strip()
         if not cleaned:
             continue
+        if cleaned.startswith("#"):
+            continue
         lowered = cleaned.lower()
+        if "available collections" in lowered:
+            continue
         if lowered.startswith("no collection") or lowered.startswith("no collections"):
             continue
         if cleaned.startswith("没有") or cleaned.startswith("未找到"):
+            continue
+        match = re.match(r"^\d+\.\s+\*\*(?P<name>[^*]+)\*\*", cleaned)
+        if match:
+            names.append(match.group("name").strip())
+            continue
+        cleaned = cleaned.lstrip("-*").strip()
+        if cleaned.startswith("**") and "**" in cleaned[2:]:
+            names.append(cleaned.split("**", 2)[1].strip())
             continue
         names.append(cleaned.split()[0])
     return names
@@ -74,21 +95,24 @@ class RagServerMcpClient(RagServerClient):
             raise RagServerMcpError(f"RAG-SERVER path does not exist: {repo_path}")
 
         python_executable = self.settings.rag_server.python_executable or sys.executable
-        self._repo_path = repo_path
+        run_repo_path = self._runtime_repo_copy_path(repo_path)
+        if not (run_repo_path / "src").exists():
+            run_repo_path = repo_path
+        self._repo_path = run_repo_path
         self.process = subprocess.Popen(
             [
                 python_executable,
                 "-m",
                 "src.mcp_server.server",
             ],
-            cwd=str(repo_path),
+            cwd=str(run_repo_path),
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
             bufsize=1,
-            env=self._build_process_env(repo_path),
+            env=self._build_process_env(run_repo_path, source_repo_path=repo_path),
         )
         await self._initialize()
 
@@ -118,23 +142,28 @@ class RagServerMcpClient(RagServerClient):
         resolved_collection = collection or self.settings.rag_server.collection
         attempt_count = 0
         result: dict[str, Any] | None = None
+        arguments = {
+            "query": query,
+            "top_k": top_k,
+            "collection": resolved_collection,
+        }
         for attempt in range(1, 3):
             attempt_count = attempt
             try:
-                result = await self._call_tool(
-                    "query_knowledge_hub",
-                    {
-                        "query": query,
-                        "top_k": top_k,
-                        "collection": resolved_collection,
-                    },
-                )
+                result = await self._call_tool("query_knowledge_hub", arguments)
                 break
             except RagServerMcpError as exc:
                 error_code = self._error_code(exc)
                 if error_code == RagServerTimeoutPolicy.ERROR_CODE and attempt == 1:
                     await self.close()
                     continue
+                fallback_result = await self._try_direct_tool_fallback(
+                    "query_knowledge_hub",
+                    arguments,
+                )
+                if fallback_result is not None:
+                    result = fallback_result
+                    break
                 error_result = RagSearchResult(
                     query=query,
                     status="error",
@@ -175,6 +204,16 @@ class RagServerMcpClient(RagServerClient):
             return error_result
 
         payload = self._tool_result_payload(result)
+        if result.get("_direct_fallback_used"):
+            self._append_mapping_warning(payload, DIRECT_FALLBACK_WARNING)
+        if payload.get("isError") or payload.get("is_error"):
+            fallback_result = await self._try_direct_tool_fallback(
+                "query_knowledge_hub",
+                arguments,
+            )
+            if fallback_result is not None:
+                payload = self._tool_result_payload(fallback_result)
+                self._append_mapping_warning(payload, DIRECT_FALLBACK_WARNING)
         if payload.get("isError") or payload.get("is_error"):
             error_result = RagSearchResult(
                 query=query,
@@ -259,13 +298,18 @@ class RagServerMcpClient(RagServerClient):
                 {"include_stats": include_stats},
             )
         except RagServerMcpError as exc:
-            self._record_tool_trace(
-                query="list_collections",
-                status="error",
-                error_code=self._error_code(exc),
-                latency_ms=self._elapsed_ms(started_at),
+            result = await self._try_direct_tool_fallback(
+                "list_collections",
+                {"include_stats": include_stats},
             )
-            return []
+            if result is None:
+                self._record_tool_trace(
+                    query="list_collections",
+                    status="error",
+                    error_code=self._error_code(exc),
+                    latency_ms=self._elapsed_ms(started_at),
+                )
+                return []
 
         payload = self._tool_result_payload(result)
         collections = payload.get("collections")
@@ -283,16 +327,22 @@ class RagServerMcpClient(RagServerClient):
 
         text = payload.get("text", "")
         if not text:
-            self._record_tool_trace(
-                query="list_collections",
-                status="empty",
-                result_count=0,
-                mapped_result_count=0,
-                raw_response_id=payload.get("raw_response_id"),
-                latency_ms=self._elapsed_ms(started_at),
+            names = []
+        else:
+            names = parse_collection_names_from_text(text)
+        if not names and not result.get("_direct_fallback_used"):
+            fallback_result = await self._try_direct_tool_fallback(
+                "list_collections",
+                {"include_stats": include_stats},
             )
-            return []
-        names = parse_collection_names_from_text(text)
+            if fallback_result is not None:
+                result = fallback_result
+                payload = self._tool_result_payload(result)
+                collections = payload.get("collections")
+                if isinstance(collections, list):
+                    names = [str(item) for item in collections]
+                else:
+                    names = parse_collection_names_from_text(payload.get("text", ""))
         self._record_tool_trace(
             query="list_collections",
             status="success" if names else "empty",
@@ -404,15 +454,22 @@ class RagServerMcpClient(RagServerClient):
         payload = dict(result)
         content = payload.get("content")
         if isinstance(content, list):
+            texts: list[str] = []
             for item in content:
                 if not isinstance(item, dict) or item.get("type") != "text":
                     continue
                 text = item.get("text", "")
+                texts.append(text)
                 parsed = self._parse_json_text(text)
                 if isinstance(parsed, dict):
                     parsed.setdefault("isError", payload.get("isError", False))
                     return parsed
-                return {"text": text, "isError": payload.get("isError", False)}
+            references_payload = self._parse_references_payload(texts)
+            if references_payload is not None:
+                references_payload.setdefault("isError", payload.get("isError", False))
+                return references_payload
+            if texts:
+                return {"text": texts[0], "isError": payload.get("isError", False)}
         return payload
 
     def _parse_json_text(self, text: str) -> Any:
@@ -420,6 +477,235 @@ class RagServerMcpClient(RagServerClient):
             return json.loads(text)
         except json.JSONDecodeError:
             return None
+
+    def _parse_references_payload(self, texts: list[str]) -> dict[str, Any] | None:
+        for text in texts:
+            for match in _JSON_FENCE_PATTERN.finditer(text):
+                parsed = self._parse_json_text(match.group(1).strip())
+                if isinstance(parsed, dict) and ("citations" in parsed or "metadata" in parsed):
+                    return self._references_to_payload(parsed, texts)
+        return None
+
+    def _references_to_payload(self, references: dict[str, Any], texts: list[str]) -> dict[str, Any]:
+        metadata = references.get("metadata") if isinstance(references.get("metadata"), dict) else {}
+        payload: dict[str, Any] = {
+            "query": metadata.get("query"),
+            "status": "success",
+            "collection": metadata.get("collection"),
+            "answer_text": self._answer_text_from_content(texts),
+            "raw_response_id": metadata.get("response_id") or metadata.get("trace_id"),
+            "hits": [],
+            "citations": [],
+        }
+        for index, citation in enumerate(references.get("citations") or [], start=1):
+            if not isinstance(citation, dict):
+                continue
+            source = citation.get("source") or citation.get("source_path") or citation.get("source_id")
+            chunk_id = citation.get("chunk_id") or citation.get("id")
+            title = citation.get("title") or self._title_from_source(source) or "Unknown source"
+            citation_metadata = dict(citation.get("metadata") or {})
+            if source:
+                citation_metadata.setdefault("source", source)
+                citation_metadata.setdefault("source_path", source)
+            page = citation.get("page") or citation_metadata.get("page")
+            section_title = citation.get("section_title") or citation_metadata.get("section_title")
+            payload["hits"].append(
+                {
+                    "rank": citation.get("index") or index,
+                    "chunk_id": chunk_id,
+                    "document_id": source or citation.get("source_id") or chunk_id,
+                    "document_title": title,
+                    "content": citation.get("text_snippet") or citation.get("content") or "",
+                    "page": page,
+                    "section_title": section_title,
+                    "score": citation.get("score", 0.0),
+                    "metadata": citation_metadata,
+                }
+            )
+            payload["citations"].append(
+                {
+                    "source_id": str(source or citation.get("source_id") or chunk_id),
+                    "source_uri": citation.get("source_uri"),
+                    "title": title,
+                    "page": page,
+                    "section_title": section_title,
+                    "chunk_id": chunk_id,
+                }
+            )
+        return payload
+
+    def _answer_text_from_content(self, texts: list[str]) -> str | None:
+        answer_parts = [text.strip() for text in texts if "References (JSON)" not in text]
+        answer = "\n\n".join(part for part in answer_parts if part)
+        return answer or None
+
+    def _title_from_source(self, source: Any) -> str | None:
+        if source in (None, ""):
+            return None
+        normalized = str(source).replace("\\", "/").rstrip("/")
+        if not normalized:
+            return None
+        return normalized.rsplit("/", 1)[-1]
+
+    async def _try_direct_tool_fallback(
+        self,
+        name: str,
+        arguments: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        if os.getenv("RAG_SERVER_DISABLE_DIRECT_FALLBACK") == "1":
+            return None
+        try:
+            result = await asyncio.to_thread(self._call_direct_tool, name, arguments)
+        except RagServerMcpError:
+            return None
+        result["_direct_fallback_used"] = True
+        return result
+
+    def _call_direct_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        repo_path = resolve_rag_server_path(self.settings)
+        if repo_path is None or not repo_path.exists():
+            raise RagServerMcpError("RAG_SERVER_PATH or rag_server.repo_path is required")
+        python_executable = self.settings.rag_server.python_executable or sys.executable
+        runtime_repo_path = self._runtime_repo_copy_path(repo_path)
+        if (runtime_repo_path / "src").exists():
+            completed = self._run_direct_tool_process(
+                python_executable=python_executable,
+                run_repo_path=runtime_repo_path,
+                source_repo_path=repo_path,
+                name=name,
+                arguments=arguments,
+            )
+        else:
+            completed = self._run_direct_tool_process(
+                python_executable=python_executable,
+                run_repo_path=repo_path,
+                source_repo_path=repo_path,
+                name=name,
+                arguments=arguments,
+            )
+            if self._should_retry_in_runtime_copy(completed):
+                runtime_repo_path = self._prepare_runtime_repo_copy(repo_path)
+                completed = self._run_direct_tool_process(
+                    python_executable=python_executable,
+                    run_repo_path=runtime_repo_path,
+                    source_repo_path=repo_path,
+                    name=name,
+                    arguments=arguments,
+                )
+        if completed.returncode != 0:
+            stderr_tail = (completed.stderr or "").strip()[-1000:]
+            raise RagServerMcpError(f"direct RAG-SERVER tool call failed: {stderr_tail}")
+        for line in reversed((completed.stdout or "").splitlines()):
+            parsed = self._parse_json_text(line.strip())
+            if isinstance(parsed, dict):
+                return parsed
+        raise RagServerMcpError("direct RAG-SERVER tool call returned invalid output")
+
+    def _run_direct_tool_process(
+        self,
+        *,
+        python_executable: str,
+        run_repo_path: Path,
+        source_repo_path: Path,
+        name: str,
+        arguments: dict[str, Any],
+    ) -> subprocess.CompletedProcess[str]:
+        script = """
+from __future__ import annotations
+
+import asyncio
+import json
+import sys
+
+from src.mcp_server.protocol_handler import ProtocolHandler, _register_default_tools
+
+
+def serialize_content(item):
+    if hasattr(item, "model_dump"):
+        return item.model_dump()
+    if hasattr(item, "dict"):
+        return item.dict()
+    if isinstance(item, dict):
+        return item
+    return {"type": "text", "text": str(item)}
+
+
+async def main():
+    payload = json.loads(sys.stdin.read() or "{}")
+    handler = ProtocolHandler("agentic-rag-direct", "0.1")
+    _register_default_tools(handler)
+    result = await handler.execute_tool(payload["name"], payload.get("arguments") or {})
+    output = {
+        "isError": bool(getattr(result, "isError", False)),
+        "content": [serialize_content(item) for item in getattr(result, "content", [])],
+    }
+    print(json.dumps(output, ensure_ascii=False))
+
+
+asyncio.run(main())
+"""
+        return subprocess.run(
+            [python_executable, "-c", script],
+            cwd=str(run_repo_path),
+            input=json.dumps({"name": name, "arguments": self._drop_none(arguments)}, ensure_ascii=False),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=max(30.0, self.settings.rag_server.timeout_seconds),
+            env=self._build_process_env(run_repo_path, source_repo_path=source_repo_path),
+        )
+
+    def _should_retry_in_runtime_copy(self, completed: subprocess.CompletedProcess[str]) -> bool:
+        combined_output = f"{completed.stdout or ''}\n{completed.stderr or ''}".lower()
+        return "readonly database" in combined_output or "permission denied" in combined_output
+
+    def _prepare_runtime_repo_copy(self, repo_path: Path) -> Path:
+        target = self._runtime_repo_copy_path(repo_path)
+        runtime_root = target.parent
+        target_resolved = target.resolve()
+        runtime_root_resolved = runtime_root.resolve()
+        if not target_resolved.is_relative_to(runtime_root_resolved):
+            raise RagServerMcpError(f"unsafe runtime copy path: {target}")
+        target.mkdir(parents=True, exist_ok=True)
+
+        for dirname in _RUNTIME_COPY_DIRS:
+            source = repo_path / dirname
+            destination = target / dirname
+            if not source.exists():
+                continue
+            if destination.exists():
+                destination_resolved = destination.resolve()
+                if not destination_resolved.is_relative_to(target_resolved):
+                    raise RagServerMcpError(f"unsafe runtime copy destination: {destination}")
+                shutil.rmtree(destination)
+            shutil.copytree(
+                source,
+                destination,
+                ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache"),
+            )
+
+        for filename in _RUNTIME_COPY_FILES:
+            source_file = repo_path / filename
+            if source_file.exists():
+                shutil.copy2(source_file, target / filename)
+        (target / "logs").mkdir(exist_ok=True)
+        return target
+
+    def _runtime_repo_copy_path(self, repo_path: Path) -> Path:
+        runtime_root = Path(
+            os.getenv(
+                "AGENTIC_RAG_SERVER_RUNTIME_ROOT",
+                str(PROJECT_ROOT / ".tmp_tests" / "rag_server_runtime"),
+            )
+        )
+        digest = hashlib.sha256(str(repo_path.resolve()).encode("utf-8")).hexdigest()[:12]
+        return runtime_root / digest
+
+    def _append_mapping_warning(self, payload: dict[str, Any], warning: str) -> None:
+        warnings = payload.setdefault("mapping_warnings", [])
+        if isinstance(warnings, list) and warning not in warnings:
+            warnings.append(warning)
 
     def _error_code(self, exc: RagServerMcpError) -> str:
         message = str(exc)
@@ -432,13 +718,16 @@ class RagServerMcpClient(RagServerClient):
     def _drop_none(self, data: dict[str, Any]) -> dict[str, Any]:
         return {key: value for key, value in data.items() if value is not None}
 
-    def _build_process_env(self, repo_path: Path) -> dict[str, str]:
+    def _build_process_env(self, repo_path: Path, *, source_repo_path: Path | None = None) -> dict[str, str]:
         env = os.environ.copy()
+        source_repo_path = source_repo_path or repo_path
         pythonpath_parts = [
             path
             for path in [
                 repo_path / ".deps",
                 repo_path,
+                source_repo_path / ".deps",
+                source_repo_path,
                 Path("C:/ProgramData/anaconda3/Lib/site-packages/win32"),
                 Path("C:/ProgramData/anaconda3/Lib/site-packages/win32/lib"),
             ]

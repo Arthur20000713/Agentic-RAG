@@ -94,6 +94,48 @@ def _make_mock_rag_server(root: Path, *, collections: list[str] | None = None, c
     return root.resolve()
 
 
+def _make_mock_rag_server_with_direct_collections(root: Path) -> Path:
+    repo_path = _make_mock_rag_server(root, collections_text="No collections found.")
+    (repo_path / "src" / "mcp_server" / "protocol_handler.py").write_text(
+        dedent(
+            """
+            from __future__ import annotations
+
+            import json
+
+
+            class TextContent:
+                def __init__(self, text: str) -> None:
+                    self.text = text
+
+                def model_dump(self) -> dict:
+                    return {"type": "text", "text": self.text}
+
+
+            class ToolResult:
+                def __init__(self, text: str) -> None:
+                    self.isError = False
+                    self.content = [TextContent(text)]
+
+
+            class ProtocolHandler:
+                def __init__(self, name: str, version: str) -> None:
+                    self.name = name
+                    self.version = version
+
+                async def execute_tool(self, name: str, arguments: dict) -> ToolResult:
+                    return ToolResult(json.dumps({"collections": ["default"]}, ensure_ascii=False))
+
+
+            def _register_default_tools(handler: ProtocolHandler) -> None:
+                return None
+            """
+        ),
+        encoding="utf-8",
+    )
+    return repo_path
+
+
 def test_preflight_detects_collection_mismatch_and_writes_report() -> None:
     work_dir = _tmp_dir()
     repo_path = _make_mock_rag_server(work_dir / "mock_rag_server", collections=["knowledge_hub"])
@@ -140,3 +182,24 @@ def test_preflight_treats_no_collections_text_as_empty_and_missing_target() -> N
     assert report.status == "failed"
     assert report.collections == []
     assert report.error_code == "RAG_COLLECTION_NOT_FOUND"
+
+
+def test_preflight_uses_direct_collection_fallback_when_stdio_returns_empty() -> None:
+    work_dir = _tmp_dir()
+    repo_path = _make_mock_rag_server_with_direct_collections(work_dir / "mock_rag_server")
+    output_dir = work_dir / "reports"
+    settings = Settings(
+        rag_server={
+            "query_mode": "real",
+            "repo_path": str(repo_path),
+            "python_executable": sys.executable,
+            "collection": "default",
+            "timeout_seconds": 2,
+        }
+    )
+
+    report = asyncio.run(RealRagPreflightRunner(settings, output_dir=output_dir).run())
+
+    assert report.status == "passed"
+    assert report.collections == ["default"]
+    assert report.error_code is None
