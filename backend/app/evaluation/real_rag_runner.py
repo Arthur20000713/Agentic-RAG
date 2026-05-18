@@ -209,6 +209,7 @@ class RealRagEvalRunner:
 
     def _write_summary(self, report: EvaluationReport) -> None:
         metrics = report.metrics
+        preflight = self._read_preflight_summary() or {}
         lines = [
             "# Real RAG Evaluation Summary",
             "",
@@ -234,6 +235,22 @@ class RealRagEvalRunner:
             "source_uri_coverage",
         ):
             lines.append(f"| {key} | {metrics[key]:.2%} |")
+        lines.extend(
+            [
+                "",
+                "## Source Quality",
+                "",
+                f"- Preflight status: {preflight.get('status', 'not_run')}",
+                f"- Target collection: {preflight.get('target_collection', 'unknown')}",
+                f"- Manifest collection: {preflight.get('manifest_collection', 'unknown')}",
+                f"- Manifest source count: {preflight.get('manifest_source_count', 0)}",
+                f"- source_uri_coverage: {metrics['source_uri_coverage']:.2%}",
+                f"- rag_citation_coverage: {metrics['rag_citation_coverage']:.2%}",
+                f"- no_answer_accuracy: {metrics['no_answer_accuracy']:.2%}",
+                f"- Mapping warning types: {len(metrics.get('mapping_warning_counts', {}))}",
+                "",
+            ]
+        )
         lines.extend(["", "## Categories", "", "| Category | Passed | Total | Pass rate |", "|---|---:|---:|---:|"])
         for category, item in metrics["by_category"].items():
             lines.append(f"| {category} | {item['passed']} | {item['total']} | {item['pass_rate']:.2%} |")

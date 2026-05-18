@@ -403,6 +403,11 @@ def test_real_rag_runner_writes_real_mode_report() -> None:
     assert "rag_citation_coverage" in payload["metrics"]
     assert "source_uri_coverage" in payload["metrics"]
     summary = (output_dir / "eval_summary.md").read_text(encoding="utf-8")
+    assert "## Source Quality" in summary
+    assert "Preflight status" in summary
+    assert "Target collection" in summary
+    assert "source_uri_coverage" in summary
+    assert "no_answer_accuracy" in summary
     assert "## RAG Error Counts" in summary
     assert "## Mapping Warnings" in summary
 
@@ -414,10 +419,11 @@ def test_golden_runner_records_real_rag_observability_fields() -> None:
             query: str,
             *,
             top_k: int = 4,
-            collection: str | None = None,
-            domain: str | None = None,
-            species: str | None = None,
-        ) -> RagSearchResult:
+                collection: str | None = None,
+                domain: str | None = None,
+                species: str | None = None,
+                request_id: str | None = None,
+            ) -> RagSearchResult:
             return RagSearchResult.model_validate(
                 {
                     "query": query,
