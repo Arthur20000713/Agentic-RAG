@@ -58,6 +58,19 @@ $env:RAG_SERVER_PATH="C:\Users\DELL\PycharmProjects\PythonProject\RAG-SERVER"
 
 如果 dry-run 通过，再由用户确认是否进入 RAG-SERVER 入库流程。Agentic RAG 只读检查不得打印 API key，不得修改 RAG-SERVER 源码或配置。
 
+## 应用层低置信策略
+
+V4.1 的低置信策略只在 Agentic RAG 应用层生效，不修改 RAG-SERVER 的检索、rerank 或向量库算法。默认配置为：
+
+```yaml
+rag_server:
+  min_mapped_score: 0.35
+  min_citation_count_for_answer: 1
+  low_confidence_no_answer: true
+```
+
+当后续 mapper/answer generator 判断证据不足时，应输出保守 no-answer，而不是伪造 citation 或把弱相关召回写成确定答案。
+
 ## 当前阻塞项
 
 - 本仓库尚未保存本地摘要文件。

@@ -77,6 +77,39 @@ def test_v2_rag_query_modes_load_without_parallel_rag_config(monkeypatch) -> Non
     assert resolve_rag_server_path(settings, project_root=root) == (root / "sibling-rag").resolve()
 
 
+def test_rag_low_confidence_policy_defaults_do_not_change_fake_mode() -> None:
+    settings = load_settings("config/settings.test.yaml")
+
+    assert settings.rag_server.min_mapped_score == 0.35
+    assert settings.rag_server.min_citation_count_for_answer == 1
+    assert settings.rag_server.low_confidence_no_answer is True
+    assert settings.rag_server.query_mode == "fake"
+    assert isinstance(create_rag_server_client(settings), FakeRagServerClient)
+
+
+def test_rag_low_confidence_policy_can_be_configured() -> None:
+    root = _test_dir()
+    config_path = root / "settings.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "rag_server:",
+                "  query_mode: real",
+                "  min_mapped_score: 0.42",
+                "  min_citation_count_for_answer: 2",
+                "  low_confidence_no_answer: false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.rag_server.min_mapped_score == 0.42
+    assert settings.rag_server.min_citation_count_for_answer == 2
+    assert settings.rag_server.low_confidence_no_answer is False
+
+
 def test_legacy_mcp_stdio_query_mode_remains_supported() -> None:
     settings = load_settings("config/settings.test.yaml")
     settings.rag_server.query_mode = "mcp_stdio"

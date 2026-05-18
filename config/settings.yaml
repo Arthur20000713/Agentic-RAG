@@ -9,6 +9,9 @@ rag_server:
   collection: default
   timeout_seconds: 5
   strict_real_mode: false
+  min_mapped_score: 0.35
+  min_citation_count_for_answer: 1
+  low_confidence_no_answer: true
 database:
   url: "sqlite:///data/app.db"
 v3:

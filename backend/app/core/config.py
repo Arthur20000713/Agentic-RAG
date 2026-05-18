@@ -23,6 +23,9 @@ class RagServerSettings(BaseModel):
     collection: str = "default"
     timeout_seconds: float = 5.0
     strict_real_mode: bool = False
+    min_mapped_score: float = 0.35
+    min_citation_count_for_answer: int = 1
+    low_confidence_no_answer: bool = True
 
     @property
     def normalized_query_mode(self) -> NormalizedRagQueryMode:
