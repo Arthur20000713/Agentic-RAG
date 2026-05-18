@@ -16,9 +16,19 @@ from backend.app.evaluation.source_manifest import load_source_manifest, validat
 
 STAGES = ("batch", "eval", "gate", "full")
 BATCH_DIR = Path("docs") / "rag_corpus" / "batches"
+REPORT_DIR = Path("docs") / "rag_corpus" / "reports"
 REQUIRED_FILES = (
     "DEV_SPEC_v4_2.md",
     "docs/rag_corpus/source_manifest.yaml",
+)
+REQUIRED_REPORT_MARKERS = (
+    "batch id:",
+    "collection:",
+    "source count:",
+    "ingestion status:",
+    "preflight status:",
+    "eval summary:",
+    "failure categories:",
 )
 
 
@@ -98,12 +108,26 @@ def check_manifest_alignment(root: Path) -> list[str]:
     return failures
 
 
+def check_batch_report(batch_id: str, root: Path) -> list[str]:
+    report_path = root / REPORT_DIR / f"{batch_id}_quality.md"
+    if not report_path.exists():
+        return [f"missing batch quality report: {report_path}"]
+
+    text = report_path.read_text(encoding="utf-8").lower()
+    failures: list[str] = []
+    for marker in REQUIRED_REPORT_MARKERS:
+        if marker not in text:
+            failures.append(f"{report_path}: missing required report field: {marker.rstrip(':')}")
+    return failures
+
+
 def _check_stage(stage: str, root: Path) -> list[str]:
     failures = _missing_paths(root, REQUIRED_FILES)
 
     if stage in {"batch", "full"}:
         failures.extend(check_batch_files(root))
         failures.extend(check_manifest_alignment(root))
+        failures.extend(_check_batch_reports(root))
 
     if stage == "full":
         failures.extend(_run_existing_check(root, ["scripts/check_v4_1.py", "--stage", "full"]))
@@ -116,6 +140,21 @@ def _batch_paths(root: Path) -> list[Path] | None:
     if not batch_dir.exists():
         return None
     return sorted(batch_dir.glob("*.yaml"))
+
+
+def _check_batch_reports(root: Path) -> list[str]:
+    failures: list[str] = []
+    batch_paths = _batch_paths(root)
+    if not batch_paths:
+        return failures
+    for batch_path in batch_paths:
+        try:
+            batch = load_corpus_batch(batch_path)
+        except (OSError, ValueError):
+            continue
+        if batch.batch_id:
+            failures.extend(check_batch_report(batch.batch_id, root))
+    return failures
 
 
 def _requires_local_files(batch_status: str | None) -> bool:

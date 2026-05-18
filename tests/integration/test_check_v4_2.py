@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from uuid import uuid4
 
-from scripts.check_v4_2 import check_batch_files, check_manifest_alignment
+from scripts.check_v4_2 import check_batch_files, check_batch_report, check_manifest_alignment
 
 
 def _tmp_root() -> Path:
@@ -119,6 +119,35 @@ sources:
 
     assert any("collection mismatch" in failure and str(batch_path) in failure for failure in failures)
     assert any("source_id missing_source not found in manifest" in failure for failure in failures)
+
+
+def test_check_batch_report_requires_quality_report_file() -> None:
+    root = _tmp_root()
+
+    failures = check_batch_report("batch_002", root)
+
+    assert failures == [f"missing batch quality report: {root / 'docs' / 'rag_corpus' / 'reports' / 'batch_002_quality.md'}"]
+
+
+def test_check_batch_report_accepts_planned_report_template() -> None:
+    root = _tmp_root()
+    report_path = root / "docs" / "rag_corpus" / "reports" / "batch_002_quality.md"
+    _write(
+        report_path,
+        """
+# Batch 002 Quality Report
+
+- batch id: batch_002
+- collection: livestock_v4_2
+- source count: 10
+- ingestion status: planned
+- preflight status: not_run
+- eval summary: not_run
+- failure categories: not_run
+""",
+    )
+
+    assert check_batch_report("batch_002", root) == []
 
 
 def test_check_v4_2_batch_cli_passes_without_real_rag() -> None:

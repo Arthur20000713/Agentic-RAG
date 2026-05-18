@@ -294,7 +294,7 @@ quality_gate:
 |---|---|---|
 | V4.2-A | 建立 corpus batch 数据模型 | 已完成 |
 | V4.2-B | 建立 V4.2 manifest 和 batch 目录 | 已完成 |
-| V4.2-C | 增强入库 dry-run 和命令生成 | 未开始 |
+| V4.2-C | 增强入库 dry-run 和命令生成 | 已完成 |
 | V4.2-D | 建立真实评测集 V4.2 | 未开始 |
 | V4.2-E | 增加质量门禁 QualityGate | 未开始 |
 | V4.2-F | 固化真实 RAG batch 回归流程 | 未开始 |
