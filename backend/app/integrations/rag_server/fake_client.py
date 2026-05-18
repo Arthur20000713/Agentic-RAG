@@ -24,7 +24,13 @@ class FakeRagServerClient(RagServerClient):
     ) -> RagSearchResult:
         fixture_name = self._select_query_fixture(query)
         payload = self._load_json(fixture_name)
-        result = RagServerMapper.to_search_result(payload, query=query)
+        result = RagServerMapper.to_search_result(
+            payload,
+            query=query,
+            min_mapped_score=0.0,
+            min_citation_count_for_answer=0,
+            low_confidence_no_answer=False,
+        )
         if top_k > 0:
             result.hits = result.hits[:top_k]
             result.citations = result.citations[:top_k]
@@ -56,4 +62,3 @@ class FakeRagServerClient(RagServerClient):
         path = self.fixture_dir / name
         with path.open("r", encoding="utf-8") as file:
             return json.load(file)
-

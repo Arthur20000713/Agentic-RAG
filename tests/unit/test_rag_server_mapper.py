@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from backend.app.integrations.rag_server.mapper import (
+    LOW_CONFIDENCE_CITATION_WARNING,
+    LOW_CONFIDENCE_SCORE_WARNING,
     PARTIAL_SOURCE_URI_WARNING,
     SYNTHESIZED_CITATION_WARNING,
     RagServerMapper,
     build_source_uri,
 )
+from backend.app.model.answer_generator import NO_ANSWER_TEXT, AnswerGenerator
 
 
 def test_mapper_builds_citations_from_hits_when_missing() -> None:
@@ -124,3 +127,73 @@ def test_mapper_records_warning_for_fallback_source_uri() -> None:
     assert PARTIAL_SOURCE_URI_WARNING in result.mapping_warnings
     assert SYNTHESIZED_CITATION_WARNING not in result.mapping_warnings
     assert result.citations == []
+
+
+def test_mapper_marks_low_confidence_when_top_score_is_below_threshold() -> None:
+    result = RagServerMapper.to_search_result(
+        {
+            "query": "q",
+            "collection": "livestock_knowledge",
+            "hits": [
+                {
+                    "doc_id": "doc_001",
+                    "chunk_id": "chunk_012",
+                    "title": "Doc",
+                    "content": "weak content",
+                    "score": 0.2,
+                }
+            ],
+        },
+        min_mapped_score=0.35,
+        min_citation_count_for_answer=1,
+        low_confidence_no_answer=True,
+    )
+
+    assert result.status == "low_confidence"
+    assert result.has_usable_hits is False
+    assert LOW_CONFIDENCE_SCORE_WARNING in result.mapping_warnings
+
+
+def test_mapper_marks_low_confidence_when_citation_count_is_insufficient() -> None:
+    result = RagServerMapper.to_search_result(
+        {
+            "query": "q",
+            "collection": "livestock_knowledge",
+            "hits": [
+                {
+                    "doc_id": "doc_001",
+                    "chunk_id": "chunk_012",
+                    "title": "Doc",
+                    "content": "content",
+                    "score": 0.8,
+                }
+            ],
+        },
+        min_mapped_score=0.35,
+        min_citation_count_for_answer=2,
+        low_confidence_no_answer=True,
+    )
+
+    assert result.status == "low_confidence"
+    assert len(result.citations) == 1
+    assert LOW_CONFIDENCE_CITATION_WARNING in result.mapping_warnings
+
+
+def test_answer_generator_uses_no_answer_for_low_confidence() -> None:
+    result = RagServerMapper.to_search_result(
+        {
+            "query": "q",
+            "status": "low_confidence",
+            "hits": [
+                {
+                    "doc_id": "doc_001",
+                    "chunk_id": "chunk_012",
+                    "title": "Doc",
+                    "content": "weak content",
+                    "score": 0.2,
+                }
+            ],
+        }
+    )
+
+    assert AnswerGenerator().compose_with_citations(result) == NO_ANSWER_TEXT

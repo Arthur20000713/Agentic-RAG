@@ -14,6 +14,8 @@ from backend.app.schemas.rag_server import (
 
 PARTIAL_SOURCE_URI_WARNING = "RAG_MAPPING_PARTIAL_SOURCE_URI"
 SYNTHESIZED_CITATION_WARNING = "RAG_CITATION_SYNTHESIZED_FROM_HIT"
+LOW_CONFIDENCE_SCORE_WARNING = "RAG_LOW_CONFIDENCE_SCORE"
+LOW_CONFIDENCE_CITATION_WARNING = "RAG_LOW_CONFIDENCE_CITATION"
 
 
 def build_source_uri(
@@ -55,7 +57,14 @@ def _append_warning(warnings: list[str], warning: str) -> None:
 
 class RagServerMapper:
     @staticmethod
-    def to_search_result(payload: dict[str, Any], *, query: str | None = None) -> RagSearchResult:
+    def to_search_result(
+        payload: dict[str, Any],
+        *,
+        query: str | None = None,
+        min_mapped_score: float | None = None,
+        min_citation_count_for_answer: int = 0,
+        low_confidence_no_answer: bool = False,
+    ) -> RagSearchResult:
         mapping_warnings = list(payload.get("mapping_warnings") or [])
         if payload.get("isError") or payload.get("is_error"):
             return RagSearchResult(
@@ -104,6 +113,15 @@ class RagServerMapper:
                 )
             if citations:
                 _append_warning(mapping_warnings, SYNTHESIZED_CITATION_WARNING)
+
+        if low_confidence_no_answer and status == "success":
+            top_score = _hit_score(hits[0]) if hits else None
+            if min_mapped_score is not None and top_score is not None and top_score < min_mapped_score:
+                status = "low_confidence"
+                _append_warning(mapping_warnings, LOW_CONFIDENCE_SCORE_WARNING)
+            if len(citations) < min_citation_count_for_answer:
+                status = "low_confidence"
+                _append_warning(mapping_warnings, LOW_CONFIDENCE_CITATION_WARNING)
 
         return RagSearchResult(
             query=query or payload.get("query", ""),
@@ -194,3 +212,7 @@ def _has_partial_source(item: dict[str, Any]) -> bool:
     )
     chunk_id = item.get("chunk_id") or item.get("id") or metadata.get("chunk_id")
     return doc_id in (None, "") or chunk_id in (None, "")
+
+
+def _hit_score(hit: RagSearchHit) -> float:
+    return hit.mapped_score if hit.mapped_score is not None else hit.score

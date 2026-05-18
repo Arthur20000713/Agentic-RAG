@@ -235,7 +235,13 @@ class RagServerMcpClient(RagServerClient):
                 latency_ms=self._elapsed_ms(started_at),
             )
             return error_result
-        mapped = RagServerMapper.to_search_result(payload, query=query)
+        mapped = RagServerMapper.to_search_result(
+            payload,
+            query=query,
+            min_mapped_score=self.settings.rag_server.min_mapped_score,
+            min_citation_count_for_answer=self.settings.rag_server.min_citation_count_for_answer,
+            low_confidence_no_answer=self.settings.rag_server.low_confidence_no_answer,
+        )
         mapped.raw_response_id = self._record_query_trace(
             query=query,
             collection=resolved_collection,
