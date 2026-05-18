@@ -101,7 +101,16 @@ class DiseaseAgent:
             return rule_slots
 
         try:
-            local_slots = self.slot_extractor.extract(query)
+            local_slots = DiseaseSlots.model_validate(self.render_local_slots(query))
+        except ValueError:
+            self._record_slot_router(
+                state,
+                route_request=route_request.model_dump(),
+                route_decision=decision.model_dump(),
+                fallback_used=True,
+                fallback_reason="local_slot_schema_invalid",
+            )
+            return rule_slots
         except Exception as exc:
             self._record_slot_router(
                 state,
@@ -120,6 +129,9 @@ class DiseaseAgent:
             fallback_reason=None,
         )
         return local_slots
+
+    def render_local_slots(self, query: str) -> dict[str, Any]:
+        return self.slot_extractor.extract(query).model_dump()
 
     def _record_slot_router(
         self,

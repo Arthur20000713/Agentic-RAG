@@ -6,6 +6,11 @@ from backend.app.core.config import Settings
 from backend.app.schemas.measurement import MeasurementInput
 
 
+class InvalidLocalMeasurementAgent(MeasurementAgent):
+    def render_local_measurement_json(self, result):
+        return {"animal_id": result.animal_id, "abnormal_items": "chest_girth_cm"}
+
+
 def test_measurement_agent_generates_report_without_rag_call() -> None:
     measurement = MeasurementInput(
         animal_id="yak_032",
@@ -126,3 +131,32 @@ def test_measurement_agent_adds_json_renderer_only_for_local_takeover() -> None:
     assert "measurement_json_renderer" not in baseline.tool_results
     assert routed.tool_results["measurement_json_renderer"]["route_decision"]["selected_model"] == "local_small"
     assert routed.tool_results["measurement_json_renderer"]["report_json"]["abnormal_items"] == ["chest_girth_cm"]
+
+
+def test_measurement_agent_falls_back_when_local_json_fails_schema() -> None:
+    measurement = MeasurementInput(
+        animal_id="yak_032",
+        current={"chest_girth_cm": 158.4, "weight_kg": 246.5},
+        history=[
+            {
+                "measure_date": "2026-04-01",
+                "chest_girth_cm": 157.0,
+                "weight_kg": 242.0,
+            }
+        ],
+        confidence=0.82,
+    )
+    settings = Settings(
+        v3={"enabled": True},
+        model_router={"enabled": True, "shadow_mode": False, "allow_low_risk_takeover": True},
+        local_model={"enabled": True},
+    )
+    state = MultiAgentState(session_id="s1", user_query="body measurement", intent="measurement_analysis")
+
+    InvalidLocalMeasurementAgent(settings=settings).run(state, measurement)
+
+    renderer = state.tool_results["measurement_json_renderer"]
+    assert renderer["route_decision"]["selected_model"] == "local_small"
+    assert renderer["fallback_used"] is True
+    assert renderer["fallback_reason"] == "local_measurement_schema_invalid"
+    assert renderer["report_json"]["abnormal_items"] == ["chest_girth_cm"]

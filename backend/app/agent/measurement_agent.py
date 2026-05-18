@@ -3,12 +3,23 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from pydantic import BaseModel, Field, ValidationError
+
 from backend.app.agent.state import MultiAgentState
 from backend.app.core.config import Settings
 from backend.app.model.router import ModelRouteRequest, ModelRouter
 from backend.app.schemas.measurement import MeasurementAnalysisResult
 from backend.app.schemas.measurement import MeasurementInput
 from backend.app.services.measurement_service import MeasurementService
+
+
+class MeasurementJsonPayload(BaseModel):
+    animal_id: str
+    summary: str
+    abnormal_items: list[str] = Field(default_factory=list)
+    evidence: list[str] = Field(default_factory=list)
+    recommendation: str
+    used_demo_history: bool = False
 
 
 class MeasurementAgent:
@@ -60,9 +71,27 @@ class MeasurementAgent:
         decision = ModelRouter(self.settings).route(request)
         if decision.selected_model != "local_small":
             return
+        rule_json = self.render_measurement_json(result)
+        try:
+            report_json = MeasurementJsonPayload.model_validate(
+                self.render_local_measurement_json(result)
+            ).model_dump()
+        except ValidationError:
+            state.tool_results["measurement_json_renderer"] = {
+                "route_request": request.model_dump(),
+                "route_decision": decision.model_dump(),
+                "report_json": rule_json,
+                "fallback_used": True,
+                "fallback_reason": "local_measurement_schema_invalid",
+            }
+            return
         state.tool_results["measurement_json_renderer"] = {
             "route_request": request.model_dump(),
             "route_decision": decision.model_dump(),
-            "report_json": self.render_measurement_json(result),
+            "report_json": report_json,
             "fallback_used": False,
+            "fallback_reason": None,
         }
+
+    def render_local_measurement_json(self, result: MeasurementAnalysisResult) -> dict[str, Any]:
+        return self.render_measurement_json(result)

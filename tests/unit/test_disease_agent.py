@@ -5,6 +5,11 @@ from backend.app.agent.state import MultiAgentState
 from backend.app.core.config import Settings
 
 
+class InvalidLocalSlotDiseaseAgent(DiseaseAgent):
+    def render_local_slots(self, query: str) -> dict:
+        return {"species": "cattle", "symptoms": "diarrhea"}
+
+
 def test_disease_agent_returns_follow_up_for_missing_slots() -> None:
     state = MultiAgentState(session_id="s1", user_query="牛拉稀了怎么办？", intent="disease_consultation")
 
@@ -114,3 +119,20 @@ def test_disease_agent_router_falls_back_to_rule_slots_for_high_risk_query() -> 
     assert "diarrhea" in state.extracted_slots["symptoms"]
     assert state.tool_results["disease_slot_router"]["route_decision"]["selected_model"] == "primary"
     assert state.tool_results["disease_slot_router"]["fallback_used"] is True
+
+
+def test_disease_agent_router_falls_back_when_local_slots_fail_schema() -> None:
+    settings = Settings(
+        v3={"enabled": True},
+        model_router={"enabled": True, "shadow_mode": False, "allow_low_risk_takeover": True},
+        local_model={"enabled": True},
+    )
+    state = MultiAgentState(session_id="s1", user_query="犊牛腹泻了怎么办？", intent="disease_consultation")
+
+    InvalidLocalSlotDiseaseAgent(settings=settings).run(state)
+
+    assert state.extracted_slots["species"] == "cattle"
+    assert "diarrhea" in state.extracted_slots["symptoms"]
+    assert state.tool_results["disease_slot_router"]["route_decision"]["selected_model"] == "local_small"
+    assert state.tool_results["disease_slot_router"]["fallback_used"] is True
+    assert state.tool_results["disease_slot_router"]["fallback_reason"] == "local_slot_schema_invalid"
