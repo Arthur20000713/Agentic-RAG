@@ -14,13 +14,13 @@
 
 ## 当前阶段边界
 
-当前开发基线位于 V4.0-E 之后。真实 RAG-SERVER MCP 链路、preflight、timeout retry、citation/source_uri 映射和 real eval 报告已经完成；V4.1 的重点是知识库质量、真实评测集、no-answer 闭环和产品化验收检查。
+当前开发基线位于 V4.2。真实 RAG-SERVER MCP 链路、preflight、timeout retry、citation/source_uri 映射和 real eval 报告已经完成；V4.2 的重点是把真实知识库扩展工程化为 source manifest、corpus batch、batch dry-run、real eval 和 quality gate 的闭环。
 
 - `v3.enabled` 默认关闭，`/api/chat` 默认仍走 V2 workflow。
 - `local_model.provider="mock"` 是结构化 mock，不是真实本地大模型推理。
 - LoRA 当前是数据治理和导出 dry-run，不包含真实训练或推理启用。
 - 当前真实 RAG 的主要质量问题是知识库样本偏弱和 no-answer/弱相关召回，不是链路不可用。
-- V4.1 已新增真实资料源 manifest、第一批真实评测集、低置信拒答策略、可选 V3 主路径和请求级 trace 查询。
+- V4.2 已新增版本化资料源 manifest、`batch_002` 批次计划、V4.2 真实评测集、质量门禁、报告 diff、批次回归脚本和前端 Debug RAG 状态展示。
 
 ## 快速运行
 
@@ -67,11 +67,32 @@ $env:RAG_SERVER_PATH="C:\Users\DELL\PycharmProjects\PythonProject\RAG-SERVER"
 
 V4.1 真实评测集位于 `tests/fixtures/real_golden_v4_1/`，按 `answerable`、`no_answer`、`safety` 分组。真实入库资料源由 `docs/rag_corpus/source_manifest.yaml` 管理，执行 RAG-SERVER 入库前必须由用户确认资料文件和 collection。
 
+V4.2 真实知识库资产：
+
+- 当前 manifest：`docs/rag_corpus/source_manifest.yaml`
+- 版本化 manifest：`docs/rag_corpus/manifests/livestock_v4_2.yaml`
+- 批次计划：`docs/rag_corpus/batches/batch_002.yaml`
+- 批次质量报告模板：`docs/rag_corpus/reports/batch_002_quality.md`
+- 真实评测集：`tests/fixtures/real_golden_v4_2/all.json`
+
+标准 V4.2 验收命令：
+
+```powershell
+.venv\Scripts\python.exe scripts\check_v4_2.py --stage full
+.venv\Scripts\python.exe scripts\check_rag_corpus.py --batch docs\rag_corpus\batches\batch_002.yaml --dry-run
+$env:RAG_SERVER_PATH="C:\Users\DELL\PycharmProjects\PythonProject\RAG-SERVER"
+.\scripts\check_real_batch.ps1 -Batch docs\rag_corpus\batches\batch_002.yaml -OutputDir reports\real_v4_2_batch
+```
+
+`livestock_v4_2` collection 必须由用户确认资料文件和 RAG-SERVER 环境后入库。若 collection 不存在，real eval 会写 skipped report，不能作为通过质量门禁的证据。
+
 ## 文档入口
 
 - `DEV_SPEC.md`：V2 开发阶段、约束和进度跟踪。
 - `DEV_SPEC_v4_1.md`：V4.1 真实知识库质量闭环开发计划。
+- `DEV_SPEC_v4_2.md`：V4.2-V4.5 剩余 V4 阶段开发计划。
 - `docs/V4_1_BASELINE.md`：V4.1 当前开发基线和能力边界。
+- `docs/V4_2_KNOWLEDGE_BASE_GUIDE.md`：V4.2 知识库批次、入库和质量门禁指南。
 - `docs/API_SPEC.md`：FastAPI contract。
 - `docs/MCP_SPEC.md`：应用层 MCP tool contract。
 - `docs/RAG_SERVER_INTEGRATION.md`：真实 RAG-SERVER 接入规则。

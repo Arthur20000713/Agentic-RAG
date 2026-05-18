@@ -93,3 +93,26 @@ rag://{collection}/{doc_id}/{chunk_id}
 6. 出现 fallback ID 时必须记录 `RAG_MAPPING_PARTIAL_SOURCE_URI`。
 
 fallback `source_uri` 只能用于追踪和展示，不得伪装成高置信证据。
+
+## V4.2 批次化知识库接入
+
+V4.2 将真实知识库扩展拆成三个版本化资产：
+
+- `docs/rag_corpus/source_manifest.yaml`：当前默认资料源清单。
+- `docs/rag_corpus/manifests/livestock_v4_2.yaml`：`livestock_v4_2` collection 的 manifest 快照。
+- `docs/rag_corpus/batches/batch_002.yaml`：第二批真实语料批次，记录来源、入库模式、本地人工摘要路径和 quality gate 阈值。
+
+入库前只做 dry-run：
+
+```powershell
+.venv\Scripts\python.exe scripts\check_rag_corpus.py --batch docs\rag_corpus\batches\batch_002.yaml --dry-run
+```
+
+真实批次回归：
+
+```powershell
+$env:RAG_SERVER_PATH="C:\Users\DELL\PycharmProjects\PythonProject\RAG-SERVER"
+.\scripts\check_real_batch.ps1 -Batch docs\rag_corpus\batches\batch_002.yaml -OutputDir reports\real_v4_2_batch
+```
+
+该脚本只编排 Agentic RAG 侧检查、real eval 和 quality gate，不修改 RAG-SERVER 源码或配置。若 RAG-SERVER 中不存在 batch 指定的 collection，preflight 会以 `RAG_COLLECTION_NOT_FOUND` 写入 skipped report；这不能算作真实质量门禁通过。

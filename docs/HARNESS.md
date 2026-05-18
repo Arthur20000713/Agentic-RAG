@@ -41,6 +41,8 @@ $env:RAG_SERVER_PATH="C:\Users\DELL\PycharmProjects\PythonProject\RAG-SERVER"
 .\scripts\check_real_batch.ps1 -Batch docs\rag_corpus\batches\batch_002.yaml -OutputDir reports\real_v4_2_batch
 ```
 
+完整批次流程见 `docs/V4_2_KNOWLEDGE_BASE_GUIDE.md`。
+
 该脚本只编排本项目命令：`check_v4_2 --stage full`、`pytest -m rag_server`、`run_eval.py --mode real --optional --batch ...` 和 `check_v4_2 --stage gate ...`。它要求显式传入 batch 与 output-dir；缺少 `RAG_SERVER_PATH` 时直接退出，不会切换到 fake，也不会打印密钥。
 
 V4.2 batch dry-run：
