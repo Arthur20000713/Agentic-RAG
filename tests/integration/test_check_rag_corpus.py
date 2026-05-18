@@ -6,8 +6,11 @@ from pathlib import Path
 from uuid import uuid4
 
 from scripts.check_rag_corpus import (
+    build_ingest_plan,
     build_rag_server_ingest_commands,
     collect_manifest_sources,
+    load_batch_or_manifest,
+    render_ingest_plan,
     validate_local_corpus_files,
 )
 
@@ -49,6 +52,26 @@ sources:
     return path
 
 
+def _write_batch(root: Path) -> Path:
+    path = root / "batch_002.yaml"
+    path.write_text(
+        """
+batch_id: batch_002
+collection: livestock_v4_2
+manifest: docs/rag_corpus/manifests/livestock_v4_2.yaml
+status: planned
+sources:
+  - source_id: approved_source
+    ingestion_mode: summary_only
+    local_file: C:\\tmp\\livestock_corpus\\batch_002\\approved_source.md
+    expected_topics: [calf_health]
+    status: planned
+""",
+        encoding="utf-8",
+    )
+    return path
+
+
 def test_collect_manifest_sources_loads_valid_manifest() -> None:
     manifest_path = _write_manifest(_tmp_root())
 
@@ -83,6 +106,50 @@ def test_build_rag_server_ingest_commands_uses_collection_and_safe_paths() -> No
         f'python scripts/ingest.py --path "{root / "corpus" / "approved_source.md"}" --collection "livestock_v4_1"'
     ]
     assert "API" not in commands[0].upper()
+
+
+def test_load_batch_or_manifest_loads_corpus_batch() -> None:
+    loaded = load_batch_or_manifest(_write_batch(_tmp_root()))
+
+    assert loaded.batch_id == "batch_002"
+    assert loaded.collection == "livestock_v4_2"
+
+
+def test_build_ingest_plan_from_batch_includes_source_id_collection_and_path() -> None:
+    batch = load_batch_or_manifest(_write_batch(_tmp_root()))
+
+    commands = build_ingest_plan(batch)
+    rendered = render_ingest_plan(commands)
+
+    assert len(commands) == 1
+    assert commands[0].source_id == "approved_source"
+    assert commands[0].collection == "livestock_v4_2"
+    assert "approved_source.md" in str(commands[0].path)
+    assert "source_id=approved_source" in rendered
+    assert '--collection "livestock_v4_2"' in rendered
+    assert "API_KEY" not in rendered
+
+
+def test_check_rag_corpus_batch_dry_run_cli_outputs_batch_plan() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/check_rag_corpus.py",
+            "--batch",
+            "docs/rag_corpus/batches/batch_002.yaml",
+            "--dry-run",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0
+    assert "DRY-RUN" in completed.stdout
+    assert "batch_002" in completed.stdout
+    assert "source_id=umn_preweaning_calf_health" in completed.stdout
+    assert '--collection "livestock_v4_2"' in completed.stdout
+    assert "API_KEY" not in completed.stdout
 
 
 def test_check_rag_corpus_dry_run_cli_does_not_require_real_rag_or_write_reports() -> None:
