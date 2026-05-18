@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from backend.app.agent.safety_precheck import SafetyLevel
 from backend.app.core.config import Settings
+from backend.app.model.router_policy import RouterPolicy
 from backend.app.services.feature_flag_service import FeatureFlagService
 
 
@@ -32,16 +33,13 @@ class ModelRouteDecision(BaseModel):
 
 
 class ModelRouter:
-    local_task_types = {"structured_extraction", "measurement_analysis", "summarization"}
-    low_risk_levels = {"S0", "S1", "S2"}
-    high_risk_levels = {"S3", "S4"}
-
     def __init__(self, settings: Settings | None = None) -> None:
-        self.flags = FeatureFlagService(settings or Settings())
+        self.settings = settings or Settings()
+        self.flags = FeatureFlagService(self.settings)
+        self.policy = RouterPolicy(self.settings)
 
     def route(self, request: ModelRouteRequest) -> ModelRouteDecision:
-        blocked_reason = self._blocked_reason(request)
-        local_candidate_allowed = blocked_reason is None and self._is_local_candidate(request)
+        local_candidate_allowed, blocked_reason = self.policy.is_local_takeover_allowed(request)
 
         if not self.flags.model_router_enabled:
             return ModelRouteDecision(
@@ -80,18 +78,4 @@ class ModelRouter:
             local_candidate_allowed=local_candidate_allowed,
             blocked_reason=blocked_reason,
             reason="primary model required",
-        )
-
-    def _blocked_reason(self, request: ModelRouteRequest) -> str | None:
-        if request.safety_level in self.high_risk_levels:
-            return "high_risk_requires_primary"
-        if request.requires_final_answer and request.safety_level in {"S2", "S3", "S4"}:
-            return "risk_final_answer_requires_primary"
-        return None
-
-    def _is_local_candidate(self, request: ModelRouteRequest) -> bool:
-        return (
-            request.task_type in self.local_task_types
-            and request.safety_level in self.low_risk_levels
-            and not request.requires_final_answer
         )

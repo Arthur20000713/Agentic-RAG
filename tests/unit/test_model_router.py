@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from backend.app.core.config import Settings
 from backend.app.model.router import ModelRouteDecision, ModelRouteRequest, ModelRouter
+from backend.app.model.router_policy import blocked_by_safety, is_local_takeover_allowed
 
 
 def test_model_route_request_and_decision_schema_are_stable() -> None:
@@ -127,3 +128,44 @@ def test_model_router_keeps_disease_final_answer_on_primary() -> None:
     assert decision.selected_model == "primary"
     assert decision.local_candidate_allowed is False
     assert decision.blocked_reason == "risk_final_answer_requires_primary"
+
+
+def test_router_policy_blocks_s3_s4_safety_levels() -> None:
+    assert blocked_by_safety(ModelRouteRequest(task_type="structured_extraction", safety_level="S3")) == (
+        "high_risk_requires_primary"
+    )
+    assert blocked_by_safety(ModelRouteRequest(task_type="structured_extraction", safety_level="S4")) == (
+        "high_risk_requires_primary"
+    )
+
+
+def test_router_policy_blocks_final_answer_even_for_low_risk() -> None:
+    allowed, reason = is_local_takeover_allowed(
+        ModelRouteRequest(task_type="summarization", safety_level="S1", requires_final_answer=True),
+        Settings(),
+    )
+
+    assert allowed is False
+    assert reason == "final_answer_requires_primary"
+
+
+def test_model_router_takeover_uses_configured_task_types() -> None:
+    settings = Settings(
+        v3={"enabled": True},
+        model_router={
+            "enabled": True,
+            "shadow_mode": False,
+            "allow_low_risk_takeover": True,
+            "takeover_task_types": ["summarization"],
+        },
+        local_model={"enabled": True},
+    )
+
+    blocked = ModelRouter(settings).route(ModelRouteRequest(task_type="measurement_analysis", safety_level="S1"))
+    allowed = ModelRouter(settings).route(ModelRouteRequest(task_type="summarization", safety_level="S1"))
+
+    assert blocked.selected_model == "primary"
+    assert blocked.local_candidate_allowed is False
+    assert blocked.blocked_reason == "task_type_not_enabled_for_local_takeover"
+    assert allowed.selected_model == "local_small"
+    assert allowed.local_candidate_allowed is True

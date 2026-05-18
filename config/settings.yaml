@@ -20,6 +20,13 @@ model_router:
   enabled: false
   shadow_mode: true
   allow_low_risk_takeover: false
+  takeover_task_types:
+    - structured_extraction
+    - measurement_analysis
+    - summarization
+  blocked_safety_levels:
+    - S3
+    - S4
 local_model:
   enabled: false
   provider: mock

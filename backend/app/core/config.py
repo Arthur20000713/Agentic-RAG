@@ -56,6 +56,10 @@ class ModelRouterSettings(BaseModel):
     enabled: bool = False
     shadow_mode: bool = True
     allow_low_risk_takeover: bool = False
+    takeover_task_types: list[str] = Field(
+        default_factory=lambda: ["structured_extraction", "measurement_analysis", "summarization"]
+    )
+    blocked_safety_levels: list[str] = Field(default_factory=lambda: ["S3", "S4"])
 
 
 class LocalModelSettings(BaseModel):
