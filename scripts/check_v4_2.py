@@ -132,12 +132,35 @@ def check_batch_report(batch_id: str, root: Path) -> list[str]:
 
 
 def check_real_golden_v4_2(root: Path) -> list[str]:
-    failures: list[str] = []
     fixture_dir = root / REAL_GOLDEN_V4_2_DIR
-    grouped_cases: dict[str, list[GoldenCase]] = {}
+    failures = check_golden_distribution(fixture_dir)
+    if failures:
+        return failures
 
+    failures.extend(check_golden_source_ids(fixture_dir / "all.json", root / "docs" / "rag_corpus" / "manifests" / "livestock_v4_2.yaml"))
+    return failures
+
+
+def check_golden_source_ids(golden_path: Path, manifest_path: Path) -> list[str]:
+    failures: list[str] = []
+    manifest = load_source_manifest(manifest_path)
+    manifest_failures = validate_source_manifest(manifest)
+    if manifest_failures:
+        return [f"{manifest_path}: {failure}" for failure in manifest_failures]
+
+    manifest_source_ids = {source.source_id for source in manifest.sources if source.source_id}
+    for case in _load_golden_cases(golden_path):
+        for source_id in case.source_ids:
+            if source_id not in manifest_source_ids:
+                failures.append(f"{case.case_id} source_id {source_id} not found in manifest")
+    return failures
+
+
+def check_golden_distribution(golden_dir: Path) -> list[str]:
+    failures: list[str] = []
+    grouped_cases: dict[str, list[GoldenCase]] = {}
     for filename in REAL_GOLDEN_V4_2_FILES:
-        path = fixture_dir / filename
+        path = golden_dir / filename
         if not path.exists():
             failures.append(f"missing V4.2 real golden file: {path}")
             continue
@@ -156,15 +179,18 @@ def check_real_golden_v4_2(root: Path) -> list[str]:
         "bilingual.json": 10,
         "all.json": 80,
     }
+    below_minimums: list[str] = []
     for filename, minimum in distribution_requirements.items():
         actual = len(grouped_cases[filename])
         if actual < minimum:
-            failures.append(f"{fixture_dir / filename}: expected at least {minimum} cases, got {actual}")
+            below_minimums.append(f"{filename.removesuffix('.json')}={actual}/{minimum}")
+    if below_minimums:
+        failures.append(f"V4.2 golden distribution below minimums: {', '.join(below_minimums)}")
 
     for filename, cases in grouped_cases.items():
         for case in cases:
             if case.expected_answer_type == "answerable" and not case.source_ids:
-                failures.append(f"{fixture_dir / filename}: answerable case {case.case_id} missing source_ids")
+                failures.append(f"{golden_dir / filename}: answerable case {case.case_id} missing source_ids")
     return failures
 
 

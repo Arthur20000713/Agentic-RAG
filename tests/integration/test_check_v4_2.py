@@ -5,7 +5,13 @@ import sys
 from pathlib import Path
 from uuid import uuid4
 
-from scripts.check_v4_2 import check_batch_files, check_batch_report, check_manifest_alignment
+from scripts.check_v4_2 import (
+    check_batch_files,
+    check_batch_report,
+    check_golden_distribution,
+    check_golden_source_ids,
+    check_manifest_alignment,
+)
 
 
 def _tmp_root() -> Path:
@@ -148,6 +154,72 @@ def test_check_batch_report_accepts_planned_report_template() -> None:
     )
 
     assert check_batch_report("batch_002", root) == []
+
+
+def test_check_golden_source_ids_reports_unknown_sources() -> None:
+    root = _tmp_root()
+    manifest_path = root / "manifest.yaml"
+    _write(
+        manifest_path,
+        """
+version: 2
+collection: livestock_v4_2
+sources:
+  - source_id: known_source
+    title: Known source
+    source_uri: https://example.com/known
+    language: EN
+    organization: Example
+    topics: [calf_health]
+    usage: [knowledge_base]
+    ingestion_status: approved_summary_only
+    license_note: Summary only.
+""",
+    )
+    golden_path = root / "golden.json"
+    _write(
+        golden_path,
+        """
+[
+  {
+    "case_id": "BAD_001",
+    "category": "general_qa",
+    "query": "question",
+    "source_ids": ["missing_source"],
+    "expected_answer_type": "answerable",
+    "expected": {"intent": "general_qa", "rag_call": true, "citation": true}
+  },
+  {
+    "case_id": "BAD_002",
+    "category": "no_answer",
+    "query": "question",
+    "source_ids": ["missing_no_answer_source"],
+    "expected_answer_type": "no_answer",
+    "expected": {"intent": "general_qa", "rag_call": true, "no_answer": true}
+  }
+]
+""",
+    )
+
+    failures = check_golden_source_ids(golden_path, manifest_path)
+
+    assert "BAD_001 source_id missing_source not found in manifest" in failures
+    assert "BAD_002 source_id missing_no_answer_source not found in manifest" in failures
+
+
+def test_check_golden_distribution_reports_counts_when_below_minimums() -> None:
+    golden_dir = _tmp_root()
+    _write(golden_dir / "answerable.json", "[]")
+    _write(golden_dir / "no_answer.json", "[]")
+    _write(golden_dir / "safety.json", "[]")
+    _write(golden_dir / "bilingual.json", "[]")
+    _write(golden_dir / "all.json", "[]")
+
+    failures = check_golden_distribution(golden_dir)
+
+    assert failures == [
+        "V4.2 golden distribution below minimums: answerable=0/35, no_answer=0/20, safety=0/15, bilingual=0/10, all=0/80"
+    ]
 
 
 def test_check_v4_2_batch_cli_passes_without_real_rag() -> None:
