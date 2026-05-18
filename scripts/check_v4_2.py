@@ -13,6 +13,12 @@ if str(ROOT) not in sys.path:
 
 from backend.app.evaluation.corpus_batch import load_corpus_batch, validate_corpus_batch
 from backend.app.evaluation.golden_runner import GoldenCase
+from backend.app.evaluation.quality_gate import (
+    QualityGateResult,
+    QualityGateThresholds,
+    evaluate_quality_gate,
+    load_eval_report,
+)
 from backend.app.evaluation.source_manifest import load_source_manifest, validate_source_manifest
 
 
@@ -20,6 +26,7 @@ STAGES = ("batch", "eval", "gate", "full")
 BATCH_DIR = Path("docs") / "rag_corpus" / "batches"
 REPORT_DIR = Path("docs") / "rag_corpus" / "reports"
 REAL_GOLDEN_V4_2_DIR = Path("tests") / "fixtures" / "real_golden_v4_2"
+DEFAULT_BATCH_PATH = Path("docs") / "rag_corpus" / "batches" / "batch_002.yaml"
 REQUIRED_FILES = (
     "DEV_SPEC_v4_2.md",
     "docs/rag_corpus/source_manifest.yaml",
@@ -50,7 +57,15 @@ def main(argv: list[str] | None = None) -> int:
         default="batch",
         help="V4.2 check stage. Checks are read-only and never start real RAG.",
     )
+    parser.add_argument("--report", type=Path, default=None, help="eval_result.json for --stage gate")
+    parser.add_argument("--batch", type=Path, default=DEFAULT_BATCH_PATH, help="corpus batch YAML for --stage gate")
     args = parser.parse_args(argv)
+
+    if args.stage == "gate":
+        if args.report is None:
+            print("FAIL: --stage gate requires --report", file=sys.stderr)
+            return 1
+        return run_quality_gate(args.report, args.batch)
 
     failures = _check_stage(args.stage, ROOT)
     if failures:
@@ -192,6 +207,32 @@ def check_golden_distribution(golden_dir: Path) -> list[str]:
             if case.expected_answer_type == "answerable" and not case.source_ids:
                 failures.append(f"{golden_dir / filename}: answerable case {case.case_id} missing source_ids")
     return failures
+
+
+def run_quality_gate(report_path: Path, batch_path: Path) -> int:
+    resolved_report_path = _resolve_under_root(ROOT, str(report_path))
+    resolved_batch_path = _resolve_under_root(ROOT, str(batch_path))
+    try:
+        report = load_eval_report(resolved_report_path)
+        batch = load_corpus_batch(resolved_batch_path)
+    except (OSError, ValueError) as exc:
+        print(f"FAIL: {exc}", file=sys.stderr)
+        return 1
+
+    thresholds = QualityGateThresholds.model_validate(batch.quality_gate.model_dump())
+    result = evaluate_quality_gate(report, thresholds)
+    summary = render_quality_gate_summary(result)
+    stream = sys.stdout if result.passed else sys.stderr
+    print(summary, file=stream)
+    return 0 if result.passed else 1
+
+
+def render_quality_gate_summary(result: QualityGateResult) -> str:
+    lines = [f"Quality gate: {'passed' if result.passed else 'failed'}"]
+    if result.reasons:
+        lines.append("Reasons:")
+        lines.extend(f"- {reason}" for reason in result.reasons)
+    return "\n".join(lines)
 
 
 def _check_stage(stage: str, root: Path) -> list[str]:
