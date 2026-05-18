@@ -12,6 +12,15 @@
 - Trace 和评测：支持 `rag_trace_log`、`agent_trace_log`、`eval_run_log`，可生成 fake eval、real RAG optional eval、multi-agent eval 和失败分析报告。
 - 静态前端：访问 `/app` 可演示 Chat、Measurement 和 Debug JSON Panel。
 
+## 当前阶段边界
+
+当前开发基线位于 V4.0-E 之后。真实 RAG-SERVER MCP 链路、preflight、timeout retry、citation/source_uri 映射和 real eval 报告已经完成；V4.1 的重点是知识库质量、真实评测集、no-answer 闭环和产品化验收检查。
+
+- `v3.enabled` 默认关闭，`/api/chat` 默认仍走 V2 workflow。
+- `local_model.provider="mock"` 是结构化 mock，不是真实本地大模型推理。
+- LoRA 当前是数据治理和导出 dry-run，不包含真实训练或推理启用。
+- 当前真实 RAG 的主要质量问题是知识库样本偏弱和 no-answer/弱相关召回，不是链路不可用。
+
 ## 快速运行
 
 安装依赖后使用项目根目录下的 `.venv`：
@@ -57,6 +66,8 @@ $env:RAG_SERVER_PATH="C:\Users\DELL\PycharmProjects\PythonProject\RAG-SERVER"
 ## 文档入口
 
 - `DEV_SPEC.md`：V2 开发阶段、约束和进度跟踪。
+- `DEV_SPEC_v4_1.md`：V4.1 真实知识库质量闭环开发计划。
+- `docs/V4_1_BASELINE.md`：V4.1 当前开发基线和能力边界。
 - `docs/API_SPEC.md`：FastAPI contract。
 - `docs/MCP_SPEC.md`：应用层 MCP tool contract。
 - `docs/RAG_SERVER_INTEGRATION.md`：真实 RAG-SERVER 接入规则。
