@@ -59,6 +59,27 @@ sources:
     assert check_batch_files(root) == []
 
 
+def test_check_batch_files_allows_planned_sources_with_missing_local_files() -> None:
+    root = _tmp_root()
+    batch_path = root / "docs" / "rag_corpus" / "batches" / "batch_002.yaml"
+    _write(
+        batch_path,
+        """
+batch_id: batch_002
+collection: livestock_v4_2
+manifest: docs/rag_corpus/manifests/livestock_v4_2.yaml
+status: planned
+sources:
+  - source_id: umn_preweaning_calf_health
+    ingestion_mode: summary_only
+    local_file: C:\\tmp\\livestock_corpus\\batch_002\\umn_preweaning_calf_health.md
+    status: planned
+""",
+    )
+
+    assert check_batch_files(root) == []
+
+
 def test_check_manifest_alignment_reports_collection_and_source_mismatch() -> None:
     root = _tmp_root()
     local_file = root / "corpus" / "source.md"

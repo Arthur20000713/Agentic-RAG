@@ -56,7 +56,7 @@ def check_batch_files(root: Path) -> list[str]:
         except (OSError, ValueError) as exc:
             failures.append(f"{batch_path}: {exc}")
             continue
-        for failure in validate_corpus_batch(batch):
+        for failure in validate_corpus_batch(batch, require_files=_requires_local_files(batch.status)):
             failures.append(f"{batch_path}: {failure}")
     return failures
 
@@ -116,6 +116,10 @@ def _batch_paths(root: Path) -> list[Path] | None:
     if not batch_dir.exists():
         return None
     return sorted(batch_dir.glob("*.yaml"))
+
+
+def _requires_local_files(batch_status: str | None) -> bool:
+    return batch_status not in {"planned", "not_ingested"}
 
 
 def _missing_paths(root: Path, paths: tuple[str, ...]) -> list[str]:

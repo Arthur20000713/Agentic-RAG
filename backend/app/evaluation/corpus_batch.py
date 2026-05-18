@@ -49,7 +49,7 @@ def load_corpus_batch(path: str | Path) -> CorpusBatch:
         raise ValueError(f"invalid corpus batch: {exc}") from exc
 
 
-def validate_corpus_batch(batch: CorpusBatch) -> list[str]:
+def validate_corpus_batch(batch: CorpusBatch, *, require_files: bool = True) -> list[str]:
     failures: list[str] = []
     for field_name in REQUIRED_BATCH_FIELDS:
         if _is_missing(getattr(batch, field_name)):
@@ -70,7 +70,7 @@ def validate_corpus_batch(batch: CorpusBatch) -> list[str]:
         if source.ingestion_mode and source.ingestion_mode not in ALLOWED_INGESTION_MODES:
             failures.append(f"source {source_label} has unsupported ingestion_mode: {source.ingestion_mode}")
 
-        if source.local_file and not Path(source.local_file).exists():
+        if require_files and source.local_file and not Path(source.local_file).exists():
             failures.append(f"source {source_label} local_file does not exist: {source.local_file}")
 
     return failures
