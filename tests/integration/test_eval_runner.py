@@ -9,6 +9,7 @@ from uuid import uuid4
 from backend.app.evaluation.golden_runner import GoldenSetRunner
 from backend.app.evaluation.multi_agent_runner import MultiAgentEvalRunner
 from backend.app.evaluation.real_rag_runner import RealRagEvalRunner
+from backend.app.evaluation.v5_runner import V5EvalRunner
 from backend.app.evaluation.v3_runner import V3EvalRunner
 from backend.app.db.connection import get_connection
 from backend.app.db.migrations import init_db
@@ -224,6 +225,95 @@ def test_run_eval_script_accepts_v3_mode() -> None:
     payload = json.loads((output_dir / "eval_result.json").read_text(encoding="utf-8"))
     assert payload["mode"] == "v3"
     assert payload["scenarios"] == ["v2_baseline", "v3_off", "router_shadow", "router_low_risk"]
+
+
+def test_v5_eval_runner_computes_router_takeover_metrics() -> None:
+    output_dir = _tmp_dir()
+    cases_path = output_dir / "v5_router_cases.json"
+    cases_path.write_text(
+        json.dumps(
+            [
+                {
+                    "case_id": "V5_QN_TAKEOVER",
+                    "task_type": "query_normalization",
+                    "safety_level": "S1",
+                    "requires_final_answer": False,
+                    "expected": {"route_mode": "takeover", "selected_model": "local_small"},
+                },
+                {
+                    "case_id": "V5_MEASURE_TAKEOVER",
+                    "task_type": "measurement_analysis",
+                    "safety_level": "S1",
+                    "requires_final_answer": False,
+                    "expected": {"route_mode": "takeover", "selected_model": "local_small"},
+                },
+                {
+                    "case_id": "V5_HIGH_RISK_BLOCKED",
+                    "task_type": "final_answer",
+                    "safety_level": "S4",
+                    "requires_final_answer": True,
+                    "expected": {
+                        "route_mode": "primary",
+                        "selected_model": "primary",
+                        "blocked_reason": "high_risk_requires_primary",
+                    },
+                },
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    runner = V5EvalRunner(cases_path, output_dir=output_dir)
+    report = runner.run()
+    runner.write_outputs(report)
+
+    assert report.mode == "v5"
+    assert report.metrics["total_cases"] == 3
+    assert report.metrics["failed_cases"] == 0
+    assert report.metrics["takeover_rate"] == 0.6667
+    assert report.metrics["blocked_high_risk_count"] == 1
+    assert report.metrics["fallback_rate"] == 0.0
+    assert (output_dir / "eval_result.json").exists()
+    assert "takeover_rate" in (output_dir / "eval_summary.md").read_text(encoding="utf-8")
+
+
+def test_run_eval_script_accepts_v5_mode() -> None:
+    output_dir = _tmp_dir()
+    cases_path = output_dir / "v5_router_cases.json"
+    cases_path.write_text(
+        json.dumps(
+            [
+                {
+                    "case_id": "V5_QN_TAKEOVER",
+                    "task_type": "query_normalization",
+                    "safety_level": "S1",
+                    "requires_final_answer": False,
+                    "expected": {"route_mode": "takeover", "selected_model": "local_small"},
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = run_eval_main(["--mode", "v5", "--golden-set", str(cases_path), "--output-dir", str(output_dir)])
+
+    assert exit_code == 0
+    payload = json.loads((output_dir / "eval_result.json").read_text(encoding="utf-8"))
+    assert payload["mode"] == "v5"
+    assert payload["metrics"]["takeover_rate"] == 1.0
+
+
+def test_run_eval_script_v5_mode_uses_default_router_fixture() -> None:
+    output_dir = _tmp_dir()
+
+    exit_code = run_eval_main(["--mode", "v5", "--output-dir", str(output_dir)])
+
+    assert exit_code == 0
+    payload = json.loads((output_dir / "eval_result.json").read_text(encoding="utf-8"))
+    assert payload["mode"] == "v5"
+    assert payload["metrics"]["total_cases"] == 4
 
 
 def test_run_eval_real_rag_optional_writes_skipped_report_when_unconfigured(monkeypatch, capsys) -> None:  # noqa: ANN001

@@ -1,0 +1,43 @@
+[
+  {
+    "case_id": "V5_QUERY_NORMALIZATION_TAKEOVER",
+    "task_type": "query_normalization",
+    "safety_level": "S1",
+    "requires_final_answer": false,
+    "expected": {
+      "route_mode": "takeover",
+      "selected_model": "local_small"
+    }
+  },
+  {
+    "case_id": "V5_MEASUREMENT_TAKEOVER",
+    "task_type": "measurement_analysis",
+    "safety_level": "S1",
+    "requires_final_answer": false,
+    "expected": {
+      "route_mode": "takeover",
+      "selected_model": "local_small"
+    }
+  },
+  {
+    "case_id": "V5_SLOT_TAKEOVER",
+    "task_type": "structured_extraction",
+    "safety_level": "S2",
+    "requires_final_answer": false,
+    "expected": {
+      "route_mode": "takeover",
+      "selected_model": "local_small"
+    }
+  },
+  {
+    "case_id": "V5_HIGH_RISK_BLOCKED",
+    "task_type": "final_answer",
+    "safety_level": "S4",
+    "requires_final_answer": true,
+    "expected": {
+      "route_mode": "primary",
+      "selected_model": "primary",
+      "blocked_reason": "high_risk_requires_primary"
+    }
+  }
+]
