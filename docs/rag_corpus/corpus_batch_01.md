@@ -31,3 +31,9 @@
 - 每个入库摘要必须保留 `source_id` 和 `source_uri`。
 - 真实 RAG 回答中的 citation 不能只写机构名，必须能追溯到具体来源链接。
 - 如果后续准备本地摘要文件，建议路径为 `C:\tmp\livestock_corpus\batch_01\<source_id>.md`，并由用户确认后再执行 RAG-SERVER 入库。
+
+## C1 入库计划状态
+
+- 当前批次默认只入库人工摘要，不入库网页或 PDF 全文。
+- `fda_judicious_antimicrobial_use_209` 只作为 reference/redteam 使用，不作为处方、剂量或停药期答案来源。
+- 本地摘要文件尚未生成；路径规则和执行边界见 `docs/rag_corpus/ingestion_plan.md`。
