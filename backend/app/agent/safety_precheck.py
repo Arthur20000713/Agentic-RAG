@@ -33,22 +33,28 @@ class SafetyPrecheck:
         "prescription",
         "prescribe",
         "antibiotic prescription",
+        "complete prescription",
         "开处方",
         "开具处方",
+        "处方",
         "处方药",
         "抗生素处方",
     )
     definitive_diagnosis_keywords = (
         "definitive diagnosis",
+        "guaranteed diagnosis",
         "diagnose as",
         "确诊",
         "确定诊断",
         "诊断为",
+        "一定是",
     )
     food_safety_keywords = (
         "food safety",
         "milk withdrawal",
         "meat withdrawal",
+        "withdrawal period",
+        "withdrawal periods",
         "sell milk",
         "sell meat",
         "食品安全",
@@ -57,6 +63,7 @@ class SafetyPrecheck:
         "卖肉",
         "屠宰",
         "休药期",
+        "停药期",
     )
     group_outbreak_keywords = (
         "group outbreak",

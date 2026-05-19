@@ -105,6 +105,33 @@ def test_mapper_populates_source_uri_without_warning_when_ids_exist() -> None:
     assert SYNTHESIZED_CITATION_WARNING in result.mapping_warnings
 
 
+def test_mapper_fills_missing_citation_source_uri_from_matching_hit() -> None:
+    result = RagServerMapper.to_search_result(
+        {
+            "query": "q",
+            "collection": "livestock_knowledge",
+            "hits": [
+                {
+                    "doc_id": "doc_001",
+                    "chunk_id": "chunk_012",
+                    "title": "Doc",
+                    "content": "content",
+                    "score": 0.7,
+                }
+            ],
+            "citations": [
+                {
+                    "source_id": "doc_001",
+                    "title": "Doc",
+                    "chunk_id": "chunk_012",
+                }
+            ],
+        }
+    )
+
+    assert result.citations[0].source_uri == "rag://livestock_knowledge/doc_001/chunk_012"
+
+
 def test_mapper_records_warning_for_fallback_source_uri() -> None:
     result = RagServerMapper.to_search_result(
         {

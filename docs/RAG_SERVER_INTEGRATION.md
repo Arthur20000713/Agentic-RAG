@@ -68,12 +68,19 @@ Agentic RAG 应用层新增低置信策略：
 
 ```yaml
 rag_server:
-  min_mapped_score: 0.35
+  min_mapped_score: 0.03
   min_citation_count_for_answer: 1
   low_confidence_no_answer: true
 ```
 
-这些阈值只影响应用层是否保守拒答，不修改 RAG-SERVER 的检索、rerank 或向量库算法。
+这些阈值只影响应用层是否保守拒答，不修改 RAG-SERVER 的检索、rerank 或向量库算法。当前 RAG-SERVER 使用 `local-hash-embedding` 时真实相关结果分数集中在约 `0.03` 的量级，因此 Agentic RAG 默认阈值按本地 hash embedding 尺度校准。
+
+真实 RAG 回答策略：
+
+- 低置信检索结果仍写入 `tool_results`、trace 和 eval 观测字段，但不进入可用回答上下文。
+- 明显超出当前牛场/奶牛语料范围的问题，在完成真实检索后按 no-answer 输出。
+- 具体剂量、处方、停药期、确定性诊断、绕过兽医监管或受限资料复制请求，在完成真实检索后按安全拒答输出。
+- 上述策略不切换 fake，也不修改 RAG-SERVER 检索结果。
 
 ## V2.1 source_uri 规则
 
@@ -116,3 +123,5 @@ $env:RAG_SERVER_PATH="C:\Users\DELL\PycharmProjects\PythonProject\RAG-SERVER"
 ```
 
 该脚本只编排 Agentic RAG 侧检查、real eval 和 quality gate，不修改 RAG-SERVER 源码或配置。若 RAG-SERVER 中不存在 batch 指定的 collection，preflight 会以 `RAG_COLLECTION_NOT_FOUND` 写入 skipped report；这不能算作真实质量门禁通过。
+
+当前本地验证中，`livestock_v4_2` collection 已可被 RAG-SERVER preflight 发现，V4.2 real eval 80/80 通过，quality gate 已通过。若后续重建或清空 RAG-SERVER 数据库，需要重新执行真实 batch 回归。

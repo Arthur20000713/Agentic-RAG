@@ -9,7 +9,7 @@ rag_server:
   collection: test
   timeout_seconds: 1
   strict_real_mode: false
-  min_mapped_score: 0.35
+  min_mapped_score: 0.03
   min_citation_count_for_answer: 1
   low_confidence_no_answer: true
 database:

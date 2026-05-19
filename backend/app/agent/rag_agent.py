@@ -67,6 +67,8 @@ class RagAgent:
         return (state.rag_query or state.normalized_query or state.user_query).strip()
 
     def _attach_hits(self, state: MultiAgentState, result: RagSearchResult) -> None:
+        if not result.has_usable_hits:
+            return
         for hit in result.hits:
             state.retrieved_contexts.append(
                 RetrievedContext(

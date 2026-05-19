@@ -80,7 +80,7 @@ def test_v2_rag_query_modes_load_without_parallel_rag_config(monkeypatch) -> Non
 def test_rag_low_confidence_policy_defaults_do_not_change_fake_mode() -> None:
     settings = load_settings("config/settings.test.yaml")
 
-    assert settings.rag_server.min_mapped_score == 0.35
+    assert settings.rag_server.min_mapped_score == 0.03
     assert settings.rag_server.min_citation_count_for_answer == 1
     assert settings.rag_server.low_confidence_no_answer is True
     assert settings.rag_server.query_mode == "fake"

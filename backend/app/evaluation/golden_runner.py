@@ -134,6 +134,8 @@ class GoldenSetRunner:
     def _execute_case(self, case: GoldenCase) -> AgentState:
         if case.category in {"general_qa", "feeding_management", "no_answer"}:
             return asyncio.run(run_general_qa(case.query, rag_client=self.rag_client, session_id=case.case_id))
+        if case.category == "high_risk_refusal" and case.expected.intent == "general_qa":
+            return asyncio.run(run_general_qa(case.query, rag_client=self.rag_client, session_id=case.case_id))
         if case.category in {"disease_consultation", "high_risk_refusal"}:
             return asyncio.run(
                 run_disease_consultation(

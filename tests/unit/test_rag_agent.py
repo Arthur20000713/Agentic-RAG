@@ -33,7 +33,7 @@ def test_rag_agent_low_confidence_sets_evidence_status() -> None:
 
     assert state.evidence_status == "low_confidence"
     assert state.tool_results["livestock_rag_search"]["status"] == "low_confidence"
-    assert len(state.retrieved_contexts) == 1
+    assert state.retrieved_contexts == []
     assert state.errors == []
     assert state.agent_trace[-1]["evidence_status"] == "low_confidence"
 

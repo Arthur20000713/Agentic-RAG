@@ -96,6 +96,11 @@ class RagServerMapper:
             RagCitation.model_validate(item)
             for item in payload.get("citations", [])
         ]
+        if citations:
+            citations = [
+                RagServerMapper._fill_citation_source_uri(citation, hits)
+                for citation in citations
+            ]
         if not citations:
             citations = []
             for hit, has_complete_source in zip(hits, complete_source_flags):
@@ -199,6 +204,19 @@ class RagServerMapper:
             mapped_score=item.get("mapped_score", metadata.get("mapped_score")),
             metadata=metadata,
         )
+
+    @staticmethod
+    def _fill_citation_source_uri(citation: RagCitation, hits: list[RagSearchHit]) -> RagCitation:
+        if citation.source_uri:
+            return citation
+        for hit in hits:
+            if citation.chunk_id and hit.chunk_id == citation.chunk_id:
+                return citation.model_copy(update={"source_uri": hit.source_uri})
+            if citation.source_id is not None and str(hit.document_id) == str(citation.source_id):
+                return citation.model_copy(update={"source_uri": hit.source_uri})
+            if citation.title and hit.document_title == citation.title:
+                return citation.model_copy(update={"source_uri": hit.source_uri})
+        return citation
 
 
 def _has_partial_source(item: dict[str, Any]) -> bool:
