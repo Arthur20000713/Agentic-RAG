@@ -7,20 +7,8 @@ from typing import Any, Iterable, Mapping
 
 from pydantic import BaseModel, Field, ValidationError
 
-from backend.app.lora.dataset import FORBIDDEN_FIELD_NAMES, LoraTrainingExample
+from backend.app.lora.dataset import ALLOWED_EXAMPLE_FIELDS, FORBIDDEN_FIELD_NAMES, LoraTrainingExample
 from backend.app.lora.dataset_quality import build_lora_dataset_quality_report, split_lora_dataset
-
-
-ALLOWED_EXAMPLE_FIELDS = {
-    "example_id",
-    "task_type",
-    "instruction",
-    "input_text",
-    "output_text",
-    "source",
-    "safety_level",
-    "metadata",
-}
 
 
 class LoraDatasetExportReport(BaseModel):

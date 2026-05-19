@@ -14,6 +14,16 @@ FORBIDDEN_FIELD_NAMES = {
     "rag_context",
     "source_document_text",
 }
+ALLOWED_EXAMPLE_FIELDS = {
+    "example_id",
+    "task_type",
+    "instruction",
+    "input_text",
+    "output_text",
+    "source",
+    "safety_level",
+    "metadata",
+}
 
 
 class LoraTrainingExample(BaseModel):
