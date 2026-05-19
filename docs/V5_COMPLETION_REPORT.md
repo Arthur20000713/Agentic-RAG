@@ -42,10 +42,24 @@ V5 turns the project into a local-first Agentic RAG application layer:
 
 ## Verification Snapshot
 
-Latest V5.4-A2 default release harness:
+Latest V5.4-B2 default regression:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_release_v5.ps1 -OutputDir .tmp_tests\v5_release_a2
+.venv\Scripts\python.exe -m pytest -m "not rag_server and not local_model" -q
+.venv\Scripts\python.exe scripts\check_v2.py --offline --frontend-contract --docs
+.venv\Scripts\python.exe scripts\check_v3.py --stage full
+.venv\Scripts\python.exe scripts\check_v4_2.py --stage full
+.venv\Scripts\python.exe scripts\check_v5.py --stage full
+.venv\Scripts\python.exe scripts\run_eval.py --mode v5 --optional --output-dir reports\v5
+.venv\Scripts\python.exe scripts\check_v5.py --stage gate --report reports\v5\eval_result.json
+```
+
+Result: passed. Pytest result: `390 passed, 3 deselected`.
+
+Latest default release harness:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\check_release_v5.ps1 -OutputDir .tmp_tests\v5_release_final
 ```
 
 Result: passed.
