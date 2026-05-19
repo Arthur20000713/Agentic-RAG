@@ -172,3 +172,28 @@ use_demo_history: true
 1. V2 的重点不是重写 RAG，而是把已有 RAG-SERVER 产品化接入到畜牧业业务闭环。
 2. Multi-agent 采用固定图，路径可解释、可测试、可 trace。
 3. fake、real、multi-agent eval 分层，既保证本地回归稳定，又能定位真实 RAG 质量问题。
+
+## 8. V5 本地优先演示补充
+
+V5 演示重点是本地模型、Router takeover、LoRA 闭环和发布检查。
+
+推荐先运行默认离线检查：
+
+```powershell
+.\scripts\check_release_v5.ps1 -OutputDir .tmp_tests\v5_release_demo
+```
+
+展示点：
+
+- `scripts\run_eval.py --mode v5` 输出低风险 takeover、fallback、高风险阻断和质量门禁指标。
+- `v3_debug.model_fallbacks` 可以展示本地模型结构化输出失败后的回退原因。
+- `config/settings.v5.example.yaml` 展示真实 RAG、本地模型、LoRA 和 Router takeover 的推荐配置。
+- `local_model.provider=mock` 只用于测试，不是产品级本地模型证据。
+- LoRA 没有真实 adapter 时只能展示数据脱敏、训练编排和 registry gate，不能宣称真实 LoRA 推理验收通过。
+
+如需演示真实依赖，必须显式开启：
+
+```powershell
+$env:RAG_SERVER_PATH="C:\Users\DELL\PycharmProjects\PythonProject\RAG-SERVER"
+.\scripts\check_release_v5.ps1 -IncludeRealRag -IncludeLocalModel -OutputDir .tmp_tests\v5_release_real
+```

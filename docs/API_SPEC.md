@@ -30,3 +30,10 @@ RAG answer rules:
 - Citations can only come from `RagSearchResult.citations`.
 - Empty, low-confidence, or failed RAG results must not fabricate sources.
 - RAG failures must clearly say the system cannot answer from retrieved evidence.
+
+V5 chat/debug additions:
+
+- When V3 graph execution is enabled, `POST /api/chat` can include `v3_debug.model_fallbacks`.
+- `model_fallbacks` records local-model fallback events such as schema validation failure, selected model, route mode, and fallback reason.
+- Local-model takeover is limited to low-risk structured tasks. API responses must not expose local-model final answers for high-risk disease, prescription, dosage, withdrawal-period, or definitive-diagnosis requests.
+- No V5 endpoint performs multi-user authorization, internet deployment management, backup/restore, or production monitoring.

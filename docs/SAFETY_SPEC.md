@@ -22,3 +22,14 @@ Agent Workflow 要求：
 - 疾病问诊最终回答必须经过 `FinalSafetyGuard`。
 - Verifier-lite 会检查专业回答缺引用、剂量违规、体尺异常缺 evidence。
 - 追问分支不得调用 RAG，不得伪造引用。
+
+## V5 local model boundaries
+
+- `local_model.allow_final_answer` must remain `false` by default.
+- Local-model takeover is limited to low-risk structured tasks: query normalization, slot extraction, measurement analysis, and summarization.
+- Safety levels `S3` and `S4` require the primary guarded path and must not be answered by `local_small`.
+- Final-answer, prescription, dosage, withdrawal-period, and definitive-diagnosis requests must be blocked or routed to the primary guarded path.
+- If a local model returns invalid JSON, invalid schema, timeout, or tool error, the system must fall back to deterministic rules or the primary path and record the fallback reason.
+- LoRA inference is allowed only when a registered adapter is active and has `safety_gate_status=passed`.
+
+V5 does not add multi-user permission control, internet production deployment, or production incident monitoring. These remain out of scope.

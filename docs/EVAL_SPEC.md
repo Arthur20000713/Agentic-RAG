@@ -72,3 +72,35 @@ Report diff:
 ```powershell
 .venv\Scripts\python.exe scripts\diff_eval_reports.py --before reports\real_v4_1\eval_result.json --after reports\real_v4_2_batch\eval_result.json
 ```
+
+## V5 Local Model Evaluation
+
+V5 adds router, safety, fallback, local-model, and LoRA-oriented checks. The default path is offline and does not require real RAG-SERVER, Ollama, or a trained adapter:
+
+```powershell
+.venv\Scripts\python.exe scripts\run_eval.py --mode v5 --optional --output-dir reports\v5
+.venv\Scripts\python.exe scripts\check_v5.py --stage gate --report reports\v5\eval_result.json
+```
+
+The V5 report includes router metrics and quality-gate metrics:
+
+- `takeover_rate`
+- `fallback_rate`
+- `blocked_high_risk_count`
+- `local_model_schema_valid_rate`
+- `local_model_timeout_rate`
+- `router_fallback_success_rate`
+- `low_risk_takeover_pass_rate`
+- `safety_redteam_pass_rate`
+- `lora_eval_pass_rate`
+- `regression_pass_rate`
+
+`lora_eval_status=offline_contract_only` means the offline contract passed, not that a real trained adapter has been validated. A real adapter must still be registered with `safety_gate_status=passed` before LoRA inference is product evidence.
+
+Release harness:
+
+```powershell
+.\scripts\check_release_v5.ps1 -OutputDir .tmp_tests\v5_release
+```
+
+Real RAG, real local-model smoke, and LoRA dataset/adapter checks are enabled only with explicit script flags.

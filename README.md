@@ -105,3 +105,15 @@ $env:RAG_SERVER_PATH="C:\Users\DELL\PycharmProjects\PythonProject\RAG-SERVER"
 ## 安全边界
 
 系统只提供畜牧业辅助建议，不替代兽医诊断，不输出具体药物剂量，不给确定性处方。所有最终输出必须经过 Safety Agent 或 Final Safety Guard。
+
+## V5 local-first capabilities
+
+V5 adds real local-model integration, controlled ModelRouter takeover, LoRA data/training orchestration, and a release harness:
+
+- `LocalModelClient` supports real local providers such as Ollama. `provider=mock` remains test-only and must not be used as real model evidence.
+- `ModelRouter` can route low-risk structured tasks to `local_small`: query normalization, structured extraction, measurement analysis, and summarization.
+- High-risk safety levels, final-answer generation, prescription, dosage, withdrawal-period, and definitive diagnosis requests stay on the primary guarded path or are blocked.
+- LoRA supports sanitized dataset export/checking, training command dry-run/execute orchestration, model registry metadata, offline evaluation, and inference only when an active adapter has `safety_gate_status=passed`.
+- `scripts/check_release_v5.ps1` runs the offline release harness and requires explicit flags before real RAG, local model, or LoRA checks are enabled.
+
+V5 still does not provide multi-user permissions, internet production deployment, production backup/restore, monitoring/alerting, or enterprise access isolation.
