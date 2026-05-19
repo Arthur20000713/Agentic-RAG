@@ -29,21 +29,22 @@ model_router:
   allow_low_risk_takeover: true
   takeover_task_types:
     - query_normalization
-    - structured_extraction
-    - measurement_analysis
-    - summarization
   blocked_safety_levels:
     - S3
     - S4
 
 local_model:
   enabled: true
-  provider: ollama
-  endpoint: http://127.0.0.1:11434
-  model: qwen2.5:7b-instruct
+  provider: transformers
+  endpoint:
+  model: Qwen/Qwen2.5-0.5B-Instruct
   timeout_seconds: 8
   max_retries: 1
   allow_final_answer: false
+  device: auto
+  torch_dtype: auto
+  max_new_tokens: 128
+  temperature: 0
 
 lora:
   dataset_enabled: true

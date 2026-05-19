@@ -70,6 +70,10 @@ class LocalModelSettings(BaseModel):
     timeout_seconds: float = 3.0
     max_retries: int = 0
     allow_final_answer: bool = False
+    device: str = "auto"
+    torch_dtype: str = "auto"
+    max_new_tokens: int = 128
+    temperature: float = 0.0
 
 
 class LoraSettings(BaseModel):

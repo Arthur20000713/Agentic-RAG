@@ -32,6 +32,12 @@ local_model:
   enabled: false
   provider: mock
   timeout_seconds: 3
+  max_retries: 0
+  allow_final_answer: false
+  device: auto
+  torch_dtype: auto
+  max_new_tokens: 128
+  temperature: 0
 lora:
   dataset_enabled: false
   inference_enabled: false

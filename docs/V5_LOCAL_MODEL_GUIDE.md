@@ -36,6 +36,40 @@ local_model:
 
 本仓库不会自动下载模型，也不会启动外部模型服务。缺少 endpoint、model 或本地运行环境时，检查脚本必须 skipped 或失败，不能回退到 mock 并伪装成真实能力。
 
+## Transformers 直连配置示例
+
+对于 RTX 3060 Laptop 6GB 显存，建议先使用 0.5B 级别模型，只接管 `query_normalization`。当前推荐默认模型：
+
+```yaml
+local_model:
+  enabled: true
+  provider: transformers
+  endpoint:
+  model: Qwen/Qwen2.5-0.5B-Instruct
+  timeout_seconds: 8
+  max_retries: 1
+  allow_final_answer: false
+  device: auto
+  torch_dtype: auto
+  max_new_tokens: 128
+  temperature: 0
+
+model_router:
+  enabled: true
+  shadow_mode: false
+  allow_low_risk_takeover: true
+  takeover_task_types:
+    - query_normalization
+```
+
+安装可选依赖：
+
+```powershell
+.venv\Scripts\python.exe -m pip install -e ".[transformers]"
+```
+
+`provider=transformers` 当前只支持 `query_normalization`。其它结构化任务会返回结构化 fallback，不会静默伪装成真实模型成功。模型第一次运行可能会从 Hugging Face 下载权重；需要离线运行时，应先手动下载模型并把 `model` 配置为本地目录。
+
 ## 检查命令
 
 静态 V5 检查：

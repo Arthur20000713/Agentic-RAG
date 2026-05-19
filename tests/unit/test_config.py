@@ -138,6 +138,10 @@ def test_v3_settings_default_to_disabled_without_changing_v2_behavior() -> None:
     assert settings.local_model.provider == "mock"
     assert settings.local_model.endpoint is None
     assert settings.local_model.model is None
+    assert settings.local_model.device == "auto"
+    assert settings.local_model.torch_dtype == "auto"
+    assert settings.local_model.max_new_tokens == 128
+    assert settings.local_model.temperature == 0
     assert settings.lora.dataset_enabled is False
     assert settings.lora.inference_enabled is False
     assert settings.long_term_memory.write_enabled is False
@@ -206,6 +210,10 @@ def test_v5_local_model_settings_load_real_backend_fields() -> None:
                 "  timeout_seconds: 8",
                 "  max_retries: 1",
                 "  allow_final_answer: false",
+                "  device: cuda:0",
+                "  torch_dtype: float16",
+                "  max_new_tokens: 96",
+                "  temperature: 0",
             ]
         ),
         encoding="utf-8",
@@ -220,3 +228,7 @@ def test_v5_local_model_settings_load_real_backend_fields() -> None:
     assert settings.local_model.timeout_seconds == 8
     assert settings.local_model.max_retries == 1
     assert settings.local_model.allow_final_answer is False
+    assert settings.local_model.device == "cuda:0"
+    assert settings.local_model.torch_dtype == "float16"
+    assert settings.local_model.max_new_tokens == 96
+    assert settings.local_model.temperature == 0

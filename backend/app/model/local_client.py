@@ -7,7 +7,7 @@ from backend.app.lora.dataset import LoraTaskType
 from backend.app.lora.inference import select_lora_adapter
 from backend.app.lora.registry import ModelRegistry, ModelRegistryEntry
 from backend.app.model.base import BaseModelClient
-from backend.app.model.local_backends import BaseLocalBackend, LocalBackendRequest, OllamaBackend
+from backend.app.model.local_backends import BaseLocalBackend, LocalBackendRequest, OllamaBackend, TransformersBackend
 
 
 class LocalModelClient(BaseModelClient):
@@ -16,6 +16,7 @@ class LocalModelClient(BaseModelClient):
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or Settings()
         self.provider = self.settings.local_model.provider
+        self._backend_cache: dict[str, BaseLocalBackend] = {}
 
     async def generate_json(
         self,
@@ -45,11 +46,11 @@ class LocalModelClient(BaseModelClient):
 
         endpoint = self.settings.local_model.endpoint
         model = self.settings.local_model.model
-        if not endpoint or not model:
+        if not model or (self.provider != "transformers" and not endpoint):
             return self._fallback(
                 normalized_schema,
                 error_code="LOCAL_MODEL_CONFIG_ERROR",
-                reason="local model endpoint and model must be configured",
+                reason=self._config_error_reason(),
             )
 
         backend = self._select_backend()
@@ -66,11 +67,11 @@ class LocalModelClient(BaseModelClient):
             LocalBackendRequest(
                 prompt=prompt,
                 schema_name=normalized_schema,
-                endpoint=endpoint,
+                endpoint=endpoint or "",
                 model=model,
                 timeout_seconds=self.settings.local_model.timeout_seconds,
                 context=context,
-                options=options,
+                options={**self._local_model_options(), **options},
             )
         )
         payload = dict(response.content)
@@ -89,8 +90,14 @@ class LocalModelClient(BaseModelClient):
         return payload
 
     def _select_backend(self) -> BaseLocalBackend | None:
+        if self.provider in self._backend_cache:
+            return self._backend_cache[self.provider]
         if self.provider == "ollama":
-            return OllamaBackend()
+            self._backend_cache[self.provider] = OllamaBackend()
+            return self._backend_cache[self.provider]
+        if self.provider == "transformers":
+            self._backend_cache[self.provider] = TransformersBackend()
+            return self._backend_cache[self.provider]
         return None
 
     def _select_lora_adapter(self, schema_name: str) -> ModelRegistryEntry | None:
@@ -110,6 +117,19 @@ class LocalModelClient(BaseModelClient):
         if adapter is None:
             return {}
         return {"lora_adapter": adapter.adapter_path, "lora_model_id": adapter.model_id}
+
+    def _local_model_options(self) -> dict[str, Any]:
+        return {
+            "device": self.settings.local_model.device,
+            "torch_dtype": self.settings.local_model.torch_dtype,
+            "max_new_tokens": self.settings.local_model.max_new_tokens,
+            "temperature": self.settings.local_model.temperature,
+        }
+
+    def _config_error_reason(self) -> str:
+        if self.provider == "transformers":
+            return "local_model.model must be configured for transformers provider"
+        return "local model endpoint and model must be configured"
 
     def _generate_mock_json(
         self,

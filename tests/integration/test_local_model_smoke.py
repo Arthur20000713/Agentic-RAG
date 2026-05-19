@@ -73,3 +73,36 @@ def test_run_smoke_uses_configured_real_provider(monkeypatch) -> None:
         ("Normalize this livestock question: calf weaning feed", "query_normalization"),
         ("Extract low-risk livestock slots from: calf has mild cough", "slot_extraction"),
     ]
+
+
+def test_run_smoke_uses_query_normalization_only_for_transformers(monkeypatch) -> None:
+    calls: list[tuple[str, str]] = []
+
+    class FakeClient:
+        def __init__(self, settings: Settings) -> None:
+            self.settings = settings
+
+        async def generate_json(self, prompt: str, *, schema_name: str, context=None):
+            calls.append((prompt, schema_name))
+            return {
+                "status": "success",
+                "schema_name": schema_name,
+                "fallback_required": False,
+                "provider": "transformers",
+            }
+
+    monkeypatch.setattr(run_local_model_smoke, "LocalModelClient", FakeClient)
+    settings = Settings(
+        local_model={
+            "enabled": True,
+            "provider": "transformers",
+            "model": "Qwen/Qwen2.5-0.5B-Instruct",
+        }
+    )
+
+    report = asyncio.run(run_local_model_smoke.run_smoke(settings))
+
+    assert report.status == "passed"
+    assert report.provider == "transformers"
+    assert [case.task_type for case in report.cases] == ["query_normalization"]
+    assert calls == [("Normalize this livestock question: calf weaning feed", "query_normalization")]

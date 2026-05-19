@@ -59,7 +59,7 @@ async def run_smoke(settings: Settings) -> LocalModelSmokeReport:
 
     client = LocalModelClient(settings)
     cases: list[LocalModelSmokeCase] = []
-    for task_type, prompt in SMOKE_TASKS:
+    for task_type, prompt in _smoke_tasks(settings):
         try:
             payload = await client.generate_json(prompt, schema_name=task_type)
         except Exception as exc:
@@ -119,12 +119,23 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _has_real_local_model_config(settings: Settings) -> bool:
+    if settings.local_model.provider == "transformers":
+        return (
+            settings.local_model.enabled
+            and bool(settings.local_model.model)
+        )
     return (
         settings.local_model.enabled
         and settings.local_model.provider != "mock"
         and bool(settings.local_model.endpoint)
         and bool(settings.local_model.model)
     )
+
+
+def _smoke_tasks(settings: Settings) -> tuple[tuple[str, str], ...]:
+    if settings.local_model.provider == "transformers":
+        return (SMOKE_TASKS[0],)
+    return SMOKE_TASKS
 
 
 def _write_report(path: Path, report: LocalModelSmokeReport) -> None:

@@ -139,6 +139,7 @@ def test_local_model_client_calls_ollama_backend_for_real_provider() -> None:
             model="qwen2.5:7b-instruct",
             timeout_seconds=8,
             context=None,
+            options={"device": "auto", "torch_dtype": "auto", "max_new_tokens": 128, "temperature": 0.0},
         )
     ]
 
@@ -175,6 +176,28 @@ def test_local_model_client_returns_fallback_when_real_provider_config_missing()
     assert result["error_code"] == "LOCAL_MODEL_CONFIG_ERROR"
 
 
+def test_local_model_client_calls_transformers_backend_without_endpoint() -> None:
+    settings = Settings(
+        local_model={
+            "enabled": True,
+            "provider": "transformers",
+            "model": "Qwen/Qwen2.5-0.5B-Instruct",
+            "timeout_seconds": 8,
+            "max_new_tokens": 96,
+        }
+    )
+    backend = RecordingBackend()
+    backend.provider = "transformers"
+    client = RecordingClient(settings, backend)
+
+    result = asyncio.run(client.generate_json("Normalize calf feed", schema_name="query_normalization"))
+
+    assert result["provider"] == "transformers"
+    assert result["model"] == "Qwen/Qwen2.5-0.5B-Instruct"
+    assert backend.requests[0].endpoint == ""
+    assert backend.requests[0].options["max_new_tokens"] == 96
+
+
 def test_local_model_client_passes_lora_adapter_option_when_enabled() -> None:
     registry_path = _tmp_registry_path()
     registry = ModelRegistry(registry_path)
@@ -204,6 +227,10 @@ def test_local_model_client_passes_lora_adapter_option_when_enabled() -> None:
 
     assert result["lora_adapter_id"] == "slot_lora_v1"
     assert backend.requests[0].options == {
+        "device": "auto",
+        "torch_dtype": "auto",
+        "max_new_tokens": 128,
+        "temperature": 0.0,
         "lora_adapter": "C:/tmp/lora_adapters/slot_lora_v1",
         "lora_model_id": "slot_lora_v1",
     }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 import time
@@ -23,6 +24,9 @@ class LocalBackendRequest:
     timeout_seconds: float = 3.0
     context: dict[str, Any] | None = None
     options: dict[str, Any] = field(default_factory=dict)
+
+
+TransformersGenerator = Callable[[str, LocalBackendRequest], str]
 
 
 @dataclass(frozen=True)
@@ -147,6 +151,150 @@ class OllamaBackend(BaseLocalBackend):
         )
 
 
+class TransformersBackend(BaseLocalBackend):
+    provider = "transformers"
+
+    def __init__(self, generator: TransformersGenerator | None = None) -> None:
+        self._generator = generator
+        self._tokenizer: Any | None = None
+        self._model: Any | None = None
+        self._loaded_model_name: str | None = None
+
+    async def generate(self, request: LocalBackendRequest) -> LocalBackendResponse:
+        started = time.perf_counter()
+        payload = {
+            "model": request.model,
+            "schema_name": request.schema_name,
+            "device": request.options.get("device", "auto"),
+            "torch_dtype": request.options.get("torch_dtype", "auto"),
+            "max_new_tokens": request.options.get("max_new_tokens", 128),
+            "temperature": request.options.get("temperature", 0.0),
+        }
+        normalized_schema = request.schema_name.strip().lower()
+        if normalized_schema != "query_normalization":
+            return _backend_failure(
+                request,
+                self.provider,
+                payload,
+                started,
+                error_code="LOCAL_MODEL_SCHEMA_UNSUPPORTED",
+                reason="transformers backend currently supports query_normalization only",
+            )
+
+        prompt = _query_normalization_prompt(request.prompt)
+        try:
+            raw_text = await asyncio.wait_for(
+                asyncio.to_thread(self._generate_text, prompt, request),
+                timeout=request.timeout_seconds,
+            )
+        except TimeoutError as exc:
+            return _backend_failure(
+                request,
+                self.provider,
+                payload,
+                started,
+                error_code="LOCAL_MODEL_TIMEOUT",
+                reason=str(exc) or "local transformers generation timed out",
+            )
+        except Exception as exc:
+            error_code = (
+                "LOCAL_MODEL_IMPORT_ERROR"
+                if exc.__class__.__name__ == "ImportError"
+                else "LOCAL_MODEL_GENERATION_ERROR"
+            )
+            return _backend_failure(
+                request,
+                self.provider,
+                payload,
+                started,
+                error_code=error_code,
+                reason=str(exc) or exc.__class__.__name__,
+            )
+
+        content = parse_local_json_response(raw_text, normalized_schema)
+        return LocalBackendResponse(
+            status=str(content.get("status", "success")),
+            schema_name=normalized_schema,
+            content=content,
+            fallback_required=bool(content.get("fallback_required")),
+            provider=self.provider,
+            latency_ms=_latency_ms(started),
+            raw_text=raw_text,
+            error_code=content.get("error_code"),
+            reason=content.get("reason"),
+            request_payload=payload,
+        )
+
+    def _generate_text(self, prompt: str, request: LocalBackendRequest) -> str:
+        if self._generator is not None:
+            return self._generator(prompt, request)
+
+        try:
+            import torch
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+        except ImportError as exc:
+            raise ImportError("install local transformers dependencies with: pip install -e .[transformers]") from exc
+
+        if self._model is None or self._tokenizer is None or self._loaded_model_name != request.model:
+            dtype = request.options.get("torch_dtype", "auto")
+            model_kwargs: dict[str, Any] = {"trust_remote_code": False}
+            if dtype:
+                model_kwargs["torch_dtype"] = dtype
+            device = str(request.options.get("device", "auto"))
+            if device == "auto" and torch.cuda.is_available():
+                model_kwargs["device_map"] = "auto"
+
+            self._tokenizer = AutoTokenizer.from_pretrained(request.model, trust_remote_code=False)
+            self._model = AutoModelForCausalLM.from_pretrained(request.model, **model_kwargs)
+            if device not in {"auto", "cuda:0"} and hasattr(self._model, "to"):
+                self._model.to(device)
+            elif device == "cuda:0" and torch.cuda.is_available() and hasattr(self._model, "to") and "device_map" not in model_kwargs:
+                self._model.to("cuda:0")
+            self._loaded_model_name = request.model
+
+        tokenizer = self._tokenizer
+        model = self._model
+        messages = [
+            {
+                "role": "system",
+                "content": "You normalize livestock questions and return JSON only.",
+            },
+            {"role": "user", "content": prompt},
+        ]
+        if hasattr(tokenizer, "apply_chat_template"):
+            input_ids = tokenizer.apply_chat_template(
+                messages,
+                add_generation_prompt=True,
+                return_tensors="pt",
+            )
+            model_device = getattr(model, "device", None)
+            if model_device is not None and hasattr(input_ids, "to"):
+                input_ids = input_ids.to(model_device)
+            attention_mask = None
+        else:
+            encoded = tokenizer(prompt, return_tensors="pt")
+            input_ids = encoded["input_ids"]
+            attention_mask = encoded.get("attention_mask")
+            model_device = getattr(model, "device", None)
+            if model_device is not None:
+                input_ids = input_ids.to(model_device)
+                if attention_mask is not None and hasattr(attention_mask, "to"):
+                    attention_mask = attention_mask.to(model_device)
+
+        temperature = float(request.options.get("temperature", 0.0))
+        generate_kwargs: dict[str, Any] = {
+            "max_new_tokens": int(request.options.get("max_new_tokens", 128)),
+            "do_sample": temperature > 0,
+        }
+        if attention_mask is not None:
+            generate_kwargs["attention_mask"] = attention_mask
+        if temperature > 0:
+            generate_kwargs["temperature"] = temperature
+        output_ids = model.generate(input_ids, **generate_kwargs)
+        generated_ids = output_ids[0][len(input_ids[0]) :]
+        return tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
+
+
 def _ollama_generate_url(endpoint: str) -> str:
     return endpoint.rstrip("/") + "/api/generate"
 
@@ -178,3 +326,41 @@ def _post_json(url: str, payload: dict[str, Any], timeout_seconds: float) -> dic
     if not isinstance(parsed, dict):
         raise ValueError("local model HTTP response must be a JSON object")
     return parsed
+
+
+def _query_normalization_prompt(query: str) -> str:
+    return (
+        "Normalize the livestock user question for retrieval. Preserve the user's language and factual meaning. "
+        "Remove filler words, keep animal species, symptoms, measurements, management topic, and constraints. "
+        "Return exactly one JSON object with keys: status, normalized_query, language, fallback_required.\n"
+        f"User question: {query.strip()}"
+    )
+
+
+def _backend_failure(
+    request: LocalBackendRequest,
+    provider: str,
+    payload: dict[str, Any],
+    started: float,
+    *,
+    error_code: str,
+    reason: str,
+) -> LocalBackendResponse:
+    content = {
+        "status": "error",
+        "schema_name": request.schema_name.strip().lower(),
+        "fallback_required": True,
+        "error_code": error_code,
+        "reason": reason,
+    }
+    return LocalBackendResponse(
+        status="error",
+        schema_name=request.schema_name.strip().lower(),
+        content=content,
+        fallback_required=True,
+        provider=provider,
+        latency_ms=_latency_ms(started),
+        error_code=error_code,
+        reason=reason,
+        request_payload=payload,
+    )
