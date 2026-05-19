@@ -39,7 +39,7 @@ class LocalModelSmokeReport:
 
 
 SMOKE_TASKS = (
-    ("query_normalization", "Normalize this livestock question: calf weaning feed"),
+    ("query_normalization", "What feed should I use for a calf after weaning?"),
     ("slot_extraction", "Extract low-risk livestock slots from: calf has mild cough"),
 )
 

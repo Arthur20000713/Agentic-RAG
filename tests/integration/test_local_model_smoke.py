@@ -70,7 +70,7 @@ def test_run_smoke_uses_configured_real_provider(monkeypatch) -> None:
     assert report.model == "qwen2.5:7b-instruct"
     assert [case.task_type for case in report.cases] == ["query_normalization", "slot_extraction"]
     assert calls == [
-        ("Normalize this livestock question: calf weaning feed", "query_normalization"),
+        ("What feed should I use for a calf after weaning?", "query_normalization"),
         ("Extract low-risk livestock slots from: calf has mild cough", "slot_extraction"),
     ]
 
@@ -105,4 +105,4 @@ def test_run_smoke_uses_query_normalization_only_for_transformers(monkeypatch) -
     assert report.status == "passed"
     assert report.provider == "transformers"
     assert [case.task_type for case in report.cases] == ["query_normalization"]
-    assert calls == [("Normalize this livestock question: calf weaning feed", "query_normalization")]
+    assert calls == [("What feed should I use for a calf after weaning?", "query_normalization")]

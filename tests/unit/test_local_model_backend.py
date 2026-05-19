@@ -114,9 +114,31 @@ def test_transformers_backend_builds_query_normalization_prompt() -> None:
     response = asyncio.run(backend.generate(request))
 
     assert "Normalize the livestock user question" in str(captured["prompt"])
+    assert "fallback_required=false" in str(captured["prompt"])
     assert response.status == "success"
     assert response.provider == "transformers"
     assert response.content["normalized_query"] == "calf weaning feed"
+
+
+def test_transformers_backend_normalizes_successful_query_fallback_flag() -> None:
+    backend = TransformersBackend(
+        generator=lambda prompt, request: (
+            '{"status":"success","normalized_query":"feed for calf after weaning",'
+            '"language":"en","fallback_required":true}'
+        )
+    )
+    request = LocalBackendRequest(
+        prompt="What feed should I use for a calf after weaning?",
+        schema_name="query_normalization",
+        endpoint="",
+        model="Qwen/Qwen2.5-0.5B-Instruct",
+    )
+
+    response = asyncio.run(backend.generate(request))
+
+    assert response.status == "success"
+    assert response.fallback_required is False
+    assert response.content["fallback_required"] is False
 
 
 def test_transformers_backend_rejects_non_query_normalization_schema() -> None:

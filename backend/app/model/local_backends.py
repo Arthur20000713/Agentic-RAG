@@ -212,6 +212,7 @@ class TransformersBackend(BaseLocalBackend):
             )
 
         content = parse_local_json_response(raw_text, normalized_schema)
+        content = _normalize_query_normalization_content(content, normalized_schema)
         return LocalBackendResponse(
             status=str(content.get("status", "success")),
             schema_name=normalized_schema,
@@ -257,7 +258,11 @@ class TransformersBackend(BaseLocalBackend):
         messages = [
             {
                 "role": "system",
-                "content": "You normalize livestock questions and return JSON only.",
+                "content": (
+                    "You normalize livestock questions for retrieval. "
+                    "Return exactly one JSON object and no prose. "
+                    "Set fallback_required to false when you can produce a normalized query."
+                ),
             },
             {"role": "user", "content": prompt},
         ]
@@ -332,9 +337,20 @@ def _query_normalization_prompt(query: str) -> str:
     return (
         "Normalize the livestock user question for retrieval. Preserve the user's language and factual meaning. "
         "Remove filler words, keep animal species, symptoms, measurements, management topic, and constraints. "
-        "Return exactly one JSON object with keys: status, normalized_query, language, fallback_required.\n"
+        "Return exactly one JSON object with keys: status, normalized_query, language, fallback_required. "
+        'Use status="success" and fallback_required=false when the question can be normalized. '
+        "Use fallback_required=true only when the input is empty, unsafe, or not a livestock question. "
+        'Example: {"status":"success","normalized_query":"calf weaning feed","language":"en","fallback_required":false}\n'
         f"User question: {query.strip()}"
     )
+
+
+def _normalize_query_normalization_content(content: dict[str, Any], schema_name: str) -> dict[str, Any]:
+    if schema_name != "query_normalization":
+        return content
+    if content.get("status") == "success" and str(content.get("normalized_query", "")).strip():
+        content["fallback_required"] = False
+    return content
 
 
 def _backend_failure(
