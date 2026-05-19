@@ -93,6 +93,7 @@ def build_debug_payload(settings: Settings | None = None, *, state: AgentState |
                 "safety": state.safety_result,
                 "verifier": state.verification_result,
                 "evidence_status": state.evidence_status,
+                "model_fallbacks": list(state.tool_results.get("model_fallbacks") or []),
             }
         )
     return payload
