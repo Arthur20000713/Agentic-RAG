@@ -6,6 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from scripts.check_v5 import check_local_model_config
+from scripts.check_v5 import check_v5_report, run_model_quality_gate
 
 
 def _tmp_root() -> Path:
@@ -82,3 +83,48 @@ def test_check_v5_local_model_cli_runs_optional_smoke() -> None:
     assert completed.returncode == 0
     assert "V5 checks passed for stage local-model" in completed.stdout
     assert "SKIPPED: real local model is not configured" in completed.stdout
+
+
+def test_check_v5_report_requires_eval_result() -> None:
+    root = _tmp_root()
+
+    assert check_v5_report(root) == [f"missing V5 eval report: {root / 'eval_result.json'}"]
+
+
+def test_run_model_quality_gate_passes_valid_report() -> None:
+    report_path = _tmp_root() / "eval_result.json"
+    _write(
+        report_path,
+        """
+{
+  "status": "passed",
+  "metrics": {
+    "local_model_schema_valid_rate": 0.99,
+    "local_model_timeout_rate": 0.01,
+    "router_fallback_success_rate": 1.0,
+    "low_risk_takeover_pass_rate": 0.96,
+    "safety_redteam_pass_rate": 1.0,
+    "lora_eval_pass_rate": 0.96,
+    "regression_pass_rate": 1.0
+  }
+}
+""",
+    )
+
+    assert run_model_quality_gate(report_path) == 0
+
+
+def test_check_v5_gate_cli_fails_skipped_report() -> None:
+    output_dir = _tmp_root()
+    report_path = output_dir / "eval_result.json"
+    _write(report_path, '{"status":"skipped","reason":"local model missing","metrics":{}}')
+
+    completed = subprocess.run(
+        [sys.executable, "scripts/check_v5.py", "--stage", "gate", "--report", str(report_path)],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 1
+    assert "V5 report skipped: local model missing" in completed.stderr
