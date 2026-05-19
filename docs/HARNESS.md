@@ -330,3 +330,20 @@ V2.5-E5 demo script review check:
 ```powershell
 .venv\Scripts\python.exe scripts\check_v2.py --docs
 ```
+
+V5 release harness:
+
+```powershell
+.\scripts\check_release_v5.ps1 -OutputDir .tmp_tests\v5_release
+```
+
+The default run is offline and does not require real RAG-SERVER, Ollama, or LoRA adapters. It writes per-step logs and `release_check_summary.json` under the output directory.
+
+Real dependencies must be enabled explicitly:
+
+```powershell
+$env:RAG_SERVER_PATH="C:\Users\DELL\PycharmProjects\PythonProject\RAG-SERVER"
+.\scripts\check_release_v5.ps1 -IncludeRealRag -IncludeLocalModel -IncludeLora -LoraDatasetPath data\v5\lora_dataset_splits.json -LoraModelId slot_lora_v1
+```
+
+If a real dependency is missing after its flag is enabled, the script fails or writes an explicit skipped report from the underlying command. It does not switch to fake RAG or mock local model as release evidence.

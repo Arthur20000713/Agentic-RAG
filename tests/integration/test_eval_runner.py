@@ -274,6 +274,13 @@ def test_v5_eval_runner_computes_router_takeover_metrics() -> None:
     assert report.metrics["takeover_rate"] == 0.6667
     assert report.metrics["blocked_high_risk_count"] == 1
     assert report.metrics["fallback_rate"] == 0.0
+    assert report.metrics["local_model_schema_valid_rate"] == 1.0
+    assert report.metrics["local_model_timeout_rate"] == 0.0
+    assert report.metrics["router_fallback_success_rate"] == 1.0
+    assert report.metrics["low_risk_takeover_pass_rate"] == 1.0
+    assert report.metrics["safety_redteam_pass_rate"] == 1.0
+    assert report.metrics["lora_eval_pass_rate"] == 1.0
+    assert report.metrics["regression_pass_rate"] == 1.0
     assert (output_dir / "eval_result.json").exists()
     assert "takeover_rate" in (output_dir / "eval_summary.md").read_text(encoding="utf-8")
 
