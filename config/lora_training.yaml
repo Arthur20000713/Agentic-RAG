@@ -1,0 +1,8 @@
+base_model: qwen2.5:7b-instruct
+dataset_path: C:/tmp/lora_dataset/dataset.json
+output_dir: C:/tmp/lora_adapters/calf_slots_v1
+adapter_name: calf_slots_v1
+training_script: C:/tmp/train_lora.py
+python_executable: python
+max_steps: 100
+extra_args: []
