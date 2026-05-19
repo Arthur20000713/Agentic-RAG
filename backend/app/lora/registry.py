@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -14,6 +15,10 @@ class ModelRegistryEntry(BaseModel):
     version: str
     adapter_path: str
     task_type: LoraTaskType
+    base_model: str | None = None
+    training_dataset_hash: str | None = None
+    eval_report_path: str | None = None
+    safety_gate_status: Literal["unknown", "passed", "failed"] = "unknown"
     enabled_for_inference: bool = False
     metrics: dict[str, float] = Field(default_factory=dict)
 
@@ -44,6 +49,8 @@ class ModelRegistry:
         for entry in entries:
             if entry.model_id == model_id:
                 found = True
+                if enabled and entry.safety_gate_status != "passed":
+                    raise ValueError(f"safety gate has not passed for adapter: {model_id}")
                 updated.append(entry.model_copy(update={"enabled_for_inference": enabled}))
             else:
                 updated.append(entry)
@@ -52,7 +59,11 @@ class ModelRegistry:
         self._save_entries(updated)
 
     def active_inference_models(self) -> list[ModelRegistryEntry]:
-        return [entry for entry in self._load_entries() if entry.enabled_for_inference]
+        return [
+            entry
+            for entry in self._load_entries()
+            if entry.enabled_for_inference and entry.safety_gate_status == "passed"
+        ]
 
     def _load_entries(self) -> list[ModelRegistryEntry]:
         if not self.registry_path.exists():
