@@ -3,6 +3,9 @@ from __future__ import annotations
 from typing import Any
 
 from backend.app.core.config import Settings
+from backend.app.lora.dataset import LoraTaskType
+from backend.app.lora.inference import select_lora_adapter
+from backend.app.lora.registry import ModelRegistry, ModelRegistryEntry
 from backend.app.model.base import BaseModelClient
 from backend.app.model.local_backends import BaseLocalBackend, LocalBackendRequest, OllamaBackend
 
@@ -56,6 +59,8 @@ class LocalModelClient(BaseModelClient):
                 error_code="LOCAL_MODEL_PROVIDER_UNSUPPORTED",
                 reason=f"unsupported local model provider: {self.provider}",
             )
+        adapter = self._select_lora_adapter(normalized_schema)
+        options = self._lora_options(adapter)
 
         response = await backend.generate(
             LocalBackendRequest(
@@ -65,6 +70,7 @@ class LocalModelClient(BaseModelClient):
                 model=model,
                 timeout_seconds=self.settings.local_model.timeout_seconds,
                 context=context,
+                options=options,
             )
         )
         payload = dict(response.content)
@@ -73,6 +79,8 @@ class LocalModelClient(BaseModelClient):
         payload.setdefault("fallback_required", response.fallback_required)
         payload.setdefault("provider", backend.provider)
         payload.setdefault("model", model)
+        if adapter is not None:
+            payload.setdefault("lora_adapter_id", adapter.model_id)
         if response.error_code:
             payload.setdefault("error_code", response.error_code)
         if response.reason:
@@ -84,6 +92,24 @@ class LocalModelClient(BaseModelClient):
         if self.provider == "ollama":
             return OllamaBackend()
         return None
+
+    def _select_lora_adapter(self, schema_name: str) -> ModelRegistryEntry | None:
+        if not self.settings.lora.inference_enabled:
+            return None
+        task_type = self._schema_to_lora_task(schema_name)
+        if task_type is None:
+            return None
+        return select_lora_adapter(task_type, ModelRegistry(self.settings.lora.registry_path))
+
+    def _schema_to_lora_task(self, schema_name: str) -> LoraTaskType | None:
+        if schema_name in {"query_normalization", "slot_extraction", "measurement_formatting"}:
+            return schema_name  # type: ignore[return-value]
+        return None
+
+    def _lora_options(self, adapter: ModelRegistryEntry | None) -> dict[str, Any]:
+        if adapter is None:
+            return {}
+        return {"lora_adapter": adapter.adapter_path, "lora_model_id": adapter.model_id}
 
     def _generate_mock_json(
         self,

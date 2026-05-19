@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
+from uuid import uuid4
 
 from backend.app.core.config import Settings
 from backend.app.model.base import BaseModelClient
 from backend.app.model.local_backends import BaseLocalBackend, LocalBackendRequest, LocalBackendResponse
 from backend.app.model.local_client import LocalModelClient
+from backend.app.lora.registry import ModelRegistry, ModelRegistryEntry
 
 
 class RecordingBackend(BaseLocalBackend):
@@ -38,6 +41,12 @@ class RecordingClient(LocalModelClient):
 
     def _select_backend(self) -> BaseLocalBackend | None:
         return self._backend
+
+
+def _tmp_registry_path() -> Path:
+    path = Path(".tmp_tests") / f"{uuid4().hex}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path.resolve()
 
 
 def test_local_model_client_implements_base_model_client() -> None:
@@ -164,3 +173,37 @@ def test_local_model_client_returns_fallback_when_real_provider_config_missing()
     assert result["status"] == "error"
     assert result["fallback_required"] is True
     assert result["error_code"] == "LOCAL_MODEL_CONFIG_ERROR"
+
+
+def test_local_model_client_passes_lora_adapter_option_when_enabled() -> None:
+    registry_path = _tmp_registry_path()
+    registry = ModelRegistry(registry_path)
+    registry.add_model(
+        ModelRegistryEntry(
+            model_id="slot_lora_v1",
+            version="2026-05-19",
+            adapter_path="C:/tmp/lora_adapters/slot_lora_v1",
+            task_type="slot_extraction",
+            safety_gate_status="passed",
+        )
+    )
+    registry.enable_inference("slot_lora_v1", enabled=True)
+    settings = Settings(
+        local_model={
+            "enabled": True,
+            "provider": "ollama",
+            "endpoint": "http://127.0.0.1:11434",
+            "model": "qwen2.5:7b-instruct",
+        },
+        lora={"inference_enabled": True, "registry_path": str(registry_path)},
+    )
+    backend = RecordingBackend()
+    client = RecordingClient(settings, backend)
+
+    result = asyncio.run(client.generate_json("extract slots", schema_name="slot_extraction"))
+
+    assert result["lora_adapter_id"] == "slot_lora_v1"
+    assert backend.requests[0].options == {
+        "lora_adapter": "C:/tmp/lora_adapters/slot_lora_v1",
+        "lora_model_id": "slot_lora_v1",
+    }
