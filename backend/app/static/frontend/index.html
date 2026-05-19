@@ -7,53 +7,137 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <main class="app-shell">
-      <header class="topbar">
-        <div>
-          <h1>畜牧业 Agentic RAG 智能助手</h1>
-          <p>Chat、体尺分析、引用和调试信息演示入口</p>
+    <div class="app-frame">
+      <aside class="sidebar" aria-label="应用导航">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">R</span>
+          <div>
+            <strong>Livestock RAG</strong>
+            <span>Agentic Assistant</span>
+          </div>
         </div>
-        <span class="mode-pill">V2 Demo</span>
-      </header>
 
-      <nav class="tabs" aria-label="页面">
-        <button class="tab is-active" type="button" data-view="chat">Chat</button>
-        <button class="tab" type="button" data-view="measurement">Measurement</button>
-      </nav>
+        <nav class="tabs nav-stack" aria-label="页面">
+          <button class="tab nav-button is-active" type="button" data-view="chat" aria-selected="true">
+            <span class="nav-icon" aria-hidden="true">Q</span>
+            <span>对话</span>
+          </button>
+          <button class="tab nav-button" type="button" data-view="measurement" aria-selected="false">
+            <span class="nav-icon" aria-hidden="true">M</span>
+            <span>体尺分析</span>
+          </button>
+        </nav>
 
-      <section id="chat-view" class="view is-active" aria-label="Chat Page">
-        <div class="panel">
-          <h2>畜牧问答</h2>
-          <form id="chat-form" class="stack">
-            <label for="chat-query">问题</label>
-            <textarea id="chat-query" name="query" rows="4" placeholder="例如：犊牛腹泻的常见原因是什么？"></textarea>
-            <button type="submit">发送</button>
-          </form>
-          <div id="chat-result" class="result" aria-live="polite"></div>
-        </div>
-      </section>
+        <section class="sidebar-section" aria-label="工作区">
+          <h2>工作区</h2>
+          <div class="workspace-list">
+            <span>畜牧知识问答</span>
+            <span>疾病问诊辅助</span>
+            <span>体尺报告</span>
+          </div>
+        </section>
 
-      <section id="measurement-view" class="view" aria-label="Measurement Page">
-        <div class="panel">
-          <h2>体尺分析</h2>
-          <form id="measurement-form" class="grid-form">
-            <label>动物 ID<input name="animal_id" value="yak_032" /></label>
-            <label>胸围 cm<input name="chest_girth_cm" type="number" step="0.1" value="158.4" /></label>
-            <label>体重 kg<input name="weight_kg" type="number" step="0.1" value="246.5" /></label>
-            <label>置信度<input name="confidence" type="number" step="0.01" min="0" max="1" value="0.82" /></label>
-            <label class="checkbox"><input name="use_demo_history" type="checkbox" checked /> 使用演示历史</label>
-            <button type="submit">分析</button>
-          </form>
-          <div id="measurement-result" class="result" aria-live="polite"></div>
-        </div>
-      </section>
-
-      <aside class="panel debug-panel">
-        <h2>Debug JSON</h2>
-        <div id="debug-summary" class="debug-summary"></div>
-        <pre id="debug-json">{}</pre>
+        <section class="system-card" aria-label="RAG 状态">
+          <div>
+            <strong>RAG</strong>
+            <span id="rag-sidebar-status">加载中</span>
+          </div>
+          <span class="status-dot" aria-hidden="true"></span>
+        </section>
       </aside>
-    </main>
+
+      <main class="workspace">
+        <header class="workspace-header">
+          <div>
+            <p class="eyebrow">畜牧业智能助手</p>
+            <h1>对话、证据与分析工作台</h1>
+          </div>
+          <div class="status-strip" aria-label="运行状态">
+            <span id="mode-pill" class="mode-pill">RAG: unknown</span>
+            <span class="mode-pill">V5 UI</span>
+          </div>
+        </header>
+
+        <section id="chat-view" class="view is-active" aria-label="Chat Page">
+          <div class="work-surface chat-surface">
+            <section class="conversation-panel" aria-label="对话记录">
+              <div id="chat-result" class="chat-thread" aria-live="polite">
+                <article class="message assistant-message">
+                  <div class="message-avatar" aria-hidden="true">R</div>
+                  <div class="message-body">
+                    <div class="message-meta">系统待命</div>
+                    <p>请描述具体场景、动物种类、症状或管理目标。</p>
+                  </div>
+                </article>
+              </div>
+
+              <form id="chat-form" class="composer" aria-label="提交畜牧业问题">
+                <label class="sr-only" for="chat-query">问题</label>
+                <textarea
+                  id="chat-query"
+                  name="query"
+                  rows="3"
+                  placeholder="例如：犊牛腹泻的常见原因有哪些？"
+                ></textarea>
+                <div class="composer-actions">
+                  <div class="prompt-chips" aria-label="示例问题">
+                    <button type="button" data-prompt="犊牛腹泻的常见原因有哪些？">犊牛腹泻</button>
+                    <button type="button" data-prompt="高温天气下肉牛饲喂要注意什么？">高温饲喂</button>
+                  </div>
+                  <button class="primary-button" type="submit">发送</button>
+                </div>
+              </form>
+            </section>
+          </div>
+        </section>
+
+        <section id="measurement-view" class="view" aria-label="Measurement Page">
+          <div class="work-surface measurement-surface">
+            <section class="measurement-form-panel" aria-label="体尺输入">
+              <div class="section-heading">
+                <p class="eyebrow">Measurement</p>
+                <h2>体尺分析</h2>
+              </div>
+              <form id="measurement-form" class="grid-form">
+                <label>动物 ID<input name="animal_id" value="yak_032" /></label>
+                <label>月龄<input name="age_month" type="number" min="0" step="1" value="18" /></label>
+                <label>体高 cm<input name="body_height_cm" type="number" step="0.1" value="112.6" /></label>
+                <label>体长 cm<input name="body_length_cm" type="number" step="0.1" value="126.8" /></label>
+                <label>胸围 cm<input name="chest_girth_cm" type="number" step="0.1" value="158.4" /></label>
+                <label>体重 kg<input name="weight_kg" type="number" step="0.1" value="246.5" /></label>
+                <label>置信度<input name="confidence" type="number" step="0.01" min="0" max="1" value="0.82" /></label>
+                <label class="checkbox"><input name="use_demo_history" type="checkbox" checked /> 使用演示历史</label>
+                <button class="primary-button" type="submit">分析</button>
+              </form>
+            </section>
+
+            <section class="measurement-result-panel" aria-label="分析结果">
+              <div class="section-heading">
+                <p class="eyebrow">Report</p>
+                <h2>结果</h2>
+              </div>
+              <div id="measurement-result" class="empty-result" aria-live="polite">
+                等待体尺数据
+              </div>
+            </section>
+          </div>
+        </section>
+      </main>
+
+      <aside class="inspector" aria-label="调试面板">
+        <div class="inspector-header">
+          <div>
+            <p class="eyebrow">Debug</p>
+            <h2>运行细节</h2>
+          </div>
+        </div>
+        <div id="debug-summary" class="debug-summary"></div>
+        <details class="json-details" open>
+          <summary>JSON</summary>
+          <pre id="debug-json">{}</pre>
+        </details>
+      </aside>
+    </div>
     <script src="./app.js"></script>
   </body>
 </html>

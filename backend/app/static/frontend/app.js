@@ -1,11 +1,29 @@
 const state = {
   lastResponse: null,
   ragStatus: null,
+  pendingAssistantNode: null,
+};
+
+const labels = {
+  intents: {
+    general_qa: "知识问答",
+    disease_consultation: "疾病问诊",
+    measurement_analysis: "体尺分析",
+    out_of_scope: "超出范围",
+  },
+  risks: {
+    low: "低风险",
+    medium: "中风险",
+    high: "高风险",
+    emergency: "紧急",
+  },
 };
 
 function setActiveView(viewName) {
   document.querySelectorAll(".tab").forEach((tab) => {
-    tab.classList.toggle("is-active", tab.dataset.view === viewName);
+    const isActive = tab.dataset.view === viewName;
+    tab.classList.toggle("is-active", isActive);
+    tab.setAttribute("aria-selected", String(isActive));
   });
   document.querySelectorAll(".view").forEach((view) => {
     view.classList.toggle("is-active", view.id === `${viewName}-view`);
@@ -63,6 +81,7 @@ function renderDebugSummary(summary) {
     <div><strong>Memory</strong><span>${escapeHtml(memory.write_enabled ? "write:on" : "write:off")}</span></div>
     ${renderRagStatus(summary.rag_status)}
   `;
+  updateRagStatusUi(summary.rag_status);
 }
 
 function normalizeRagStatus(ragStatus) {
@@ -85,6 +104,15 @@ function renderRagStatus(ragStatus) {
   return `<div class="rag-status"><strong>RAG</strong><span>${escapeHtml(parts.join(" / "))}</span></div>`;
 }
 
+function updateRagStatusUi(ragStatus) {
+  const status = normalizeRagStatus(ragStatus || {});
+  const text = `${status.rag_mode} / ${status.collection}`;
+  const sidebar = document.querySelector("#rag-sidebar-status");
+  const pill = document.querySelector("#mode-pill");
+  if (sidebar) sidebar.textContent = text;
+  if (pill) pill.textContent = `RAG: ${text}`;
+}
+
 function nodesFromTrace(agentTrace) {
   if (!Array.isArray(agentTrace)) return null;
   return agentTrace.map((item) => item.node).filter(Boolean);
@@ -103,35 +131,66 @@ async function loadRagStatus() {
 
 async function submitChat(event) {
   event.preventDefault();
-  const query = new FormData(event.currentTarget).get("query")?.toString().trim();
+  const form = event.currentTarget;
+  const query = new FormData(form).get("query")?.toString().trim();
   if (!query) return;
-  const response = await fetch("/api/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query }),
-  });
-  const payload = await response.json();
-  renderChat(payload.data || {});
-  renderDebugPanel(payload);
+
+  appendMessage("user", query, "你");
+  state.pendingAssistantNode = appendMessage("assistant", "正在检索和整理证据...", "处理中", { loading: true });
+  setFormDisabled(form, true);
+
+  try {
+    const response = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query }),
+    });
+    const payload = await response.json();
+    renderChat(payload.data || {});
+    renderDebugPanel(payload);
+    form.reset();
+  } catch (error) {
+    renderChatError(error);
+    renderDebugPanel({ error: String(error) });
+  } finally {
+    setFormDisabled(form, false);
+  }
 }
 
 function renderChat(data) {
-  const container = document.querySelector("#chat-result");
-  const followUps = (data.follow_up_questions || [])
-    .map((item) => `<li>${escapeHtml(item)}</li>`)
-    .join("");
-  container.innerHTML = `
+  const assistantNode = state.pendingAssistantNode || appendMessage("assistant", "", "助手");
+  state.pendingAssistantNode = null;
+  assistantNode.classList.remove("loading");
+  assistantNode.querySelector(".message-meta").textContent = "助手";
+  assistantNode.querySelector(".message-body").innerHTML = `
+    <div class="message-meta">助手</div>
     <article class="answer-block">
       <div class="meta-row">
-        <span>${escapeHtml(data.intent || "unknown")}</span>
-        ${data.risk_level ? `<span>${escapeHtml(data.risk_level)}</span>` : ""}
+        <span>${escapeHtml(labelFor(labels.intents, data.intent || "unknown"))}</span>
+        ${data.risk_level ? `<span>${escapeHtml(labelFor(labels.risks, data.risk_level))}</span>` : ""}
       </div>
-      <p>${escapeHtml(data.answer || "暂无回答")}</p>
-      ${followUps ? `<h3>追问信息</h3><ul>${followUps}</ul>` : ""}
+      <p class="answer-text">${escapeHtml(data.answer || "暂无回答")}</p>
+      ${renderFollowUps(data.follow_up_questions || [])}
       ${renderSources(data.sources || [])}
       ${renderToolSummary(data.tools_used || [])}
     </article>
   `;
+  scrollChatToEnd();
+}
+
+function renderChatError(error) {
+  const assistantNode = state.pendingAssistantNode || appendMessage("assistant", "", "助手");
+  state.pendingAssistantNode = null;
+  assistantNode.classList.remove("loading");
+  assistantNode.querySelector(".message-body").innerHTML = `
+    <div class="message-meta">请求失败</div>
+    <p class="error-text">${escapeHtml(String(error))}</p>
+  `;
+}
+
+function renderFollowUps(followUps) {
+  const items = followUps.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+  return items ? `<h3>追问信息</h3><ul>${items}</ul>` : "";
 }
 
 function renderSources(sources) {
@@ -142,7 +201,7 @@ function renderSources(sources) {
     const sourceUri = source.source_uri ? `<code>${escapeHtml(source.source_uri)}</code>` : "";
     return `<li><strong>${escapeHtml(source.title || "未知来源")}</strong> ${location} ${section} ${sourceUri}</li>`;
   }).join("");
-  return `<h3>引用</h3><ul class="source-list">${items}</ul>`;
+  return `<h3>引用</h3><ol class="source-list">${items}</ol>`;
 }
 
 function renderToolSummary(toolsUsed) {
@@ -153,42 +212,94 @@ function renderToolSummary(toolsUsed) {
 
 async function submitMeasurement(event) {
   event.preventDefault();
-  const form = new FormData(event.currentTarget);
+  const form = event.currentTarget;
+  const formData = new FormData(form);
   const payload = {
-    animal_id: form.get("animal_id")?.toString() || "unknown",
+    animal_id: formData.get("animal_id")?.toString() || "unknown",
+    age_month: numberOrNull(formData.get("age_month")),
     current: {
-      chest_girth_cm: numberOrNull(form.get("chest_girth_cm")),
-      weight_kg: numberOrNull(form.get("weight_kg")),
+      body_height_cm: numberOrNull(formData.get("body_height_cm")),
+      body_length_cm: numberOrNull(formData.get("body_length_cm")),
+      chest_girth_cm: numberOrNull(formData.get("chest_girth_cm")),
+      weight_kg: numberOrNull(formData.get("weight_kg")),
     },
-    confidence: numberOrNull(form.get("confidence")),
-    use_demo_history: form.get("use_demo_history") === "on",
+    confidence: numberOrNull(formData.get("confidence")),
+    use_demo_history: formData.get("use_demo_history") === "on",
   };
-  const response = await fetch("/api/measurement/analyze", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const data = await response.json();
-  renderMeasurement(data.data || {});
-  renderDebugPanel(data);
+
+  setFormDisabled(form, true);
+  document.querySelector("#measurement-result").innerHTML = `<div class="empty-result">正在分析...</div>`;
+  try {
+    const response = await fetch("/api/measurement/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json();
+    renderMeasurement(data.data || {});
+    renderDebugPanel(data);
+  } catch (error) {
+    document.querySelector("#measurement-result").innerHTML = `<p class="error-text">${escapeHtml(String(error))}</p>`;
+    renderDebugPanel({ error: String(error) });
+  } finally {
+    setFormDisabled(form, false);
+  }
 }
 
 function renderMeasurement(data) {
   const evidence = (data.evidence || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("");
   const abnormalItems = (data.abnormal_items || []).map((item) => `<span>${escapeHtml(item)}</span>`).join("");
+  document.querySelector("#measurement-result").className = "measurement-result";
   document.querySelector("#measurement-result").innerHTML = `
-    <article class="answer-block">
+    <article class="report-card">
+      <div class="meta-row">
+        <span>${escapeHtml(data.animal_id || "unknown")}</span>
+        <span>${data.used_demo_history ? "演示历史" : "真实历史"}</span>
+      </div>
       ${data.summary ? `<p><strong>${escapeHtml(data.summary)}</strong></p>` : ""}
       <p>${escapeHtml(data.report || "暂无报告")}</p>
-      ${abnormalItems ? `<h3>异常项</h3><div class="tool-list">${abnormalItems}</div>` : ""}
-      ${evidence ? `<h3>证据</h3><ul>${evidence}</ul>` : ""}
     </article>
+    ${abnormalItems ? `<section class="report-card"><h3>异常项</h3><div class="tool-list">${abnormalItems}</div></section>` : ""}
+    ${data.recommendation ? `<section class="report-card"><h3>建议</h3><p>${escapeHtml(data.recommendation)}</p></section>` : ""}
+    ${evidence ? `<section class="report-card"><h3>证据</h3><ul>${evidence}</ul></section>` : ""}
   `;
 }
 
+function appendMessage(role, text, meta, options = {}) {
+  const container = document.querySelector("#chat-result");
+  const node = document.createElement("article");
+  node.className = `message ${role}-message${options.loading ? " loading" : ""}`;
+  node.innerHTML = `
+    <div class="message-avatar" aria-hidden="true">${role === "user" ? "你" : "R"}</div>
+    <div class="message-body">
+      <div class="message-meta">${escapeHtml(meta)}</div>
+      <p>${escapeHtml(text)}</p>
+    </div>
+  `;
+  container.appendChild(node);
+  scrollChatToEnd();
+  return node;
+}
+
+function scrollChatToEnd() {
+  const container = document.querySelector("#chat-result");
+  container.scrollTop = container.scrollHeight;
+}
+
+function setFormDisabled(form, disabled) {
+  form.querySelectorAll("button, input, textarea").forEach((item) => {
+    item.disabled = disabled;
+  });
+}
+
 function numberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
   const numberValue = Number(value);
   return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function labelFor(dictionary, value) {
+  return dictionary[value] || value;
 }
 
 function escapeHtml(value) {
@@ -203,6 +314,15 @@ function escapeHtml(value) {
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => setActiveView(tab.dataset.view));
 });
+
+document.querySelectorAll("[data-prompt]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const textarea = document.querySelector("#chat-query");
+    textarea.value = button.dataset.prompt || "";
+    textarea.focus();
+  });
+});
+
 document.querySelector("#chat-form").addEventListener("submit", submitChat);
 document.querySelector("#measurement-form").addEventListener("submit", submitMeasurement);
 loadRagStatus();
