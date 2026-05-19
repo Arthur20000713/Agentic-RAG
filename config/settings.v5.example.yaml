@@ -1,0 +1,60 @@
+# V5 local-first example configuration.
+# Copy values into config/settings.yaml as needed. Do not put real API keys here.
+app:
+  name: Livestock Agentic RAG
+  environment: local-v5
+  debug: false
+
+rag_server:
+  # fake is for offline development only. Use real for product validation.
+  query_mode: real
+  repo_path: C:/Users/DELL/PycharmProjects/PythonProject/RAG-SERVER
+  python_executable: C:/Users/DELL/PycharmProjects/PythonProject/RAG-SERVER/.venv/Scripts/python.exe
+  collection: livestock_v4_2
+  timeout_seconds: 30
+  strict_real_mode: true
+  min_mapped_score: 0.35
+  min_citation_count_for_answer: 1
+  low_confidence_no_answer: true
+
+database:
+  url: sqlite:///data/app.db
+
+v3:
+  enabled: true
+
+model_router:
+  enabled: true
+  shadow_mode: false
+  allow_low_risk_takeover: true
+  takeover_task_types:
+    - query_normalization
+    - structured_extraction
+    - measurement_analysis
+    - summarization
+  blocked_safety_levels:
+    - S3
+    - S4
+
+local_model:
+  enabled: true
+  provider: ollama
+  endpoint: http://127.0.0.1:11434
+  model: qwen2.5:7b-instruct
+  timeout_seconds: 8
+  max_retries: 1
+  allow_final_answer: false
+
+lora:
+  dataset_enabled: true
+  inference_enabled: false
+  registry_path: data/v3/model_registry.json
+
+long_term_memory:
+  write_enabled: false
+  read_enabled: true
+  ttl_days: 365
+
+enhanced_safety:
+  precheck_enabled: true
+  final_guard_required: true
