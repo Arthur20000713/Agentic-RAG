@@ -28,7 +28,7 @@ REPORT_DIR = Path("docs") / "rag_corpus" / "reports"
 REAL_GOLDEN_V4_2_DIR = Path("tests") / "fixtures" / "real_golden_v4_2"
 DEFAULT_BATCH_PATH = Path("docs") / "rag_corpus" / "batches" / "batch_002.yaml"
 REQUIRED_FILES = (
-    "DEV_SPEC_v4_2.md",
+    "docs/DEV_SPEC_v4_2.md",
     "docs/rag_corpus/source_manifest.yaml",
 )
 REQUIRED_REPORT_MARKERS = (

@@ -38,7 +38,7 @@ def main(argv: list[str] | None = None) -> int:
 def _check_offline_contract() -> list[str]:
     failures: list[str] = []
     required_files = [
-        "DEV_SPEC.md",
+        "docs/DEV_SPEC.md",
         "pyproject.toml",
         ".gitignore",
         "scripts/run_eval.py",
@@ -66,7 +66,7 @@ def _check_offline_contract() -> list[str]:
     if "--mode" not in run_eval or '"fake"' not in run_eval:
         failures.append("scripts/run_eval.py must support --mode fake")
 
-    dev_spec = _read_text("DEV_SPEC.md")
+    dev_spec = _read_text("docs/DEV_SPEC.md")
     for required_text in (
         "V2.1-A0",
         "rag_server.repo_path",
@@ -76,7 +76,7 @@ def _check_offline_contract() -> list[str]:
         "简体中文 commit",
     ):
         if required_text not in dev_spec:
-            failures.append(f"DEV_SPEC.md is missing required V2 contract text: {required_text}")
+            failures.append(f"docs/DEV_SPEC.md is missing required V2 contract text: {required_text}")
 
     return failures
 

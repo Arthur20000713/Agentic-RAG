@@ -54,7 +54,7 @@ def _check_stage(stage: str) -> list[str]:
 
 def _check_baseline() -> list[str]:
     required_files = [
-        "DEV_SPEC_v3.md",
+        "docs/DEV_SPEC_v3.md",
         "docs/V3_REPO_MAP.md",
         "backend/app/main.py",
         "backend/app/agent/graph.py",
@@ -87,10 +87,10 @@ def _check_baseline() -> list[str]:
         if required_text not in repo_map:
             failures.append(f"docs/V3_REPO_MAP.md is missing required text: {required_text}")
 
-    dev_spec = _read_text("DEV_SPEC_v3.md")
+    dev_spec = _read_text("docs/DEV_SPEC_v3.md")
     for required_text in ("V3.0-A1", "V3.0-A2", "V3.0-A3", "进度跟踪"):
         if required_text not in dev_spec:
-            failures.append(f"DEV_SPEC_v3.md is missing required V3 text: {required_text}")
+            failures.append(f"docs/DEV_SPEC_v3.md is missing required V3 text: {required_text}")
 
     return failures
 
@@ -542,10 +542,10 @@ def _check_future_stage_declared(stage: str) -> list[str]:
         "G": "V3.6",
         "full": "V3.7",
     }
-    dev_spec = _read_text("DEV_SPEC_v3.md")
+    dev_spec = _read_text("docs/DEV_SPEC_v3.md")
     headings = [stage_headings[key] for key in ("B", "C", "D", "E", "F", "G", "full")] if stage == "full" else [stage_headings[stage]]
     return [
-        f"DEV_SPEC_v3.md is missing future stage declaration: {heading}"
+        f"docs/DEV_SPEC_v3.md is missing future stage declaration: {heading}"
         for heading in headings
         if heading not in dev_spec
     ]

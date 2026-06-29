@@ -84,7 +84,7 @@ def _make_timeout_once_mock_rag_server() -> Path:
             import sys
             import time
 
-            COUNTER = Path("query_attempts.txt")
+            COUNTER = Path("__COUNTER_PATH__")
 
 
             def send(payload: dict) -> None:
@@ -136,6 +136,12 @@ def _make_timeout_once_mock_rag_server() -> Path:
                     })
             """
         ),
+        encoding="utf-8",
+    )
+    server_file = server_dir / "server.py"
+    counter_path = str((root / "query_attempts.txt").resolve()).replace("\\", "\\\\")
+    server_file.write_text(
+        server_file.read_text(encoding="utf-8").replace("__COUNTER_PATH__", counter_path),
         encoding="utf-8",
     )
     return root.resolve()
@@ -354,7 +360,7 @@ def test_mcp_client_restarts_and_retries_once_after_timeout() -> None:
                 "repo_path": str(repo_path),
                 "python_executable": sys.executable,
                 "collection": "default",
-                "timeout_seconds": 0.2,
+                "timeout_seconds": 0.75,
             }
         ),
         trace_service=TraceService(traces),

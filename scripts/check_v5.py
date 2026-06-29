@@ -19,7 +19,7 @@ from backend.app.evaluation.model_quality_gate import ModelQualityThresholds, ev
 
 STAGES = ("local-model", "gate", "full")
 REQUIRED_LOCAL_MODEL_FILES = (
-    "DEV_SPEC_V5.md",
+    "docs/DEV_SPEC_V5.md",
     "docs/V5_LOCAL_MODEL_GUIDE.md",
     "backend/app/model/local_backends.py",
     "backend/app/model/local_schema.py",

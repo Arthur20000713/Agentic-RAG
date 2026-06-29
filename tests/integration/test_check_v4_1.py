@@ -26,7 +26,7 @@ def test_check_required_files_reports_missing_baseline_files() -> None:
 
     failures = check_required_files(tmp_root)
 
-    assert "missing required file: DEV_SPEC_v4_1.md" in failures
+    assert "missing required file: docs/DEV_SPEC_v4_1.md" in failures
     assert "missing required file: docs/V4_1_BASELINE.md" in failures
 
 

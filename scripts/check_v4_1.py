@@ -53,7 +53,7 @@ def check_required_files(root: Path) -> list[str]:
         root,
         [
             "README.md",
-            "DEV_SPEC_v4_1.md",
+            "docs/DEV_SPEC_v4_1.md",
             "docs/V4_1_BASELINE.md",
         ],
     )

@@ -88,9 +88,9 @@ $env:RAG_SERVER_PATH="C:\Users\DELL\PycharmProjects\PythonProject\RAG-SERVER"
 
 ## 文档入口
 
-- `DEV_SPEC.md`：V2 开发阶段、约束和进度跟踪。
-- `DEV_SPEC_v4_1.md`：V4.1 真实知识库质量闭环开发计划。
-- `DEV_SPEC_v4_2.md`：V4.2-V4.5 剩余 V4 阶段开发计划。
+- `docs/DEV_SPEC.md`：V2 开发阶段、约束和进度跟踪。
+- `docs/DEV_SPEC_v4_1.md`：V4.1 真实知识库质量闭环开发计划。
+- `docs/DEV_SPEC_v4_2.md`：V4.2-V4.5 剩余 V4 阶段开发计划。
 - `docs/V4_1_BASELINE.md`：V4.1 当前开发基线和能力边界。
 - `docs/V4_2_KNOWLEDGE_BASE_GUIDE.md`：V4.2 知识库批次、入库和质量门禁指南。
 - `docs/API_SPEC.md`：FastAPI contract。

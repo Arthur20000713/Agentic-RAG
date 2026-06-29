@@ -22,7 +22,7 @@ def _write(path: Path, text: str) -> None:
 
 def test_check_local_model_config_accepts_default_mock_config() -> None:
     root = _tmp_root()
-    _write(root / "DEV_SPEC_V5.md", "# V5\n")
+    _write(root / "docs" / "DEV_SPEC_V5.md", "# V5\n")
     _write(root / "docs" / "V5_LOCAL_MODEL_GUIDE.md", "# guide\n")
     _write(root / "backend" / "app" / "model" / "local_backends.py", "# local backends\n")
     _write(root / "backend" / "app" / "model" / "local_schema.py", "# local schema\n")
@@ -46,7 +46,7 @@ local_model:
 
 def test_check_local_model_config_reports_missing_v5_fields() -> None:
     root = _tmp_root()
-    _write(root / "DEV_SPEC_V5.md", "# V5\n")
+    _write(root / "docs" / "DEV_SPEC_V5.md", "# V5\n")
     _write(root / "docs" / "V5_LOCAL_MODEL_GUIDE.md", "# guide\n")
     _write(root / "backend" / "app" / "model" / "local_backends.py", "# local backends\n")
     _write(root / "backend" / "app" / "model" / "local_schema.py", "# local schema\n")
