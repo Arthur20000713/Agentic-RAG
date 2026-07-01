@@ -6,6 +6,7 @@ from pathlib import Path
 from textwrap import dedent
 from uuid import uuid4
 
+from backend.app.core.config import Settings
 from backend.app.evaluation.golden_runner import GoldenSetRunner
 from backend.app.evaluation.multi_agent_runner import MultiAgentEvalRunner
 from backend.app.evaluation.real_rag_runner import RealRagEvalRunner
@@ -24,6 +25,23 @@ def _tmp_dir() -> Path:
     path = Path(".tmp_tests") / uuid4().hex
     path.mkdir(parents=True, exist_ok=True)
     return path.resolve()
+
+
+def _write_unconfigured_real_settings(root: Path) -> Path:
+    settings_path = root / "settings.real.unconfigured.yaml"
+    settings_path.write_text(
+        """
+rag_server:
+  query_mode: real
+  repo_path:
+  python_executable:
+  collection: default
+  timeout_seconds: 5
+  strict_real_mode: true
+""",
+        encoding="utf-8",
+    )
+    return settings_path
 
 
 def test_golden_set_runner_writes_reports() -> None:
@@ -350,8 +368,11 @@ def test_run_eval_script_v5_mode_uses_default_router_fixture() -> None:
 def test_run_eval_real_rag_optional_writes_skipped_report_when_unconfigured(monkeypatch, capsys) -> None:  # noqa: ANN001
     monkeypatch.delenv("RAG_SERVER_PATH", raising=False)
     output_dir = _tmp_dir()
+    settings_path = _write_unconfigured_real_settings(output_dir)
 
-    exit_code = run_eval_main(["--mode", "real", "--optional", "--output-dir", str(output_dir)])
+    exit_code = run_eval_main(
+        ["--mode", "real", "--optional", "--settings", str(settings_path), "--output-dir", str(output_dir)]
+    )
 
     assert exit_code == 0
     assert "SKIPPED" in capsys.readouterr().out
@@ -370,8 +391,10 @@ def test_run_eval_real_rag_optional_writes_skipped_report_when_unconfigured(monk
 
 def test_run_eval_real_rag_requires_configuration_without_optional(monkeypatch, capsys) -> None:  # noqa: ANN001
     monkeypatch.delenv("RAG_SERVER_PATH", raising=False)
+    output_dir = _tmp_dir()
+    settings_path = _write_unconfigured_real_settings(output_dir)
 
-    exit_code = run_eval_main(["--mode", "real"])
+    exit_code = run_eval_main(["--mode", "real", "--settings", str(settings_path), "--output-dir", str(output_dir)])
 
     assert exit_code == 2
     assert "RAG_SERVER_PATH" in capsys.readouterr().err
@@ -384,7 +407,10 @@ def test_real_rag_runner_creates_mcp_client_when_path_is_configured(monkeypatch)
     run_local.write_text(f'$Python = "{sys.executable}"\n', encoding="utf-8")
     monkeypatch.setenv("RAG_SERVER_PATH", str(repo_path))
 
-    runner = RealRagEvalRunner(output_dir=_tmp_dir())
+    runner = RealRagEvalRunner(
+        output_dir=_tmp_dir(),
+        settings=Settings(rag_server={"query_mode": "real", "repo_path": str(repo_path), "collection": "default"}),
+    )
     client = runner.create_rag_client()
 
     assert isinstance(client, RagServerMcpClient)
@@ -484,7 +510,11 @@ def test_real_rag_runner_resolves_python_before_preflight(monkeypatch) -> None: 
     )
     monkeypatch.setenv("RAG_SERVER_PATH", str(repo_path))
     monkeypatch.delenv("RAG_SERVER_PYTHON", raising=False)
-    runner = RealRagEvalRunner(golden_set, output_dir=_tmp_dir())
+    runner = RealRagEvalRunner(
+        golden_set,
+        output_dir=_tmp_dir(),
+        settings=Settings(rag_server={"query_mode": "real", "repo_path": str(repo_path), "collection": "default"}),
+    )
 
     report = runner.run()
 
@@ -586,12 +616,15 @@ quality_gate:
 def test_run_eval_script_accepts_batch_argument_for_real_mode(monkeypatch) -> None:  # noqa: ANN001
     monkeypatch.delenv("RAG_SERVER_PATH", raising=False)
     output_dir = _tmp_dir()
+    settings_path = _write_unconfigured_real_settings(output_dir)
 
     exit_code = run_eval_main(
         [
             "--mode",
             "real",
             "--optional",
+            "--settings",
+            str(settings_path),
             "--batch",
             "docs/rag_corpus/batches/batch_002.yaml",
             "--output-dir",

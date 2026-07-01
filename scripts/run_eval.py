@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from backend.app.core.config import load_settings  # noqa: E402
 from backend.app.evaluation.golden_runner import GoldenSetRunner  # noqa: E402
 from backend.app.evaluation.multi_agent_runner import MultiAgentEvalRunner  # noqa: E402
 from backend.app.evaluation.real_rag_runner import RealRagEvalRunner, RealRagEvalUnavailable  # noqa: E402
@@ -30,6 +31,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--golden-set", default=DEFAULT_GOLDEN_SET, help="path to golden set JSON")
     parser.add_argument("--output-dir", default="reports", help="directory for evaluation reports")
+    parser.add_argument("--settings", default=None, help="settings YAML path for modes that use app settings")
     parser.add_argument("--batch", default=None, help="corpus batch YAML for real evaluation metadata and collection")
     parser.add_argument("--json", action="store_true", help="print JSON report to stdout")
     parser.add_argument(
@@ -40,7 +42,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.mode == "real":
-        runner = RealRagEvalRunner(args.golden_set, output_dir=args.output_dir, batch=args.batch)
+        settings = load_settings(args.settings) if args.settings else None
+        runner = RealRagEvalRunner(args.golden_set, output_dir=args.output_dir, settings=settings, batch=args.batch)
         try:
             report = runner.run()
         except RealRagEvalUnavailable as exc:
