@@ -10,13 +10,15 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[1]
-STAGES = ("baseline", "full")
+STAGES = ("baseline", "runtime", "full")
 
 REQUIRED_BASELINE_FILES = (
     "docs/DEV_SPEC_V6.md",
     "config/settings.yaml",
     "docs/rag_corpus/reports/batch_002_quality.md",
     "scripts/run_eval.py",
+    "scripts/doctor_v6.py",
+    "scripts/start_app.ps1",
     "scripts/check_v4_2.py",
     "scripts/check_v5.py",
 )
@@ -45,6 +47,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     failures = check_baseline(ROOT)
+    if args.stage in {"runtime", "full"}:
+        failures.extend(check_runtime(ROOT))
     if args.stage == "full":
         failures.extend(_run_existing_check(["scripts/check_v4_2.py", "--stage", "full"]))
         failures.extend(_run_existing_check(["scripts/check_v5.py", "--stage", "full"]))
@@ -65,6 +69,31 @@ def check_baseline(root: Path) -> list[str]:
     failures.extend(_check_default_real_rag(root / "config" / "settings.yaml"))
     failures.extend(_check_batch_quality_report(root / "docs" / "rag_corpus" / "reports" / "batch_002_quality.md"))
     failures.extend(_check_run_eval_settings_arg(root / "scripts" / "run_eval.py"))
+    return failures
+
+
+def check_runtime(root: Path) -> list[str]:
+    failures: list[str] = []
+    doctor_script = root / "scripts" / "doctor_v6.py"
+    start_script = root / "scripts" / "start_app.ps1"
+    runtime_service = root / "backend" / "app" / "services" / "runtime_doctor.py"
+    failures.extend(_missing_paths(root, ("scripts/doctor_v6.py", "scripts/start_app.ps1", "backend/app/services/runtime_doctor.py")))
+    if doctor_script.exists():
+        text = doctor_script.read_text(encoding="utf-8")
+        for marker in ("RuntimeDoctor", "--port", "--settings", "--json"):
+            if marker not in text:
+                failures.append(f"{doctor_script}: missing runtime doctor marker: {marker}")
+    if start_script.exists():
+        text = start_script.read_text(encoding="utf-8")
+        for marker in ("doctor_v6.py", "uvicorn", "backend.app.main:app", "SkipDoctor"):
+            if marker not in text:
+                failures.append(f"{start_script}: missing startup marker: {marker}")
+    if runtime_service.exists():
+        text = runtime_service.read_text(encoding="utf-8")
+        for marker in ("DEFAULT_REAL_RAG_NOT_CONFIGURED", "RAG_SERVER_PATH_INVALID", "RAG_SERVER_PYTHON_INVALID", "PORT_IN_USE"):
+            if marker not in text:
+                failures.append(f"{runtime_service}: missing diagnostic error marker: {marker}")
+    failures.extend(_run_existing_check(["scripts/doctor_v6.py", "--json"]))
     return failures
 
 
@@ -146,4 +175,3 @@ def _run_existing_check(args: list[str]) -> list[str]:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

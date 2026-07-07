@@ -20,3 +20,19 @@ def test_check_v6_baseline_cli_passes_for_current_repo() -> None:
     assert completed.returncode == 0
     assert "V6 checks passed for stage baseline" in completed.stdout
 
+
+def test_check_v6_runtime_cli_passes_for_current_repo() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "scripts/check_v6.py",
+            "--stage",
+            "runtime",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0
+    assert "V6 checks passed for stage runtime" in completed.stdout
