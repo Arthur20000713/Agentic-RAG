@@ -77,7 +77,18 @@ def check_runtime(root: Path) -> list[str]:
     doctor_script = root / "scripts" / "doctor_v6.py"
     start_script = root / "scripts" / "start_app.ps1"
     runtime_service = root / "backend" / "app" / "services" / "runtime_doctor.py"
-    failures.extend(_missing_paths(root, ("scripts/doctor_v6.py", "scripts/start_app.ps1", "backend/app/services/runtime_doctor.py")))
+    health_api = root / "backend" / "app" / "api" / "health.py"
+    failures.extend(
+        _missing_paths(
+            root,
+            (
+                "scripts/doctor_v6.py",
+                "scripts/start_app.ps1",
+                "backend/app/services/runtime_doctor.py",
+                "backend/app/api/health.py",
+            ),
+        )
+    )
     if doctor_script.exists():
         text = doctor_script.read_text(encoding="utf-8")
         for marker in ("RuntimeDoctor", "--port", "--settings", "--json"):
@@ -93,6 +104,11 @@ def check_runtime(root: Path) -> list[str]:
         for marker in ("DEFAULT_REAL_RAG_NOT_CONFIGURED", "RAG_SERVER_PATH_INVALID", "RAG_SERVER_PYTHON_INVALID", "PORT_IN_USE"):
             if marker not in text:
                 failures.append(f"{runtime_service}: missing diagnostic error marker: {marker}")
+    if health_api.exists():
+        text = health_api.read_text(encoding="utf-8")
+        for marker in ("/api/health", "/api/ready", "RuntimeDoctor"):
+            if marker not in text:
+                failures.append(f"{health_api}: missing health endpoint marker: {marker}")
     failures.extend(_run_existing_check(["scripts/doctor_v6.py", "--json"]))
     return failures
 

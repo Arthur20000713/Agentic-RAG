@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from uuid import uuid4
 
@@ -197,6 +198,44 @@ def test_rag_status_api_defaults_to_fake_without_real_path() -> None:
     assert payload["data"]["mcp_available"] is False
     assert payload["data"]["default_collection"] == "default"
     assert payload["data"]["last_rag_error"] is None
+
+
+def test_health_api_reports_liveness_without_external_dependencies() -> None:
+    client = _client()
+
+    response = client.get("/api/health")
+    payload = response.json()
+
+    assert response.status_code == 200
+    _assert_response_contract(payload)
+    assert payload["code"] == 0
+    assert payload["data"]["status"] == "ok"
+    assert payload["data"]["app"] == "Livestock Agentic RAG"
+    assert payload["data"]["environment"] == "local"
+
+
+def test_ready_api_reports_runtime_diagnostics_without_fallback() -> None:
+    settings = Settings(
+        database={"url": "sqlite:///:memory:"},
+        rag_server={
+            "query_mode": "real",
+            "repo_path": None,
+            "python_executable": sys.executable,
+            "collection": "livestock_v4_2",
+            "strict_real_mode": True,
+        },
+    )
+    client = TestClient(create_app(settings=settings))
+
+    response = client.get("/api/ready")
+    payload = response.json()
+
+    assert response.status_code == 200
+    _assert_response_contract(payload)
+    assert payload["code"] == 0
+    assert payload["data"]["status"] == "failed"
+    assert payload["data"]["checks"]["default_real_rag"]["status"] == "passed"
+    assert payload["data"]["checks"]["rag_server_path"]["error_code"] == "RAG_SERVER_PATH_INVALID"
 
 
 def test_rag_status_api_reports_missing_real_path_without_failure() -> None:
