@@ -50,7 +50,7 @@ V6 的目标是把当前“本机真实 RAG 可演示”推进到“本机真实
 | V6.0-A1 | DONE | 新增 V6 baseline 检查入口 |
 | V6.1-B | DONE | 一键启动和运行时诊断 |
 | V6.2-C | DONE | 健康/readiness API |
-| V6.3-D | TODO | 真实 RAG 回答质量优化 |
+| V6.3-D | DONE | 真实 RAG 回答质量优化 |
 | V6.4-E | TODO | V3/V5 主路径灰度启用 |
 | V6.5-F | TODO | 本地模型 GPU 验收 |
 | V6.6-G | TODO | 产品化发布检查 |

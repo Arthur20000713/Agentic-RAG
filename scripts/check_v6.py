@@ -50,6 +50,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.stage in {"runtime", "full"}:
         failures.extend(check_runtime(ROOT))
     if args.stage == "full":
+        failures.extend(check_answer_quality(ROOT))
         failures.extend(_run_existing_check(["scripts/check_v4_2.py", "--stage", "full"]))
         failures.extend(_run_existing_check(["scripts/check_v5.py", "--stage", "full"]))
 
@@ -110,6 +111,35 @@ def check_runtime(root: Path) -> list[str]:
             if marker not in text:
                 failures.append(f"{health_api}: missing health endpoint marker: {marker}")
     failures.extend(_run_existing_check(["scripts/doctor_v6.py", "--json"]))
+    return failures
+
+
+def check_answer_quality(root: Path) -> list[str]:
+    failures: list[str] = []
+    answer_generator = root / "backend" / "app" / "model" / "answer_generator.py"
+    workflow_test = root / "tests" / "integration" / "test_agent_workflow.py"
+    failures.extend(
+        _missing_paths(
+            root,
+            (
+                "backend/app/model/answer_generator.py",
+                "tests/unit/test_answer_generator.py",
+                "tests/integration/test_agent_workflow.py",
+            ),
+        )
+    )
+    if answer_generator.exists():
+        text = answer_generator.read_text(encoding="utf-8")
+        lower_text = text.lower()
+        for marker in ("_looks_like_retrieval_dump", "query results", "source_uri"):
+            if marker not in lower_text:
+                display = "Query Results" if marker == "query results" else marker
+                failures.append(f"{answer_generator}: missing answer quality marker: {display}")
+    if workflow_test.exists():
+        text = workflow_test.read_text(encoding="utf-8")
+        for marker in ("ResultDumpRagClient", "Query Results", "source_uri"):
+            if marker not in text:
+                failures.append(f"{workflow_test}: missing workflow answer quality test marker: {marker}")
     return failures
 
 

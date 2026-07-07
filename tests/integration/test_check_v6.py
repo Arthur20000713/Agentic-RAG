@@ -45,3 +45,11 @@ def test_check_v6_runtime_stage_tracks_health_endpoints() -> None:
     assert "backend/app/api/health.py" in text
     assert "/api/health" in text
     assert "/api/ready" in text
+
+
+def test_check_v6_full_stage_tracks_answer_quality_guard() -> None:
+    text = Path("scripts/check_v6.py").read_text(encoding="utf-8")
+
+    assert "backend/app/model/answer_generator.py" in text
+    assert "Query Results" in text
+    assert "source_uri" in text
