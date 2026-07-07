@@ -82,7 +82,7 @@ def test_check_v5_local_model_cli_runs_optional_smoke() -> None:
 
     assert completed.returncode == 0
     assert "V5 checks passed for stage local-model" in completed.stdout
-    assert "SKIPPED: real local model is not configured" in completed.stdout
+    assert "PASSED: local model smoke provider=transformers" in completed.stdout
 
 
 def test_check_v5_report_requires_eval_result() -> None:

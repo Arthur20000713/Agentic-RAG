@@ -29,16 +29,16 @@ model_router:
     - S3
     - S4
 local_model:
-  enabled: false
-  provider: mock
+  enabled: true
+  provider: transformers
   endpoint:
-  model:
-  timeout_seconds: 3
-  max_retries: 0
+  model: Qwen/Qwen2.5-0.5B-Instruct
+  timeout_seconds: 60
+  max_retries: 1
   allow_final_answer: false
   device: auto
   torch_dtype: auto
-  max_new_tokens: 128
+  max_new_tokens: 96
   temperature: 0
 lora:
   dataset_enabled: false

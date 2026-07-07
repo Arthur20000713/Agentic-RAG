@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -51,6 +52,7 @@ def main(argv: list[str] | None = None) -> int:
         failures.extend(check_runtime(ROOT))
     if args.stage == "full":
         failures.extend(check_answer_quality(ROOT))
+        failures.extend(check_local_model_acceptance(ROOT))
         failures.extend(_run_existing_check(["scripts/check_v4_2.py", "--stage", "full"]))
         failures.extend(_run_existing_check(["scripts/check_v5.py", "--stage", "full"]))
 
@@ -141,6 +143,51 @@ def check_answer_quality(root: Path) -> list[str]:
         for marker in ("ResultDumpRagClient", "Query Results", "source_uri"):
             if marker not in text:
                 failures.append(f"{workflow_test}: missing workflow answer quality test marker: {marker}")
+    return failures
+
+
+def check_local_model_acceptance(root: Path) -> list[str]:
+    failures: list[str] = []
+    config_path = root / "config" / "settings.yaml"
+    report_path = root / "docs" / "local_model" / "transformers_smoke_report.json"
+    failures.extend(
+        _missing_paths(
+            root,
+            (
+                "docs/local_model/transformers_smoke_report.json",
+                "docs/V6_LOCAL_MODEL_ACCEPTANCE.md",
+            ),
+        )
+    )
+    if config_path.exists():
+        try:
+            raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        except yaml.YAMLError as exc:
+            failures.append(f"{config_path}: invalid YAML: {exc}")
+            raw = {}
+        local_model = raw.get("local_model") if isinstance(raw, dict) and isinstance(raw.get("local_model"), dict) else {}
+        if local_model.get("enabled") is not True:
+            failures.append(f"{config_path}: local_model.enabled must be true for V6.5 transformers smoke")
+        if local_model.get("provider") != "transformers":
+            failures.append(f"{config_path}: local_model.provider must be transformers")
+        if local_model.get("model") != "Qwen/Qwen2.5-0.5B-Instruct":
+            failures.append(f"{config_path}: local_model.model must be Qwen/Qwen2.5-0.5B-Instruct")
+        if local_model.get("allow_final_answer") is not False:
+            failures.append(f"{config_path}: local_model.allow_final_answer must remain false")
+
+    if report_path.exists():
+        try:
+            payload = json.loads(report_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            failures.append(f"{report_path}: invalid JSON: {exc.msg}")
+            payload = {}
+        query_case = _find_case(payload, "query_normalization")
+        if not isinstance(payload, dict) or payload.get("status") != "passed":
+            failures.append(f"{report_path}: local model smoke report must pass")
+        if not isinstance(payload, dict) or payload.get("provider") != "transformers":
+            failures.append(f"{report_path}: local model smoke provider must be transformers")
+        if query_case is None or query_case.get("status") != "passed" or query_case.get("fallback_required") is not False:
+            failures.append(f"{report_path}: query_normalization smoke must pass without fallback")
     return failures
 
 
@@ -245,6 +292,15 @@ def _run_existing_check(args: list[str]) -> list[str]:
         return []
     output = "\n".join(part for part in (completed.stdout.strip(), completed.stderr.strip()) if part)
     return [f"{' '.join(args)} failed: {output}"]
+
+
+def _find_case(payload: Any, task_type: str) -> dict[str, Any] | None:
+    if not isinstance(payload, dict):
+        return None
+    for item in payload.get("cases") or []:
+        if isinstance(item, dict) and item.get("task_type") == task_type:
+            return item
+    return None
 
 
 if __name__ == "__main__":

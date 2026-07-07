@@ -18,7 +18,9 @@ def _tmp_dir() -> Path:
 def test_run_local_model_smoke_optional_skips_without_real_config() -> None:
     output = _tmp_dir() / "local_model_smoke.json"
 
-    exit_code = run_local_model_smoke.main(["--optional", "--output", str(output)])
+    exit_code = run_local_model_smoke.main(
+        ["--settings", "config/settings.test.yaml", "--optional", "--output", str(output)]
+    )
 
     assert exit_code == 0
     payload = json.loads(output.read_text(encoding="utf-8"))
@@ -30,7 +32,7 @@ def test_run_local_model_smoke_optional_skips_without_real_config() -> None:
 def test_run_local_model_smoke_requires_optional_for_missing_config() -> None:
     output = _tmp_dir() / "local_model_smoke.json"
 
-    exit_code = run_local_model_smoke.main(["--output", str(output)])
+    exit_code = run_local_model_smoke.main(["--settings", "config/settings.test.yaml", "--output", str(output)])
 
     assert exit_code == 2
     payload = json.loads(output.read_text(encoding="utf-8"))

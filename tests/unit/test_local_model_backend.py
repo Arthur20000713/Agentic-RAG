@@ -141,6 +141,58 @@ def test_transformers_backend_normalizes_successful_query_fallback_flag() -> Non
     assert response.content["fallback_required"] is False
 
 
+def test_transformers_backend_accepts_chat_template_batch_encoding() -> None:
+    class FakeTensor:
+        def __init__(self, values: list[int]) -> None:
+            self.values = values
+
+        def to(self, device: str):
+            return self
+
+        def __getitem__(self, index):
+            if isinstance(index, slice):
+                return self.values[index]
+            return self.values
+
+    class FakeTokenizer:
+        def apply_chat_template(self, messages, add_generation_prompt: bool, return_tensors: str):
+            return {
+                "input_ids": FakeTensor([1, 2]),
+                "attention_mask": FakeTensor([1, 1]),
+            }
+
+        def decode(self, generated_ids, skip_special_tokens: bool) -> str:
+            return '{"status":"success","normalized_query":"calf feed","language":"en","fallback_required":false}'
+
+    class FakeModel:
+        device = "cuda:0"
+
+        def __init__(self) -> None:
+            self.received_attention_mask = None
+
+        def generate(self, input_ids, **kwargs):
+            assert not isinstance(input_ids, dict)
+            self.received_attention_mask = kwargs.get("attention_mask")
+            return [FakeTensor([1, 2, 3])]
+
+    backend = TransformersBackend()
+    model = FakeModel()
+    backend._tokenizer = FakeTokenizer()
+    backend._model = model
+    backend._loaded_model_name = "Qwen/Qwen2.5-0.5B-Instruct"
+    request = LocalBackendRequest(
+        prompt="calf feed",
+        schema_name="query_normalization",
+        endpoint="",
+        model="Qwen/Qwen2.5-0.5B-Instruct",
+    )
+
+    raw_text = backend._generate_text("prompt", request)
+
+    assert "calf feed" in raw_text
+    assert model.received_attention_mask is not None
+
+
 def test_transformers_backend_rejects_non_query_normalization_schema() -> None:
     backend = TransformersBackend(generator=lambda prompt, request: "{}")
     request = LocalBackendRequest(

@@ -61,3 +61,11 @@ def test_check_v6_baseline_tracks_v3_shadow_defaults() -> None:
     assert "v3.enabled must be true" in text
     assert "model_router.shadow_mode must be true" in text
     assert "local_model.allow_final_answer must remain false" in text
+
+
+def test_check_v6_full_stage_tracks_local_model_acceptance() -> None:
+    text = Path("scripts/check_v6.py").read_text(encoding="utf-8")
+
+    assert "docs/local_model/transformers_smoke_report.json" in text
+    assert "local_model.provider must be transformers" in text
+    assert "query_normalization smoke must pass" in text

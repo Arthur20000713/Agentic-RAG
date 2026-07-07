@@ -1,0 +1,20 @@
+{
+  "status": "passed",
+  "provider": "transformers",
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "endpoint_configured": false,
+  "hardware": {
+    "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+    "torch": "2.12.1+cu130",
+    "cuda_available": true
+  },
+  "cases": [
+    {
+      "task_type": "query_normalization",
+      "status": "passed",
+      "fallback_required": false,
+      "error_code": null,
+      "reason": null
+    }
+  ]
+}

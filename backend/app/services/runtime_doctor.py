@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import socket
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,7 @@ class RuntimeDoctor:
             "rag_server_python": self._check_rag_server_python(),
             "quality_gate": self._check_quality_gate(),
             "v3_shadow_path": self._check_v3_shadow_path(),
+            "local_model_acceptance": self._check_local_model_acceptance(),
         }
         if port is not None:
             checks["port"] = self._check_port(port)
@@ -109,6 +111,63 @@ class RuntimeDoctor:
             "error_code": None if passed else "V3_SHADOW_PATH_NOT_CONFIGURED",
         }
 
+    def _check_local_model_acceptance(self) -> dict[str, Any]:
+        local_model = self.settings.local_model
+        report_path = self.project_root / "docs" / "local_model" / "transformers_smoke_report.json"
+        configured = (
+            local_model.enabled
+            and local_model.provider == "transformers"
+            and bool(local_model.model)
+            and local_model.allow_final_answer is False
+        )
+        if not configured:
+            return {
+                "status": "failed",
+                "provider": local_model.provider,
+                "model": local_model.model,
+                "report_path": str(report_path),
+                "query_normalization_smoke": "not_configured",
+                "error_code": "LOCAL_MODEL_NOT_CONFIGURED",
+            }
+        if not report_path.exists():
+            return {
+                "status": "failed",
+                "provider": local_model.provider,
+                "model": local_model.model,
+                "report_path": str(report_path),
+                "query_normalization_smoke": "missing_report",
+                "error_code": "LOCAL_MODEL_ACCEPTANCE_REPORT_MISSING",
+            }
+        try:
+            payload = json.loads(report_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return {
+                "status": "failed",
+                "provider": local_model.provider,
+                "model": local_model.model,
+                "report_path": str(report_path),
+                "query_normalization_smoke": "invalid_report",
+                "error_code": "LOCAL_MODEL_ACCEPTANCE_REPORT_INVALID",
+            }
+        query_case = _find_smoke_case(payload, "query_normalization")
+        query_passed = (
+            isinstance(payload, dict)
+            and payload.get("status") == "passed"
+            and payload.get("provider") == "transformers"
+            and payload.get("model") == local_model.model
+            and query_case is not None
+            and query_case.get("status") == "passed"
+            and query_case.get("fallback_required") is False
+        )
+        return {
+            "status": "passed" if query_passed else "failed",
+            "provider": local_model.provider,
+            "model": local_model.model,
+            "report_path": str(report_path),
+            "query_normalization_smoke": "passed" if query_passed else "failed",
+            "error_code": None if query_passed else "LOCAL_MODEL_ACCEPTANCE_REPORT_NOT_PASSED",
+        }
+
     def _check_port(self, port: int) -> dict[str, Any]:
         available = _port_available(port)
         return {
@@ -123,3 +182,12 @@ def _port_available(port: int, host: str = "127.0.0.1") -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(0.2)
         return sock.connect_ex((host, port)) != 0
+
+
+def _find_smoke_case(payload: Any, task_type: str) -> dict[str, Any] | None:
+    if not isinstance(payload, dict):
+        return None
+    for item in payload.get("cases") or []:
+        if isinstance(item, dict) and item.get("task_type") == task_type:
+            return item
+    return None

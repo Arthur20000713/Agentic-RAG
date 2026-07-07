@@ -267,15 +267,17 @@ class TransformersBackend(BaseLocalBackend):
             {"role": "user", "content": prompt},
         ]
         if hasattr(tokenizer, "apply_chat_template"):
-            input_ids = tokenizer.apply_chat_template(
+            template_output = tokenizer.apply_chat_template(
                 messages,
                 add_generation_prompt=True,
                 return_tensors="pt",
             )
+            input_ids, attention_mask = _extract_tokenized_inputs(template_output)
             model_device = getattr(model, "device", None)
             if model_device is not None and hasattr(input_ids, "to"):
                 input_ids = input_ids.to(model_device)
-            attention_mask = None
+            if model_device is not None and attention_mask is not None and hasattr(attention_mask, "to"):
+                attention_mask = attention_mask.to(model_device)
         else:
             encoded = tokenizer(prompt, return_tensors="pt")
             input_ids = encoded["input_ids"]
@@ -351,6 +353,15 @@ def _normalize_query_normalization_content(content: dict[str, Any], schema_name:
     if content.get("status") == "success" and str(content.get("normalized_query", "")).strip():
         content["fallback_required"] = False
     return content
+
+
+def _extract_tokenized_inputs(template_output: Any) -> tuple[Any, Any | None]:
+    getter = getattr(template_output, "get", None)
+    if callable(getter):
+        input_ids = getter("input_ids")
+        if input_ids is not None:
+            return input_ids, getter("attention_mask")
+    return template_output, None
 
 
 def _backend_failure(

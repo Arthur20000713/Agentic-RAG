@@ -52,5 +52,5 @@ V6 的目标是把当前“本机真实 RAG 可演示”推进到“本机真实
 | V6.2-C | DONE | 健康/readiness API |
 | V6.3-D | DONE | 真实 RAG 回答质量优化 |
 | V6.4-E | DONE | V3/V5 主路径灰度启用 |
-| V6.5-F | TODO | 本地模型 GPU 验收 |
+| V6.5-F | DONE | 本地模型 GPU 验收 |
 | V6.6-G | TODO | 产品化发布检查 |
