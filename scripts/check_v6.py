@@ -53,6 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.stage == "full":
         failures.extend(check_answer_quality(ROOT))
         failures.extend(check_local_model_acceptance(ROOT))
+        failures.extend(check_release_entrypoint(ROOT))
         failures.extend(_run_existing_check(["scripts/check_v4_2.py", "--stage", "full"]))
         failures.extend(_run_existing_check(["scripts/check_v5.py", "--stage", "full"]))
 
@@ -188,6 +189,17 @@ def check_local_model_acceptance(root: Path) -> list[str]:
             failures.append(f"{report_path}: local model smoke provider must be transformers")
         if query_case is None or query_case.get("status") != "passed" or query_case.get("fallback_required") is not False:
             failures.append(f"{report_path}: query_normalization smoke must pass without fallback")
+    return failures
+
+
+def check_release_entrypoint(root: Path) -> list[str]:
+    failures = _missing_paths(root, ("scripts/check_release_v6.py", "docs/V6_RELEASE_CHECKLIST.md"))
+    release_script = root / "scripts" / "check_release_v6.py"
+    if release_script.exists():
+        text = release_script.read_text(encoding="utf-8")
+        for marker in ("release_check_summary.json", "V6 release status", "run_local_model_smoke.py"):
+            if marker not in text:
+                failures.append(f"{release_script}: missing release marker: {marker}")
     return failures
 
 

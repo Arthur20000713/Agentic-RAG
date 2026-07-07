@@ -69,3 +69,11 @@ def test_check_v6_full_stage_tracks_local_model_acceptance() -> None:
     assert "docs/local_model/transformers_smoke_report.json" in text
     assert "local_model.provider must be transformers" in text
     assert "query_normalization smoke must pass" in text
+
+
+def test_check_v6_full_stage_tracks_release_check_entrypoint() -> None:
+    text = Path("scripts/check_v6.py").read_text(encoding="utf-8")
+
+    assert "scripts/check_release_v6.py" in text
+    assert "release_check_summary.json" in text
+    assert "V6 release status" in text

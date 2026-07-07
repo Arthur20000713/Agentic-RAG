@@ -9,7 +9,7 @@ V6 的目标是把当前“本机真实 RAG 可演示”推进到“本机真实
 - Agentic RAG 默认配置已启用真实 RAG。
 - 默认 collection 为 `livestock_v4_2`。
 - V4.2 batch `batch_002` 已通过真实 RAG 质量门禁，80/80 passed。
-- 本地 Transformers 后端已实现并通过真实权重 smoke，但默认未启用。
+- 本地 Transformers 后端已启用为 shadow 结构化任务候选，并通过 RTX 3060 Laptop GPU 的真实 query normalization smoke。
 - LoRA 仍处于数据治理、训练编排和受控推理框架阶段，未默认启用真实 adapter。
 
 ## 原则
@@ -53,4 +53,4 @@ V6 的目标是把当前“本机真实 RAG 可演示”推进到“本机真实
 | V6.3-D | DONE | 真实 RAG 回答质量优化 |
 | V6.4-E | DONE | V3/V5 主路径灰度启用 |
 | V6.5-F | DONE | 本地模型 GPU 验收 |
-| V6.6-G | TODO | 产品化发布检查 |
+| V6.6-G | DONE | 产品化发布检查 |
