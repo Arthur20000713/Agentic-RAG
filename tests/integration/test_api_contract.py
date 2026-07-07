@@ -6,7 +6,8 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from backend.app.core.config import Settings
+from backend.app.core.config import Settings, load_settings
+from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
 from backend.app.main import create_app
 
 
@@ -108,6 +109,24 @@ def test_chat_api_uses_v3_graph_when_feature_flag_enabled() -> None:
     ]
     assert payload["data"]["v3_debug"]["verifier"]["passed"] is True
     assert payload["data"]["v3_debug"]["safety"]["passed"] is True
+
+
+def test_chat_api_product_config_uses_v3_shadow_main_path() -> None:
+    app = create_app(settings=load_settings("config/settings.yaml"))
+    app.state.rag_client = FakeRagServerClient()
+    client = TestClient(app)
+
+    response = client.post("/api/chat", json={"query": "How should cattle feeding be managed?", "session_id": "s_v6"})
+
+    payload = response.json()
+    assert response.status_code == 200
+    _assert_response_contract(payload)
+    assert payload["code"] == 0
+    assert payload["data"]["v3_debug"]["v3_enabled"] is True
+    assert payload["data"]["v3_debug"]["flags"]["model_router_enabled"] is True
+    assert payload["data"]["v3_debug"]["flags"]["model_router_shadow_mode"] is True
+    assert payload["data"]["v3_debug"]["flags"]["model_router_low_risk_takeover_enabled"] is False
+    assert "model_router_shadow" in payload["data"]["v3_debug"]["agent_path"]
 
 
 def test_measurement_api_contract() -> None:

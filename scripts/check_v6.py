@@ -68,6 +68,7 @@ def check_baseline(root: Path) -> list[str]:
     failures.extend(_missing_paths(root, REQUIRED_BASELINE_FILES))
     failures.extend(_check_dev_spec(root / "docs" / "DEV_SPEC_V6.md"))
     failures.extend(_check_default_real_rag(root / "config" / "settings.yaml"))
+    failures.extend(_check_default_v3_shadow_path(root / "config" / "settings.yaml"))
     failures.extend(_check_batch_quality_report(root / "docs" / "rag_corpus" / "reports" / "batch_002_quality.md"))
     failures.extend(_check_run_eval_settings_arg(root / "scripts" / "run_eval.py"))
     return failures
@@ -178,6 +179,33 @@ def _check_default_real_rag(path: Path) -> list[str]:
         failures.append(f"{path}: rag_server.python_executable must point to the RAG-SERVER Python")
     if float(rag_server.get("timeout_seconds") or 0) < 30:
         failures.append(f"{path}: rag_server.timeout_seconds must be at least 30 for default real RAG")
+    return failures
+
+
+def _check_default_v3_shadow_path(path: Path) -> list[str]:
+    if not path.exists():
+        return []
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as exc:
+        return [f"{path}: invalid YAML: {exc}"]
+    if not isinstance(raw, dict):
+        return [f"{path}: settings must be a mapping"]
+
+    failures: list[str] = []
+    v3 = raw.get("v3") if isinstance(raw.get("v3"), dict) else {}
+    model_router = raw.get("model_router") if isinstance(raw.get("model_router"), dict) else {}
+    local_model = raw.get("local_model") if isinstance(raw.get("local_model"), dict) else {}
+    if v3.get("enabled") is not True:
+        failures.append(f"{path}: v3.enabled must be true for the V6 default agent graph")
+    if model_router.get("enabled") is not True:
+        failures.append(f"{path}: model_router.enabled must be true for the V6 shadow path")
+    if model_router.get("shadow_mode") is not True:
+        failures.append(f"{path}: model_router.shadow_mode must be true until local takeover is explicitly accepted")
+    if model_router.get("allow_low_risk_takeover") is not False:
+        failures.append(f"{path}: model_router.allow_low_risk_takeover must remain false in V6.4")
+    if local_model.get("allow_final_answer") is not False:
+        failures.append(f"{path}: local_model.allow_final_answer must remain false")
     return failures
 
 

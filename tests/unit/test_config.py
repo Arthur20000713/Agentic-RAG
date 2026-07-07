@@ -6,6 +6,7 @@ from pathlib import Path
 from backend.app.core.config import load_settings
 from backend.app.integrations.rag_server import FakeRagServerClient, RagServerMcpClient, create_rag_server_client
 from backend.app.integrations.rag_server.health import resolve_rag_server_path
+from backend.app.services.feature_flag_service import FeatureFlagService
 
 
 def _test_dir() -> Path:
@@ -149,6 +150,19 @@ def test_v3_settings_default_to_disabled_without_changing_v2_behavior() -> None:
     assert settings.enhanced_safety.precheck_enabled is True
     assert settings.enhanced_safety.final_guard_required is True
     assert isinstance(create_rag_server_client(settings), FakeRagServerClient)
+
+
+def test_product_settings_enable_v3_shadow_main_path_without_local_takeover() -> None:
+    settings = load_settings("config/settings.yaml")
+    snapshot = FeatureFlagService(settings).snapshot()
+
+    assert snapshot.v3_enabled is True
+    assert snapshot.model_router_enabled is True
+    assert snapshot.model_router_shadow_mode is True
+    assert snapshot.model_router_low_risk_takeover_enabled is False
+    assert snapshot.local_model_enabled is False
+    assert settings.model_router.allow_low_risk_takeover is False
+    assert settings.local_model.allow_final_answer is False
 
 
 def test_v3_settings_can_be_enabled_from_existing_config_root() -> None:

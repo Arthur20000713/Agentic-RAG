@@ -15,9 +15,9 @@ rag_server:
 database:
   url: "sqlite:///data/app.db"
 v3:
-  enabled: false
+  enabled: true
 model_router:
-  enabled: false
+  enabled: true
   shadow_mode: true
   allow_low_risk_takeover: false
   takeover_task_types:
