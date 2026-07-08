@@ -21,7 +21,7 @@ class RuntimeDoctor:
             "rag_server_path": self._check_rag_server_path(),
             "rag_server_python": self._check_rag_server_python(),
             "quality_gate": self._check_quality_gate(),
-            "v3_shadow_path": self._check_v3_shadow_path(),
+            "v3_agent_path": self._check_v3_agent_path(),
             "local_model_acceptance": self._check_local_model_acceptance(),
         }
         if port is not None:
@@ -90,14 +90,14 @@ class RuntimeDoctor:
             "error_code": None if passed else "QUALITY_GATE_NOT_PASSED",
         }
 
-    def _check_v3_shadow_path(self) -> dict[str, Any]:
+    def _check_v3_agent_path(self) -> dict[str, Any]:
         flags = FeatureFlagService(self.settings).snapshot()
         local_takeover_enabled = flags.model_router_low_risk_takeover_enabled
         passed = (
             flags.v3_enabled
             and flags.model_router_enabled
-            and flags.model_router_shadow_mode
-            and not local_takeover_enabled
+            and not flags.model_router_shadow_mode
+            and local_takeover_enabled
             and self.settings.local_model.allow_final_answer is False
         )
         return {
@@ -108,7 +108,7 @@ class RuntimeDoctor:
             "local_model_enabled": flags.local_model_enabled,
             "local_model_takeover_enabled": local_takeover_enabled,
             "local_model_allow_final_answer": self.settings.local_model.allow_final_answer,
-            "error_code": None if passed else "V3_SHADOW_PATH_NOT_CONFIGURED",
+            "error_code": None if passed else "V3_AGENT_PATH_NOT_CONFIGURED",
         }
 
     def _check_local_model_acceptance(self) -> dict[str, Any]:

@@ -10,6 +10,14 @@ def test_router_detects_disease_consultation() -> None:
     assert result.confidence >= 0.8
 
 
+def test_router_detects_real_chinese_livestock_disease_queries() -> None:
+    router = IntentRouter()
+
+    assert router.route("牛拉稀了怎么办？").intent == "disease_consultation"
+    assert router.route("犊牛腹泻两天，体温40.2度，精神差，不吃草，没有群体发病").intent == "disease_consultation"
+    assert router.route("羊咳嗽一天，体温正常").intent == "disease_consultation"
+
+
 def test_router_detects_measurement_analysis() -> None:
     result = IntentRouter().route("牦牛体高 114 cm，胸围 158 cm，帮我分析体尺")
 

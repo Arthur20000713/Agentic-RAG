@@ -55,11 +55,12 @@ def test_check_v6_full_stage_tracks_answer_quality_guard() -> None:
     assert "source_uri" in text
 
 
-def test_check_v6_baseline_tracks_v3_shadow_defaults() -> None:
+def test_check_v6_baseline_tracks_v3_local_takeover_defaults() -> None:
     text = Path("scripts/check_v6.py").read_text(encoding="utf-8")
 
     assert "v3.enabled must be true" in text
-    assert "model_router.shadow_mode must be true" in text
+    assert "model_router.shadow_mode must be false" in text
+    assert "model_router.allow_low_risk_takeover must be true" in text
     assert "local_model.allow_final_answer must remain false" in text
 
 

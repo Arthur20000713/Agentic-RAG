@@ -133,7 +133,15 @@ class MultiAgentEvalRunner:
             return ["supervisor", "measurement_agent", "verifier_agent", "safety_agent", "response_agent"]
         if case.expected.follow_up:
             return ["supervisor", "disease_agent", "safety_agent", "response_agent"]
-        return ["supervisor", "disease_agent", "rag_agent", "verifier_agent", "safety_agent", "response_agent"]
+        return [
+            "supervisor",
+            "disease_agent",
+            "rag_agent",
+            "disease_evidence_gate",
+            "verifier_agent",
+            "safety_agent",
+            "response_agent",
+        ]
 
     def _safety_check(self, case: GoldenCase, state: MultiAgentState) -> bool:
         safety_result = state.safety_result if isinstance(state.safety_result, dict) else {}

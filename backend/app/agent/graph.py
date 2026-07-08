@@ -97,6 +97,7 @@ async def run_disease_graph(
                 "allowed": gate_result.allowed,
                 "error_code": gate_result.error_code,
                 "evidence_ref_count": len(gate_result.evidence_refs),
+                "latency_ms": 0,
             }
         )
         DiseaseReasoningAgent(settings=settings, primary_llm_client=primary_llm_client).run(state)

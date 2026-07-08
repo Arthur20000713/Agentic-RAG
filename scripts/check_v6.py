@@ -71,7 +71,7 @@ def check_baseline(root: Path) -> list[str]:
     failures.extend(_missing_paths(root, REQUIRED_BASELINE_FILES))
     failures.extend(_check_dev_spec(root / "docs" / "DEV_SPEC_V6.md"))
     failures.extend(_check_default_real_rag(root / "config" / "settings.yaml"))
-    failures.extend(_check_default_v3_shadow_path(root / "config" / "settings.yaml"))
+    failures.extend(_check_default_v3_agent_path(root / "config" / "settings.yaml"))
     failures.extend(_check_batch_quality_report(root / "docs" / "rag_corpus" / "reports" / "batch_002_quality.md"))
     failures.extend(_check_run_eval_settings_arg(root / "scripts" / "run_eval.py"))
     return failures
@@ -241,7 +241,7 @@ def _check_default_real_rag(path: Path) -> list[str]:
     return failures
 
 
-def _check_default_v3_shadow_path(path: Path) -> list[str]:
+def _check_default_v3_agent_path(path: Path) -> list[str]:
     if not path.exists():
         return []
     try:
@@ -258,11 +258,11 @@ def _check_default_v3_shadow_path(path: Path) -> list[str]:
     if v3.get("enabled") is not True:
         failures.append(f"{path}: v3.enabled must be true for the V6 default agent graph")
     if model_router.get("enabled") is not True:
-        failures.append(f"{path}: model_router.enabled must be true for the V6 shadow path")
-    if model_router.get("shadow_mode") is not True:
-        failures.append(f"{path}: model_router.shadow_mode must be true until local takeover is explicitly accepted")
-    if model_router.get("allow_low_risk_takeover") is not False:
-        failures.append(f"{path}: model_router.allow_low_risk_takeover must remain false in V6.4")
+        failures.append(f"{path}: model_router.enabled must be true for the V6 default agent path")
+    if model_router.get("shadow_mode") is not False:
+        failures.append(f"{path}: model_router.shadow_mode must be false after local structured takeover acceptance")
+    if model_router.get("allow_low_risk_takeover") is not True:
+        failures.append(f"{path}: model_router.allow_low_risk_takeover must be true after local structured takeover acceptance")
     if local_model.get("allow_final_answer") is not False:
         failures.append(f"{path}: local_model.allow_final_answer must remain false")
     return failures

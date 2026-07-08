@@ -11,7 +11,7 @@ V6 产品化收口已完成，本机验收结论为 `usable`。
 - 真实 RAG 默认开启：`rag_server.query_mode=real`
 - 默认知识库 collection：`livestock_v4_2`
 - V3 agent graph 默认开启
-- ModelRouter 默认 `shadow_mode=true`
+- ModelRouter 默认 `shadow_mode=false`，允许低风险结构化任务由本地模型接管
 - 本地模型默认使用 `transformers`
 - 本地模型型号：`Qwen/Qwen2.5-0.5B-Instruct`
 - 本地模型只验收 `query_normalization`，不生成最终答案
@@ -41,6 +41,7 @@ V6 release status: usable
 
 - 畜牧业知识问答：基于真实 RAG 检索结果生成自然语言答案，并保留 citation/source_uri。
 - 疾病问诊辅助：抽取物种、症状、持续时间、体温、群体发病等槽位；信息不足时追问；高风险内容走安全拦截。
+- 疾病 LLM 灰度链路：支持病例结构化理解、会话补充合并、RAG 查询构造、证据门、条目级引用推理和 verifier 安全校验；默认关闭，不静默 fake。
 - 体尺报告：分析当前体尺和历史记录，输出结构化摘要、异常项、证据和建议。
 - 真实 RAG 集成：通过 MCP stdio 调用 `RAG-SERVER`，默认走真实 collection `livestock_v4_2`，不静默降级到 fake。
 - 多 Agent 工作流：包含 Supervisor、RAG、Disease、Measurement、Verifier、Safety、Response 等节点，并记录 agent path。
@@ -77,7 +78,7 @@ http://127.0.0.1:8001/docs
 - `rag_server_path`
 - `rag_server_python`
 - `quality_gate`
-- `v3_shadow_path`
+- `v3_agent_path`
 - `local_model_acceptance`
 
 HTTP 诊断接口：
@@ -89,7 +90,7 @@ GET /api/rag/status
 GET /api/rag/collections
 ```
 
-`/api/health` 只表示应用存活；`/api/ready` 会汇总真实 RAG、质量门禁、V3 shadow 和本地模型验收状态。
+`/api/health` 只表示应用存活；`/api/ready` 会汇总真实 RAG、质量门禁、V3 agent path 和本地模型验收状态。
 
 ## 真实 RAG-SERVER
 
@@ -155,8 +156,8 @@ PASSED: local model smoke provider=transformers
 本地模型安全边界：
 
 - 仅验收 `query_normalization`
-- `model_router.shadow_mode=true`
-- `model_router.allow_low_risk_takeover=false`
+- `model_router.shadow_mode=false`
+- `model_router.allow_low_risk_takeover=true`
 - `local_model.allow_final_answer=false`
 
 ## 常用检查命令

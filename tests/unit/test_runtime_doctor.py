@@ -7,7 +7,7 @@ from backend.app.core.config import Settings
 from backend.app.services.runtime_doctor import RuntimeDoctor
 
 
-def test_runtime_doctor_reports_v3_shadow_main_path() -> None:
+def test_runtime_doctor_reports_v3_local_structured_takeover_path() -> None:
     settings = Settings(
         rag_server={
             "query_mode": "real",
@@ -17,16 +17,16 @@ def test_runtime_doctor_reports_v3_shadow_main_path() -> None:
             "strict_real_mode": True,
         },
         v3={"enabled": True},
-        model_router={"enabled": True, "shadow_mode": True, "allow_low_risk_takeover": False},
-        local_model={"enabled": False, "allow_final_answer": False},
+        model_router={"enabled": True, "shadow_mode": False, "allow_low_risk_takeover": True},
+        local_model={"enabled": True, "allow_final_answer": False},
     )
 
     report = RuntimeDoctor(settings).check()
 
-    assert report["checks"]["v3_shadow_path"]["status"] == "passed"
-    assert report["checks"]["v3_shadow_path"]["v3_enabled"] is True
-    assert report["checks"]["v3_shadow_path"]["model_router_shadow_mode"] is True
-    assert report["checks"]["v3_shadow_path"]["local_model_takeover_enabled"] is False
+    assert report["checks"]["v3_agent_path"]["status"] == "passed"
+    assert report["checks"]["v3_agent_path"]["v3_enabled"] is True
+    assert report["checks"]["v3_agent_path"]["model_router_shadow_mode"] is False
+    assert report["checks"]["v3_agent_path"]["local_model_takeover_enabled"] is True
 
 
 def test_runtime_doctor_reports_local_model_acceptance(tmp_path: Path) -> None:
@@ -54,7 +54,7 @@ def test_runtime_doctor_reports_local_model_acceptance(tmp_path: Path) -> None:
             "strict_real_mode": True,
         },
         v3={"enabled": True},
-        model_router={"enabled": True, "shadow_mode": True, "allow_low_risk_takeover": False},
+        model_router={"enabled": True, "shadow_mode": False, "allow_low_risk_takeover": True},
         local_model={
             "enabled": True,
             "provider": "transformers",
