@@ -4,6 +4,7 @@ import time
 from typing import Any
 
 from backend.app.agent.disease_understanding import DiseaseUnderstandingAgent
+from backend.app.agent.disease_query_builder import DiseaseQueryBuilder
 from backend.app.agent.extractor import DiseaseSlots, SlotExtractor, build_follow_up_questions
 from backend.app.agent.safety_precheck import SafetyPrecheck
 from backend.app.agent.state import MultiAgentState
@@ -31,6 +32,7 @@ class DiseaseAgent:
             settings=self.settings,
             primary_llm_client=primary_llm_client,
         )
+        self.query_builder = DiseaseQueryBuilder()
 
     def run(self, state: MultiAgentState) -> MultiAgentState:
         started_at = time.perf_counter()
@@ -78,7 +80,13 @@ class DiseaseAgent:
 
         state.disease_assessment = risk_result.model_dump()
         state.risk_level = risk_result.risk_level
-        state.rag_query = f"{state.user_query} 风险等级 {risk_result.risk_level} 处理原则"
+        query_result = self.query_builder.build(state)
+        state.rag_query = query_result.query
+        state.tool_results["disease_query_builder"] = {
+            "query": query_result.query,
+            "facts": query_result.facts,
+            "warnings": query_result.warnings,
+        }
         state.draft_answer = self._build_consultation_draft(risk_result.model_dump())
         self._append_trace(
             state,

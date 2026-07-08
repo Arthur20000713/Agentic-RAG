@@ -44,7 +44,12 @@ def test_disease_agent_generates_assessment_and_rag_query_when_slots_are_complet
     assert state.disease_assessment["risk_level"] == "high"
     assert state.disease_assessment["need_vet"] is True
     assert state.tool_results["disease_risk_evaluator"]["risk_level"] == "high"
-    assert state.rag_query == f"{state.user_query} 风险等级 high 处理原则"
+    assert state.rag_query is not None
+    assert "livestock disease consultation" in state.rag_query
+    assert "cattle" in state.rag_query
+    assert "diarrhea" in state.rag_query
+    assert "duration_days:2" in state.rag_query
+    assert "temperature_c:40.2" in state.rag_query
     assert state.draft_answer is not None
     assert "初步风险等级：high" in state.draft_answer
     assert "兽医" in state.draft_answer
@@ -82,7 +87,10 @@ def test_disease_agent_uses_normalized_query_for_slot_extraction() -> None:
     assert state.extracted_slots["species"] == "cattle"
     assert state.disease_assessment is not None
     assert state.disease_assessment["risk_level"] == "high"
-    assert state.rag_query == "用户原始输入 风险等级 high 处理原则"
+    assert state.rag_query is not None
+    assert "cattle" in state.rag_query
+    assert "diarrhea" in state.rag_query
+    assert "duration_days:2" in state.rag_query
 
 
 def test_disease_agent_uses_router_for_low_risk_slot_extraction() -> None:

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from uuid import uuid4
+from dataclasses import asdict
 
 from backend.app.agent.disease_agent import DiseaseAgent
+from backend.app.agent.disease_evidence_gate import DiseaseEvidenceGate
 from backend.app.agent.measurement_agent import MeasurementAgent
 from backend.app.agent.rag_agent import RagAgent
 from backend.app.agent.response_agent import ResponseAgent
@@ -83,7 +85,25 @@ async def run_disease_graph(
     if state.rag_query:
         disease_draft = state.draft_answer or ""
         await RagAgent(rag_client or FakeRagServerClient()).run(state)
-        _compose_rag_draft(state, prefix=disease_draft)
+        gate_result = DiseaseEvidenceGate().evaluate(state)
+        state.tool_results["disease_evidence_gate"] = asdict(gate_result)
+        state.agent_trace.append(
+            {
+                "node": "disease_evidence_gate",
+                "status": "passed" if gate_result.allowed else "blocked",
+                "allowed": gate_result.allowed,
+                "error_code": gate_result.error_code,
+                "evidence_ref_count": len(gate_result.evidence_refs),
+            }
+        )
+        if gate_result.allowed:
+            _compose_rag_draft(state, prefix=disease_draft)
+        else:
+            state.draft_answer = (
+                f"{disease_draft}\n\n"
+                "当前检索结果缺少可追溯来源，不能基于证据展开疾病分析。"
+                "请补充更多现场信息，或联系兽医进行判断。"
+            )
         if unsafe_draft_for_test is not None:
             state.draft_answer = unsafe_draft_for_test
         VerifierAgent().verify(state)

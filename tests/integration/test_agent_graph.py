@@ -6,6 +6,25 @@ from backend.app.agent.graph import run_disease_graph, run_general_qa_graph, run
 from backend.app.core.config import Settings
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
 from backend.app.schemas.measurement import MeasurementInput
+from backend.app.schemas.rag_server import RagCitation, RagSearchHit, RagSearchResult
+
+
+class MissingCitationSourceRagClient(FakeRagServerClient):
+    async def query(self, query: str, **kwargs) -> RagSearchResult:
+        return RagSearchResult(
+            query=query,
+            status="success",
+            hits=[
+                RagSearchHit(
+                    chunk_id="chunk_1",
+                    document_title="guide",
+                    content="context",
+                    source_uri="rag://livestock/doc/chunk_1",
+                    score=0.9,
+                )
+            ],
+            citations=[RagCitation(title="guide", chunk_id="chunk_1")],
+        )
 
 
 def test_general_qa_graph_runs_supervisor_rag_verifier_safety_response() -> None:
@@ -129,10 +148,28 @@ def test_disease_graph_high_risk_uses_rag_verifier_safety_response() -> None:
         "supervisor",
         "disease_agent",
         "rag_agent",
+        "disease_evidence_gate",
         "verifier_agent",
         "safety_agent",
         "response_agent",
     ]
+
+
+def test_disease_graph_records_evidence_gate_rejection_for_unmapped_rag_refs() -> None:
+    state = asyncio.run(
+        run_disease_graph(
+            "犊牛腹泻两天，体温40.2度，精神差，不吃草，没有群体发病",
+            rag_client=MissingCitationSourceRagClient(),
+            session_id="s_disease_gate",
+        )
+    )
+
+    gate = state.tool_results["disease_evidence_gate"]
+
+    assert gate["allowed"] is False
+    assert gate["error_code"] == "RAG_VALID_EVIDENCE_MISSING"
+    assert state.agent_trace[3]["node"] == "disease_evidence_gate"
+    assert state.agent_trace[3]["status"] == "blocked"
 
 
 def test_disease_graph_uses_router_slot_extraction_without_rag_for_follow_up() -> None:
