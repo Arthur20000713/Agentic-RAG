@@ -100,7 +100,9 @@ async def run_disease_graph(
             }
         )
         DiseaseReasoningAgent(settings=settings, primary_llm_client=primary_llm_client).run(state)
-        if gate_result.allowed:
+        if _disease_reasoning_takeover_enabled(settings) and _compose_disease_reasoning_draft(state):
+            pass
+        elif gate_result.allowed:
             _compose_rag_draft(state, prefix=disease_draft)
         else:
             state.draft_answer = (
@@ -167,6 +169,45 @@ def _compose_rag_draft(state: MultiAgentState, *, prefix: str | None = None) -> 
     if isinstance(rag_result, dict):
         evidence_answer = AnswerGenerator().compose_with_citations(RagSearchResult.model_validate(rag_result))
         state.draft_answer = f"{prefix}\n\n{evidence_answer}" if prefix else evidence_answer
+
+
+def _disease_reasoning_takeover_enabled(settings: Settings | None) -> bool:
+    return bool(settings and settings.disease_llm.enabled and not settings.disease_llm.shadow_mode)
+
+
+def _compose_disease_reasoning_draft(state: MultiAgentState) -> bool:
+    record = state.tool_results.get("disease_reasoning")
+    if not isinstance(record, dict) or record.get("status") != "success" or not isinstance(record.get("reasoning"), dict):
+        return False
+    reasoning = record["reasoning"]
+    lines = ["以下内容基于已检索到的资料整理，不能替代兽医现场判断。"]
+    _append_reasoning_section(lines, "可能相关因素", reasoning.get("contributing_factors") or [])
+    if reasoning.get("uncertainties"):
+        lines.append("仍需确认：")
+        lines.extend(f"- {item}" for item in reasoning["uncertainties"])
+    _append_reasoning_section(lines, "可先做的安全处理", reasoning.get("safe_actions") or [])
+    _append_reasoning_section(lines, "需要联系兽医的情况", reasoning.get("vet_triggers") or [])
+    state.draft_answer = "\n".join(lines)
+    state.tool_results["disease_reasoning_takeover"] = {"applied": True}
+    return True
+
+
+def _append_reasoning_section(lines: list[str], title: str, items: list[dict]) -> None:
+    if not items:
+        return
+    lines.append(f"{title}：")
+    for item in items:
+        text = str(item.get("text") or "").strip()
+        refs = _format_reasoning_refs(item.get("evidence_refs") or [])
+        lines.append(f"- {text}{refs}")
+
+
+def _format_reasoning_refs(refs: list[dict]) -> str:
+    formatted = []
+    for ref in refs:
+        if isinstance(ref, dict) and ref.get("source_uri") and ref.get("chunk_id"):
+            formatted.append(f"{ref['source_uri']}#{ref['chunk_id']}")
+    return f"（依据：{'; '.join(formatted)}）" if formatted else ""
 
 
 def record_shadow_route(state: MultiAgentState, *, settings: Settings | None = None) -> None:

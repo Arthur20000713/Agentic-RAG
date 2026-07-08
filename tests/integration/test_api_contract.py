@@ -157,7 +157,7 @@ def test_chat_api_disease_follow_up_uses_session_context_and_plain_answers() -> 
     assert "livestock_rag_search" in second["data"]["tools_used"]
 
 
-def test_chat_api_product_config_uses_v3_shadow_main_path() -> None:
+def test_chat_api_product_config_uses_v3_local_structured_takeover_path() -> None:
     app = create_app(settings=load_settings("config/settings.yaml"))
     app.state.rag_client = FakeRagServerClient()
     client = TestClient(app)
@@ -170,9 +170,9 @@ def test_chat_api_product_config_uses_v3_shadow_main_path() -> None:
     assert payload["code"] == 0
     assert payload["data"]["v3_debug"]["v3_enabled"] is True
     assert payload["data"]["v3_debug"]["flags"]["model_router_enabled"] is True
-    assert payload["data"]["v3_debug"]["flags"]["model_router_shadow_mode"] is True
-    assert payload["data"]["v3_debug"]["flags"]["model_router_low_risk_takeover_enabled"] is False
-    assert "model_router_shadow" in payload["data"]["v3_debug"]["agent_path"]
+    assert payload["data"]["v3_debug"]["flags"]["model_router_shadow_mode"] is False
+    assert payload["data"]["v3_debug"]["flags"]["model_router_low_risk_takeover_enabled"] is True
+    assert payload["data"]["v3_debug"]["flags"]["disease_llm_enabled"] is False
 
 
 def test_measurement_api_contract() -> None:

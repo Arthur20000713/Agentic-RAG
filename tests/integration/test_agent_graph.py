@@ -223,6 +223,35 @@ def test_disease_graph_runs_reasoning_shadow_after_evidence_gate_when_enabled() 
     assert nodes[gate_index + 1] == "disease_reasoning_agent"
 
 
+def test_disease_graph_reasoning_takeover_replaces_rule_risk_draft_when_enabled() -> None:
+    settings = Settings(
+        v3={"enabled": True},
+        primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock", "api_key_env": "X"},
+        disease_llm={"enabled": True, "shadow_mode": False, "require_rag_evidence": True},
+    )
+
+    state = asyncio.run(
+        run_disease_graph(
+            "犊牛腹泻两天，体温40.2度，精神差，不吃草，没有群体发病",
+            rag_client=FakeRagServerClient(),
+            session_id="s_disease_takeover",
+            settings=settings,
+            primary_llm_client=FakeReasoningClient(),
+        )
+    )
+
+    assert state.tool_results["disease_reasoning"]["status"] == "success"
+    assert state.final_answer is not None
+    assert "Digestive disturbance may be relevant." in state.final_answer
+    assert "Monitor hydration" in state.final_answer
+    assert "rag://" in state.final_answer
+    assert "初步风险等级" not in state.final_answer
+    assert state.verification_result is not None
+    assert state.verification_result["passed"] is True
+    assert state.safety_result is not None
+    assert state.safety_result["passed"] is True
+
+
 def test_disease_graph_uses_router_slot_extraction_without_rag_for_follow_up() -> None:
     settings = Settings(
         v3={"enabled": True},
