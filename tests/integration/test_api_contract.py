@@ -111,6 +111,25 @@ def test_chat_api_uses_v3_graph_when_feature_flag_enabled() -> None:
     assert payload["data"]["v3_debug"]["safety"]["passed"] is True
 
 
+def test_chat_api_answers_assistant_intro_without_rag_or_domain_refusal() -> None:
+    settings = Settings(
+        database={"url": "sqlite:///:memory:"},
+        v3={"enabled": True},
+    )
+    client = TestClient(create_app(settings=settings))
+
+    response = client.post("/api/chat", json={"query": "你好，你是谁？", "session_id": "s_intro"})
+
+    payload = response.json()
+    assert response.status_code == 200
+    _assert_response_contract(payload)
+    assert payload["code"] == 0
+    assert payload["data"]["intent"] == "assistant_intro"
+    assert "畜牧" in payload["data"]["answer"]
+    assert "超出" not in payload["data"]["answer"]
+    assert "livestock_rag_search" not in payload["data"]["tools_used"]
+
+
 def test_chat_api_product_config_uses_v3_shadow_main_path() -> None:
     app = create_app(settings=load_settings("config/settings.yaml"))
     app.state.rag_client = FakeRagServerClient()

@@ -28,6 +28,20 @@ def test_router_detects_out_of_scope() -> None:
     assert result.intent == "out_of_scope"
 
 
+def test_router_detects_assistant_intro_without_livestock_signal() -> None:
+    router = IntentRouter()
+
+    assert router.route("你好").intent == "assistant_intro"
+    assert router.route("你是谁？").intent == "assistant_intro"
+    assert router.route("What can you do?").intent == "assistant_intro"
+
+
+def test_router_keeps_substantive_out_of_scope_when_greeting_is_prefixed() -> None:
+    result = IntentRouter().route("你好，帮我写一个股票交易策略")
+
+    assert result.intent == "out_of_scope"
+
+
 def test_router_detects_english_livestock_intents() -> None:
     router = IntentRouter()
 

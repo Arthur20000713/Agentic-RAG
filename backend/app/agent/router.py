@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from pydantic import BaseModel
 
 from backend.app.schemas.agent import IntentType
@@ -101,10 +103,38 @@ class IntentRouter:
         "旅游",
         "电影",
     }
+    assistant_intro_exact_queries = {
+        "hi",
+        "hello",
+        "hey",
+        "你好",
+        "您好",
+        "你好啊",
+        "您好啊",
+        "早上好",
+        "下午好",
+        "晚上好",
+    }
+    assistant_intro_keywords = {
+        "who are you",
+        "what are you",
+        "what can you do",
+        "tell me about yourself",
+        "introduce yourself",
+        "你是谁",
+        "你是什么",
+        "介绍一下自己",
+        "自我介绍",
+        "你能做什么",
+        "你可以做什么",
+        "你会做什么",
+    }
 
     def route(self, query: str) -> RouteResult:
         if self._contains_any(query, self.out_of_scope_keywords) and not self._contains_any(query, self.livestock_keywords):
             return RouteResult(intent="out_of_scope", confidence=0.9, reason="query is outside livestock domain")
+        if self._is_assistant_intro_query(query):
+            return RouteResult(intent="assistant_intro", confidence=0.88, reason="assistant greeting or self-introduction")
         if self._is_general_context_query(query):
             return RouteResult(intent="general_qa", confidence=0.78, reason="general livestock management context matched")
         if self._contains_any(query, self.disease_keywords):
@@ -125,3 +155,9 @@ class IntentRouter:
         if "knowledge-base" in query.lower():
             return True
         return self._contains_any(query, self.livestock_keywords) and self._contains_any(query, self.disease_keywords)
+
+    def _is_assistant_intro_query(self, query: str) -> bool:
+        normalized = re.sub(r"[\s,，.。!！?？~～]+", "", query.lower())
+        if normalized in self.assistant_intro_exact_queries:
+            return True
+        return self._contains_any(query, self.assistant_intro_keywords)

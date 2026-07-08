@@ -13,6 +13,13 @@ from backend.app.schemas.api import ChatRequest
 from backend.app.services.feature_flag_service import FeatureFlagService, FeatureFlagSnapshot
 
 
+ASSISTANT_INTRO_ANSWER = (
+    "你好，我是 Livestock Agentic RAG 智能助手，主要面向畜牧业知识问答、疾病初步问诊、"
+    "体尺分析和资料检索。你可以问我牛、羊、猪等养殖管理、饲喂、断奶、常见症状处理、"
+    "资料依据和引用来源类问题；非畜牧领域的问题我会明确说明不在服务范围内。"
+)
+
+
 class ChatService:
     def __init__(self, rag_client: RagServerClient, settings: Settings | None = None) -> None:
         self.rag_client = rag_client
@@ -21,6 +28,8 @@ class ChatService:
 
     async def ask(self, request: ChatRequest, *, request_id: str | None = None) -> AgentState | MultiAgentState:
         route = self.router.route(request.query)
+        if route.intent == "assistant_intro":
+            return self._assistant_intro_state(request, confidence=route.confidence)
         if FeatureFlagService(self.settings).v3_enabled:
             if route.intent == "disease_consultation":
                 return await run_disease_graph(
@@ -63,6 +72,15 @@ class ChatService:
         else:
             state.final_answer = "当前问题超出畜牧业辅助问答范围。"
         return state
+
+    def _assistant_intro_state(self, request: ChatRequest, *, confidence: float) -> AgentState:
+        return AgentState(
+            session_id=request.session_id or "s_api",
+            user_query=request.query,
+            intent="assistant_intro",
+            intent_confidence=confidence,
+            final_answer=ASSISTANT_INTRO_ANSWER,
+        )
 
 
 def state_to_chat_data(state: AgentState | MultiAgentState, *, settings: Settings | None = None) -> dict:

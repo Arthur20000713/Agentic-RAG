@@ -6,6 +6,7 @@ const state = {
 
 const labels = {
   intents: {
+    assistant_intro: "助手介绍",
     general_qa: "知识问答",
     disease_consultation: "疾病问诊",
     measurement_analysis: "体尺分析",

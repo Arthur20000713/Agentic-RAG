@@ -7,6 +7,7 @@ from backend.app.agent.state import MultiAgentState
 
 
 ACTIVE_AGENT_BY_INTENT = {
+    "assistant_intro": "response_agent",
     "general_qa": "rag_agent",
     "disease_consultation": "disease_agent",
     "measurement_analysis": "measurement_agent",

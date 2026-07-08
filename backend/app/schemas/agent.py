@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 
 IntentType = Literal[
+    "assistant_intro",
     "general_qa",
     "disease_consultation",
     "measurement_analysis",
@@ -45,4 +46,3 @@ class AgentState(BaseModel):
     final_answer: str | None = None
     need_follow_up: bool = False
     follow_up_questions: list[str] = Field(default_factory=list)
-
