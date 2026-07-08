@@ -16,7 +16,7 @@ Observed result:
 - `v6_full_check`: passed
 - `local_model_smoke`: passed
 - `pytest_not_rag_server`: passed
-- Regression: `422 passed, 3 deselected`
+- Regression: `457 passed, 3 deselected`
 
 Generated runtime summary:
 
@@ -29,9 +29,11 @@ Generated runtime summary:
 - RAG quality gate evidence is present and passed.
 - `/api/health` and `/api/ready` are available.
 - V3 graph is enabled by default.
-- ModelRouter remains in shadow mode.
+- ModelRouter uses `shadow_mode=false` by default and allows low-risk structured task takeover.
 - Local transformers model is enabled for structured query normalization smoke.
 - Local model final-answer generation remains disabled.
+- Disease LLM takeover is implemented but remains disabled by default until a real `primary_llm` provider, model, base URL and API-key environment variable are configured.
+- Runtime doctor reports `disease_llm_path`; takeover mode fails readiness if it would rely on mock or incomplete primary LLM configuration.
 - Release check outputs `usable` or `not_usable`.
 
 ## Startup

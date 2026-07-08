@@ -35,7 +35,7 @@ V6 release status: usable
 - `v6_full_check`: passed
 - `local_model_smoke`: passed
 - `pytest_not_rag_server`: passed
-- 回归测试：`422 passed, 3 deselected`
+- 回归测试：`457 passed, 3 deselected`
 
 ## 主要能力
 
@@ -79,6 +79,7 @@ http://127.0.0.1:8001/docs
 - `rag_server_python`
 - `quality_gate`
 - `v3_agent_path`
+- `disease_llm_path`
 - `local_model_acceptance`
 
 HTTP 诊断接口：

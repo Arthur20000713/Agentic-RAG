@@ -26,6 +26,8 @@ class DiseaseCaseUnderstanding(BaseModel):
     symptoms_raw: list[str] = Field(default_factory=list)
     symptoms_normalized: list[str] = Field(default_factory=list)
     duration_text: str | None = None
+    duration_days: float | None = Field(default=None, ge=0)
+    temperature_c: float | None = Field(default=None, ge=30, le=45)
     temperature_status: TemperatureStatus = "unknown"
     appetite_status: AppetiteStatus = "unknown"
     feces_status: str | None = None
@@ -36,6 +38,26 @@ class DiseaseCaseUnderstanding(BaseModel):
     answered_questions: list[str] = Field(default_factory=list)
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     source_spans: list[str] = Field(default_factory=list)
+
+
+def slots_from_understanding(
+    understanding: DiseaseCaseUnderstanding,
+    *,
+    fallback_slots: DiseaseSlots | None = None,
+) -> DiseaseSlots:
+    fallback_slots = fallback_slots or DiseaseSlots()
+    species = None if understanding.species == "unknown" else understanding.species
+    symptoms = _dedupe([*understanding.symptoms_normalized, *fallback_slots.symptoms])
+    return DiseaseSlots(
+        species=species or fallback_slots.species,
+        age_stage=understanding.age_stage or fallback_slots.age_stage,
+        symptoms=symptoms,
+        temperature_c=understanding.temperature_c if understanding.temperature_c is not None else fallback_slots.temperature_c,
+        duration_days=understanding.duration_days if understanding.duration_days is not None else fallback_slots.duration_days,
+        group_outbreak=understanding.group_outbreak
+        if understanding.group_outbreak is not None
+        else fallback_slots.group_outbreak,
+    )
 
 
 class DiseaseUnderstandingAgent:
@@ -130,3 +152,12 @@ def _run_coroutine_sync(value: Any) -> dict[str, Any]:
     if error is not None:
         raise error
     return dict(result or {})
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    deduped: list[str] = []
+    for value in values:
+        normalized = value.strip()
+        if normalized and normalized not in deduped:
+            deduped.append(normalized)
+    return deduped

@@ -1,13 +1,26 @@
 from __future__ import annotations
 
+from typing import Any
+
 from backend.app.agent.disease_agent import DiseaseAgent
 from backend.app.agent.state import MultiAgentState
 from backend.app.core.config import Settings
+from backend.app.model.primary_llm import PrimaryLLMRequest
 
 
 class InvalidLocalSlotDiseaseAgent(DiseaseAgent):
     def render_local_slots(self, query: str) -> dict:
         return {"species": "cattle", "symptoms": "diarrhea"}
+
+
+class FakePrimaryLLM:
+    def __init__(self, payload: dict[str, Any]) -> None:
+        self.payload = payload
+        self.requests: list[PrimaryLLMRequest] = []
+
+    async def generate_json(self, request: PrimaryLLMRequest) -> dict[str, Any]:
+        self.requests.append(request)
+        return dict(self.payload)
 
 
 def test_disease_agent_returns_follow_up_for_missing_slots() -> None:
@@ -144,3 +157,73 @@ def test_disease_agent_router_falls_back_when_local_slots_fail_schema() -> None:
     assert state.tool_results["disease_slot_router"]["route_decision"]["selected_model"] == "local_small"
     assert state.tool_results["disease_slot_router"]["fallback_used"] is True
     assert state.tool_results["disease_slot_router"]["fallback_reason"] == "local_slot_schema_invalid"
+
+
+def test_disease_agent_non_shadow_llm_understanding_drives_slots_and_rag_query() -> None:
+    settings = Settings(
+        disease_llm={"enabled": True, "shadow_mode": False, "allow_rule_fallback": True},
+        primary_llm={"enabled": True, "provider": "openai_compatible", "model": "model", "base_url": "http://llm"},
+    )
+    llm = FakePrimaryLLM(
+        {
+            "status": "success",
+            "schema_name": "disease_case_understanding",
+            "species": "cattle",
+            "age_stage": "calf",
+            "symptoms_raw": ["diarrhea", "depression", "low appetite"],
+            "symptoms_normalized": ["diarrhea", "depression", "low_appetite"],
+            "duration_days": 2,
+            "temperature_c": 40.2,
+            "group_outbreak": False,
+            "confidence": 0.92,
+        }
+    )
+    state = MultiAgentState(
+        session_id="s_llm_takeover",
+        user_query="The animal is sick and the caretaker gave more details verbally.",
+        intent="disease_consultation",
+    )
+
+    DiseaseAgent(settings=settings, primary_llm_client=llm).run(state)
+
+    assert state.tool_results["disease_understanding"]["applied_to_slots"] is True
+    assert state.extracted_slots["species"] == "cattle"
+    assert state.extracted_slots["age_stage"] == "calf"
+    assert state.extracted_slots["duration_days"] == 2
+    assert state.extracted_slots["temperature_c"] == 40.2
+    assert state.extracted_slots["group_outbreak"] is False
+    assert state.disease_assessment is not None
+    assert state.disease_assessment["status"] == "success"
+    assert state.disease_assessment["risk_level"] == "high"
+    assert state.rag_query is not None
+    assert "duration_days:2.0" in state.rag_query
+    assert "temperature_c:40.2" in state.rag_query
+    assert "diarrhea" in state.rag_query
+
+
+def test_disease_agent_non_shadow_llm_failure_respects_disabled_rule_fallback() -> None:
+    settings = Settings(
+        disease_llm={"enabled": True, "shadow_mode": False, "allow_rule_fallback": False},
+        primary_llm={"enabled": True, "provider": "openai_compatible", "model": "model", "base_url": "http://llm"},
+    )
+    llm = FakePrimaryLLM(
+        {
+            "status": "success",
+            "schema_name": "disease_case_understanding",
+            "species": "dragon",
+            "confidence": 0.9,
+        }
+    )
+    state = MultiAgentState(
+        session_id="s_llm_no_fallback",
+        user_query="犊牛腹泻两天，体温40.2度，精神差，不吃草，没有群体发病",
+        intent="disease_consultation",
+    )
+
+    DiseaseAgent(settings=settings, primary_llm_client=llm).run(state)
+
+    assert state.disease_assessment is not None
+    assert state.disease_assessment["status"] == "llm_understanding_failed"
+    assert state.rag_query is None
+    assert state.errors[0].error_code == "DISEASE_UNDERSTANDING_FAILED"
+    assert state.tool_results["disease_understanding"]["fallback_used"] is True

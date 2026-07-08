@@ -27,6 +27,8 @@ def test_runtime_doctor_reports_v3_local_structured_takeover_path() -> None:
     assert report["checks"]["v3_agent_path"]["v3_enabled"] is True
     assert report["checks"]["v3_agent_path"]["model_router_shadow_mode"] is False
     assert report["checks"]["v3_agent_path"]["local_model_takeover_enabled"] is True
+    assert report["checks"]["disease_llm_path"]["status"] == "passed"
+    assert report["checks"]["disease_llm_path"]["disease_llm_enabled"] is False
 
 
 def test_runtime_doctor_reports_local_model_acceptance(tmp_path: Path) -> None:
@@ -70,3 +72,28 @@ def test_runtime_doctor_reports_local_model_acceptance(tmp_path: Path) -> None:
     assert acceptance["provider"] == "transformers"
     assert acceptance["model"] == "Qwen/Qwen2.5-0.5B-Instruct"
     assert acceptance["query_normalization_smoke"] == "passed"
+
+
+def test_runtime_doctor_fails_disease_llm_takeover_without_primary_llm_config() -> None:
+    settings = Settings(
+        rag_server={
+            "query_mode": "real",
+            "repo_path": ".",
+            "python_executable": sys.executable,
+            "collection": "livestock_v4_2",
+            "strict_real_mode": True,
+        },
+        v3={"enabled": True},
+        disease_llm={"enabled": True, "shadow_mode": False},
+        primary_llm={"enabled": False, "provider": "mock"},
+        model_router={"enabled": True, "shadow_mode": False, "allow_low_risk_takeover": True},
+        local_model={"enabled": True, "allow_final_answer": False},
+    )
+
+    report = RuntimeDoctor(settings).check()
+
+    disease_llm = report["checks"]["disease_llm_path"]
+    assert disease_llm["status"] == "failed"
+    assert disease_llm["takeover_enabled"] is True
+    assert disease_llm["primary_llm_configured"] is False
+    assert disease_llm["error_code"] == "DISEASE_LLM_TAKEOVER_PRIMARY_LLM_NOT_CONFIGURED"

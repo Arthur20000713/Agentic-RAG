@@ -22,6 +22,7 @@ class RuntimeDoctor:
             "rag_server_python": self._check_rag_server_python(),
             "quality_gate": self._check_quality_gate(),
             "v3_agent_path": self._check_v3_agent_path(),
+            "disease_llm_path": self._check_disease_llm_path(),
             "local_model_acceptance": self._check_local_model_acceptance(),
         }
         if port is not None:
@@ -109,6 +110,31 @@ class RuntimeDoctor:
             "local_model_takeover_enabled": local_takeover_enabled,
             "local_model_allow_final_answer": self.settings.local_model.allow_final_answer,
             "error_code": None if passed else "V3_AGENT_PATH_NOT_CONFIGURED",
+        }
+
+    def _check_disease_llm_path(self) -> dict[str, Any]:
+        flags = FeatureFlagService(self.settings).snapshot()
+        primary = self.settings.primary_llm
+        takeover_enabled = flags.disease_llm_enabled and not flags.disease_llm_shadow_mode
+        primary_configured = (
+            primary.enabled
+            and primary.provider != "mock"
+            and bool(primary.model)
+            and bool(primary.base_url)
+            and bool(primary.api_key_env)
+        )
+        passed = not takeover_enabled or primary_configured
+        return {
+            "status": "passed" if passed else "failed",
+            "disease_llm_enabled": flags.disease_llm_enabled,
+            "disease_llm_shadow_mode": flags.disease_llm_shadow_mode,
+            "takeover_enabled": takeover_enabled,
+            "primary_llm_configured": primary_configured,
+            "primary_llm_provider": primary.provider,
+            "primary_llm_model_configured": bool(primary.model),
+            "primary_llm_base_url_configured": bool(primary.base_url),
+            "primary_llm_api_key_env_configured": bool(primary.api_key_env),
+            "error_code": None if passed else "DISEASE_LLM_TAKEOVER_PRIMARY_LLM_NOT_CONFIGURED",
         }
 
     def _check_local_model_acceptance(self) -> dict[str, Any]:

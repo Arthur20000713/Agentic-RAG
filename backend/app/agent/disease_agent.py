@@ -3,7 +3,11 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from backend.app.agent.disease_understanding import DiseaseUnderstandingAgent
+from backend.app.agent.disease_understanding import (
+    DiseaseCaseUnderstanding,
+    DiseaseUnderstandingAgent,
+    slots_from_understanding,
+)
 from backend.app.agent.disease_query_builder import DiseaseQueryBuilder
 from backend.app.agent.extractor import DiseaseSlots, SlotExtractor, build_follow_up_questions
 from backend.app.agent.safety_precheck import SafetyPrecheck
@@ -11,6 +15,7 @@ from backend.app.agent.state import MultiAgentState
 from backend.app.core.config import Settings
 from backend.app.model.router import ModelRouteRequest, ModelRouter
 from backend.app.rules.disease_risk import DiseaseRiskEvaluator
+from backend.app.schemas.agent import AgentToolError
 
 
 FOLLOW_UP_INTRO = "我先按疾病问诊处理。采食或精神异常可能和发热、消化问题、饲料变化、寄生虫或应激有关；为了判断风险，请先补充以下信息："
@@ -42,6 +47,10 @@ class DiseaseAgent:
         state.extracted_slots = slots.model_dump()
         state.tool_results["slot_extractor"] = state.extracted_slots
         self.understanding_agent.run(state, rule_slots=slots)
+        slots = self._apply_llm_understanding_slots(state, slots, started_at=started_at)
+        if slots is None:
+            return state
+        state.extracted_slots = slots.model_dump()
 
         questions = build_follow_up_questions(slots)
         if questions:
@@ -96,6 +105,79 @@ class DiseaseAgent:
             missing_info=risk_result.missing_info,
         )
         return state
+
+    def _apply_llm_understanding_slots(
+        self,
+        state: MultiAgentState,
+        rule_slots: DiseaseSlots,
+        *,
+        started_at: float,
+    ) -> DiseaseSlots | None:
+        if not self.settings.disease_llm.enabled or self.settings.disease_llm.shadow_mode:
+            return rule_slots
+
+        record = state.tool_results.get("disease_understanding")
+        if not isinstance(record, dict):
+            return self._handle_understanding_failure(
+                state,
+                record=None,
+                reason="disease_understanding_missing",
+                rule_slots=rule_slots,
+                started_at=started_at,
+            )
+
+        if record.get("fallback_used") or not isinstance(record.get("understanding"), dict):
+            return self._handle_understanding_failure(
+                state,
+                record=record,
+                reason=str(record.get("fallback_reason") or "disease_understanding_invalid"),
+                rule_slots=rule_slots,
+                started_at=started_at,
+            )
+
+        understanding = DiseaseCaseUnderstanding.model_validate(record["understanding"])
+        llm_slots = slots_from_understanding(understanding, fallback_slots=rule_slots)
+        record["applied_to_slots"] = True
+        record["slot_source"] = "disease_llm"
+        record["final_slots"] = llm_slots.model_dump()
+        return llm_slots
+
+    def _handle_understanding_failure(
+        self,
+        state: MultiAgentState,
+        *,
+        record: dict[str, Any] | None,
+        reason: str,
+        rule_slots: DiseaseSlots,
+        started_at: float,
+    ) -> DiseaseSlots | None:
+        if record is not None:
+            record["applied_to_slots"] = False
+            record["slot_source"] = "rule_fallback" if self.settings.disease_llm.allow_rule_fallback else "blocked"
+        if self.settings.disease_llm.allow_rule_fallback:
+            return rule_slots
+
+        state.disease_assessment = {
+            "status": "llm_understanding_failed",
+            "reason": reason,
+            "missing_info": [],
+            "follow_up_questions": [],
+        }
+        state.draft_answer = "当前疾病问诊理解失败，无法安全进入证据推理。请补充更清晰的病例信息，或先关闭疾病 LLM 接管后重试。"
+        state.errors.append(
+            AgentToolError(
+                tool_name="disease_understanding_agent",
+                error_code="DISEASE_UNDERSTANDING_FAILED",
+                message=reason,
+            )
+        )
+        self._append_trace(
+            state,
+            status="llm_understanding_failed",
+            latency_ms=self._latency_ms(started_at),
+            missing_info=[],
+        )
+        return None
 
     def extract_slots_with_router(self, query: str, *, state: MultiAgentState | None = None) -> DiseaseSlots:
         rule_slots = self.slot_extractor.extract(query)

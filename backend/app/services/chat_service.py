@@ -111,6 +111,7 @@ def build_debug_payload(settings: Settings | None = None, *, state: AgentState |
         "v3_enabled": snapshot.v3_enabled,
         "flags": snapshot.model_dump(),
         "rag_status": build_rag_status_payload(settings or Settings()),
+        "disease_llm": _disease_llm_debug_summary(settings or Settings(), state),
     }
     if isinstance(state, MultiAgentState):
         payload.update(
@@ -123,6 +124,60 @@ def build_debug_payload(settings: Settings | None = None, *, state: AgentState |
             }
         )
     return payload
+
+
+def _disease_llm_debug_summary(settings: Settings, state: AgentState | MultiAgentState | None) -> dict:
+    summary: dict[str, Any] = {
+        "enabled": bool(settings.v3.enabled and settings.disease_llm.enabled),
+        "shadow_mode": bool(settings.disease_llm.shadow_mode),
+        "understanding": {"status": "not_available"},
+        "evidence_gate": {"status": "not_available"},
+        "reasoning": {"status": "not_available"},
+        "takeover": {"applied": False},
+    }
+    if not isinstance(state, MultiAgentState):
+        return summary
+
+    understanding = _first_tool_result(state, "disease_understanding", "disease_understanding_shadow")
+    if understanding is not None:
+        fallback_used = bool(understanding.get("fallback_used"))
+        summary["understanding"] = {
+            "status": "fallback" if fallback_used else "success",
+            "fallback_used": fallback_used,
+            "fallback_reason": understanding.get("fallback_reason"),
+            "applied_to_slots": bool(understanding.get("applied_to_slots")),
+            "slot_source": understanding.get("slot_source"),
+        }
+
+    gate = state.tool_results.get("disease_evidence_gate")
+    if isinstance(gate, dict):
+        summary["evidence_gate"] = {
+            "status": "passed" if gate.get("allowed") else "blocked",
+            "allowed": bool(gate.get("allowed")),
+            "error_code": gate.get("error_code"),
+            "evidence_ref_count": len(gate.get("evidence_refs") or []),
+        }
+
+    reasoning = _first_tool_result(state, "disease_reasoning", "disease_reasoning_shadow")
+    if reasoning is not None:
+        summary["reasoning"] = {
+            "status": reasoning.get("status") or "unknown",
+            "fallback_used": bool(reasoning.get("fallback_used")),
+            "fallback_reason": reasoning.get("fallback_reason"),
+        }
+
+    takeover = state.tool_results.get("disease_reasoning_takeover")
+    if isinstance(takeover, dict):
+        summary["takeover"] = {"applied": bool(takeover.get("applied"))}
+    return summary
+
+
+def _first_tool_result(state: MultiAgentState, *names: str) -> dict[str, Any] | None:
+    for name in names:
+        value = state.tool_results.get(name)
+        if isinstance(value, dict):
+            return value
+    return None
 
 
 def build_rag_status_payload(settings: Settings) -> dict:

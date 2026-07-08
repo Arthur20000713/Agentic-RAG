@@ -78,3 +78,11 @@ def test_check_v6_full_stage_tracks_release_check_entrypoint() -> None:
     assert "scripts/check_release_v6.py" in text
     assert "release_check_summary.json" in text
     assert "V6 release status" in text
+
+
+def test_check_v6_baseline_tracks_disease_llm_takeover_config() -> None:
+    text = Path("scripts/check_v6.py").read_text(encoding="utf-8")
+
+    assert "_check_disease_llm_takeover_config" in text
+    assert "disease_llm.shadow_mode=false requires primary_llm.enabled=true" in text
+    assert "primary_llm.provider must not be mock when disease LLM takeover is enabled" in text

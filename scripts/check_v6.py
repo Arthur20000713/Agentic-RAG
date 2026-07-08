@@ -72,6 +72,7 @@ def check_baseline(root: Path) -> list[str]:
     failures.extend(_check_dev_spec(root / "docs" / "DEV_SPEC_V6.md"))
     failures.extend(_check_default_real_rag(root / "config" / "settings.yaml"))
     failures.extend(_check_default_v3_agent_path(root / "config" / "settings.yaml"))
+    failures.extend(_check_disease_llm_takeover_config(root / "config" / "settings.yaml"))
     failures.extend(_check_batch_quality_report(root / "docs" / "rag_corpus" / "reports" / "batch_002_quality.md"))
     failures.extend(_check_run_eval_settings_arg(root / "scripts" / "run_eval.py"))
     return failures
@@ -265,6 +266,36 @@ def _check_default_v3_agent_path(path: Path) -> list[str]:
         failures.append(f"{path}: model_router.allow_low_risk_takeover must be true after local structured takeover acceptance")
     if local_model.get("allow_final_answer") is not False:
         failures.append(f"{path}: local_model.allow_final_answer must remain false")
+    return failures
+
+
+def _check_disease_llm_takeover_config(path: Path) -> list[str]:
+    if not path.exists():
+        return []
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as exc:
+        return [f"{path}: invalid YAML: {exc}"]
+    if not isinstance(raw, dict):
+        return [f"{path}: settings must be a mapping"]
+
+    disease_llm = raw.get("disease_llm") if isinstance(raw.get("disease_llm"), dict) else {}
+    primary_llm = raw.get("primary_llm") if isinstance(raw.get("primary_llm"), dict) else {}
+    takeover_enabled = disease_llm.get("enabled") is True and disease_llm.get("shadow_mode") is False
+    if not takeover_enabled:
+        return []
+
+    failures: list[str] = []
+    if primary_llm.get("enabled") is not True:
+        failures.append(f"{path}: disease_llm.shadow_mode=false requires primary_llm.enabled=true")
+    if primary_llm.get("provider") == "mock":
+        failures.append(f"{path}: primary_llm.provider must not be mock when disease LLM takeover is enabled")
+    if not primary_llm.get("model"):
+        failures.append(f"{path}: primary_llm.model is required when disease LLM takeover is enabled")
+    if not primary_llm.get("base_url"):
+        failures.append(f"{path}: primary_llm.base_url is required when disease LLM takeover is enabled")
+    if not primary_llm.get("api_key_env"):
+        failures.append(f"{path}: primary_llm.api_key_env is required when disease LLM takeover is enabled")
     return failures
 
 

@@ -9,6 +9,8 @@ from fastapi.testclient import TestClient
 from backend.app.core.config import Settings, load_settings
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
 from backend.app.main import create_app
+from backend.app.agent.state import MultiAgentState
+from backend.app.services.chat_service import build_debug_payload
 
 
 def _client() -> TestClient:
@@ -83,6 +85,47 @@ def test_chat_api_debug_includes_v4_2_rag_status_fields() -> None:
     assert rag_status["collection"] == "livestock_v4_2"
     assert rag_status["batch_id"] == "batch_002"
     assert rag_status["quality_gate_status"] == "not_configured"
+
+
+def test_chat_debug_payload_summarizes_disease_llm_without_raw_payload() -> None:
+    settings = Settings(
+        v3={"enabled": True},
+        disease_llm={"enabled": True, "shadow_mode": False},
+    )
+    state = MultiAgentState(session_id="s_debug_disease", user_query="disease case", intent="disease_consultation")
+    state.tool_results["disease_understanding"] = {
+        "fallback_used": False,
+        "fallback_reason": None,
+        "applied_to_slots": True,
+        "understanding": {"species": "cattle", "source_spans": ["raw user text"]},
+    }
+    state.tool_results["disease_evidence_gate"] = {
+        "allowed": True,
+        "error_code": None,
+        "evidence_refs": [{"source_uri": "rag://x", "chunk_id": "c1"}],
+    }
+    state.tool_results["disease_reasoning"] = {
+        "status": "success",
+        "fallback_used": False,
+        "fallback_reason": None,
+        "reasoning": {"safe_actions": [{"text": "raw reasoning", "evidence_refs": []}]},
+    }
+    state.tool_results["disease_reasoning_takeover"] = {"applied": True}
+
+    payload = build_debug_payload(settings, state=state)
+
+    disease_debug = payload["disease_llm"]
+    assert disease_debug["enabled"] is True
+    assert disease_debug["shadow_mode"] is False
+    assert disease_debug["understanding"]["status"] == "success"
+    assert disease_debug["understanding"]["applied_to_slots"] is True
+    assert disease_debug["evidence_gate"]["allowed"] is True
+    assert disease_debug["evidence_gate"]["evidence_ref_count"] == 1
+    assert disease_debug["reasoning"]["status"] == "success"
+    assert disease_debug["takeover"]["applied"] is True
+    assert "understanding" not in disease_debug["understanding"]
+    assert "reasoning" not in disease_debug["reasoning"]
+    assert "raw user text" not in str(disease_debug)
 
 
 def test_chat_api_uses_v3_graph_when_feature_flag_enabled() -> None:
