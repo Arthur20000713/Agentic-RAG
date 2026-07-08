@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from uuid import uuid4
 from dataclasses import asdict
+from typing import Any
+from uuid import uuid4
 
 from backend.app.agent.disease_agent import DiseaseAgent
 from backend.app.agent.disease_evidence_gate import DiseaseEvidenceGate
+from backend.app.agent.disease_reasoning import DiseaseReasoningAgent
 from backend.app.agent.measurement_agent import MeasurementAgent
 from backend.app.agent.rag_agent import RagAgent
 from backend.app.agent.response_agent import ResponseAgent
@@ -60,6 +62,7 @@ async def run_disease_graph(
     unsafe_draft_for_test: str | None = None,
     settings: Settings | None = None,
     query_normalizer_client: BaseModelClient | None = None,
+    primary_llm_client: Any | None = None,
 ) -> MultiAgentState:
     resolved_session_id = session_id or _new_session_id()
     state = MultiAgentState(session_id=resolved_session_id, request_id=request_id, user_query=query)
@@ -73,7 +76,7 @@ async def run_disease_graph(
         if previous_context is not None:
             state.session_context = previous_context.model_dump(mode="json")
             state.normalized_query = merge_session_slots(query, previous_context)
-    DiseaseAgent(settings=settings).run(state)
+    DiseaseAgent(settings=settings, primary_llm_client=primary_llm_client).run(state)
     if session_context_service is not None:
         _save_disease_context(session_context_service, state)
     _maybe_write_user_confirmed_facts(
@@ -96,6 +99,7 @@ async def run_disease_graph(
                 "evidence_ref_count": len(gate_result.evidence_refs),
             }
         )
+        DiseaseReasoningAgent(settings=settings, primary_llm_client=primary_llm_client).run(state)
         if gate_result.allowed:
             _compose_rag_draft(state, prefix=disease_draft)
         else:

@@ -27,6 +27,32 @@ class MissingCitationSourceRagClient(FakeRagServerClient):
         )
 
 
+class FakeReasoningClient:
+    async def generate_json(self, request) -> dict:
+        if request.schema_name == "disease_case_understanding":
+            return {
+                "status": "success",
+                "schema_name": "disease_case_understanding",
+                "species": "cattle",
+                "symptoms_raw": ["diarrhea"],
+                "symptoms_normalized": ["diarrhea"],
+                "temperature_status": "fever",
+                "appetite_status": "reduced",
+                "group_outbreak": False,
+                "confidence": 0.9,
+            }
+        ref = request.context["evidence_gate"]["evidence_refs"][0]
+        return {
+            "status": "success",
+            "schema_name": "disease_reasoning",
+            "contributing_factors": [{"text": "Digestive disturbance may be relevant.", "evidence_refs": [ref]}],
+            "uncertainties": ["Remote consultation cannot confirm a cause."],
+            "safe_actions": [{"text": "Monitor hydration and isolate if condition worsens.", "evidence_refs": [ref]}],
+            "vet_triggers": [{"text": "Contact a vet if fever or depression appears.", "evidence_refs": [ref]}],
+            "not_diagnosis_notice": "This is not a diagnosis.",
+        }
+
+
 def test_general_qa_graph_runs_supervisor_rag_verifier_safety_response() -> None:
     state = asyncio.run(
         run_general_qa_graph(
@@ -170,6 +196,31 @@ def test_disease_graph_records_evidence_gate_rejection_for_unmapped_rag_refs() -
     assert gate["error_code"] == "RAG_VALID_EVIDENCE_MISSING"
     assert state.agent_trace[3]["node"] == "disease_evidence_gate"
     assert state.agent_trace[3]["status"] == "blocked"
+
+
+def test_disease_graph_runs_reasoning_shadow_after_evidence_gate_when_enabled() -> None:
+    settings = Settings(
+        v3={"enabled": True},
+        primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock", "api_key_env": "X"},
+        disease_llm={"enabled": True, "shadow_mode": True, "require_rag_evidence": True},
+    )
+
+    state = asyncio.run(
+        run_disease_graph(
+            "犊牛腹泻两天，体温40.2度，精神差，不吃草，没有群体发病",
+            rag_client=FakeRagServerClient(),
+            session_id="s_disease_reasoning",
+            settings=settings,
+            primary_llm_client=FakeReasoningClient(),
+        )
+    )
+
+    assert state.tool_results["disease_evidence_gate"]["allowed"] is True
+    assert state.tool_results["disease_reasoning_shadow"]["status"] == "success"
+    assert state.tool_results["disease_reasoning_shadow"]["reasoning"]["safe_actions"][0]["evidence_refs"]
+    nodes = [item["node"] for item in state.agent_trace]
+    gate_index = nodes.index("disease_evidence_gate")
+    assert nodes[gate_index + 1] == "disease_reasoning_agent"
 
 
 def test_disease_graph_uses_router_slot_extraction_without_rag_for_follow_up() -> None:
