@@ -44,13 +44,21 @@ class VerifierAgent:
         unsupported_claims = self._unsupported_claims(state, answer)
         claim_checks = self._claim_checks(state, answer)
         claim_issues = [check.issue for check in claim_checks if not check.supported and check.issue]
-        issues = self._merge_issues(base_result.issues, citation_issues, unsupported_claims, claim_issues)
+        disease_reasoning_issues = self._disease_reasoning_issues(state)
+        issues = self._merge_issues(
+            base_result.issues,
+            citation_issues,
+            unsupported_claims,
+            claim_issues,
+            disease_reasoning_issues,
+        )
         result = {
             "passed": not issues,
             "issues": issues,
             "citation_issues": citation_issues,
             "unsupported_claims": unsupported_claims,
             "claim_checks": [check.model_dump() for check in claim_checks],
+            "disease_reasoning_issues": disease_reasoning_issues,
         }
         state.verification_result = result
         state.tool_results["verifier_agent"] = result
@@ -66,6 +74,7 @@ class VerifierAgent:
                 "citation_issue_count": len(citation_issues),
                 "unsupported_claim_count": len(unsupported_claims),
                 "claim_check_count": len(claim_checks),
+                "disease_reasoning_issue_count": len(disease_reasoning_issues),
                 "latency_ms": max(0, int((time.perf_counter() - started_at) * 1000)),
             }
         )
@@ -129,6 +138,57 @@ class VerifierAgent:
         first_line = next((line.strip() for line in answer.splitlines() if line.strip()), "")
         return first_line[:240]
 
+    def _disease_reasoning_issues(self, state: MultiAgentState) -> list[str]:
+        if state.intent != "disease_consultation":
+            return []
+        reasoning = self._disease_reasoning_payload(state)
+        if reasoning is None:
+            return []
+
+        issues: list[str] = []
+        allowed_refs = self._allowed_disease_refs(state)
+        for item in self._disease_reasoning_items(reasoning):
+            text = str(item.get("text") or "")
+            refs = item.get("evidence_refs") if isinstance(item.get("evidence_refs"), list) else []
+            if not refs:
+                issues.append("disease_reasoning_missing_evidence_ref")
+            for ref in refs:
+                if not isinstance(ref, dict):
+                    issues.append("disease_reasoning_missing_evidence_ref")
+                    continue
+                key = (str(ref.get("source_uri")), str(ref.get("chunk_id")))
+                if key not in allowed_refs:
+                    issues.append("disease_reasoning_ref_outside_gate")
+            safety = self.verifier.safety_guard.check(text)
+            if safety.violations:
+                issues.append("disease_reasoning_safety_violation")
+        return self._dedupe(issues)
+
+    def _disease_reasoning_payload(self, state: MultiAgentState) -> dict[str, Any] | None:
+        for key in ("disease_reasoning", "disease_reasoning_shadow"):
+            record = state.tool_results.get(key)
+            if isinstance(record, dict) and record.get("status") == "success" and isinstance(record.get("reasoning"), dict):
+                return record["reasoning"]
+        return None
+
+    def _allowed_disease_refs(self, state: MultiAgentState) -> set[tuple[str, str]]:
+        gate = state.tool_results.get("disease_evidence_gate")
+        if not isinstance(gate, dict) or not gate.get("allowed"):
+            return set()
+        return {
+            (str(ref.get("source_uri")), str(ref.get("chunk_id")))
+            for ref in gate.get("evidence_refs") or []
+            if isinstance(ref, dict) and ref.get("source_uri") and ref.get("chunk_id")
+        }
+
+    def _disease_reasoning_items(self, reasoning: dict[str, Any]) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
+        for section in ("contributing_factors", "safe_actions", "vet_triggers"):
+            values = reasoning.get(section) or []
+            if isinstance(values, list):
+                items.extend([item for item in values if isinstance(item, dict)])
+        return items
+
     def _has_professional_claim(self, answer: str) -> bool:
         claim_markers = [
             "应",
@@ -162,11 +222,25 @@ class VerifierAgent:
         citation_issues: list[str],
         unsupported_claims: list[str],
         claim_issues: list[str | None],
+        disease_reasoning_issues: list[str] | None = None,
     ) -> list[str]:
         merged: list[str] = []
-        for issue in [*base_issues, *citation_issues, *unsupported_claims, *claim_issues]:
+        for issue in [
+            *base_issues,
+            *citation_issues,
+            *unsupported_claims,
+            *claim_issues,
+            *(disease_reasoning_issues or []),
+        ]:
             if issue is None:
                 continue
             if issue not in merged:
                 merged.append(issue)
         return merged
+
+    def _dedupe(self, issues: list[str]) -> list[str]:
+        deduped: list[str] = []
+        for issue in issues:
+            if issue not in deduped:
+                deduped.append(issue)
+        return deduped

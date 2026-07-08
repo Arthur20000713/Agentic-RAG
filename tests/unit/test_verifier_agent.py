@@ -48,6 +48,7 @@ def test_verifier_agent_passes_supported_rag_answer() -> None:
                 "issue": None,
             }
         ],
+        "disease_reasoning_issues": [],
     }
     assert state.errors == []
     assert state.agent_trace[-1]["node"] == "verifier_agent"
@@ -137,3 +138,86 @@ def test_verifier_agent_uses_measurement_evidence_boundary() -> None:
     assert state.verification_result["passed"] is False
     assert "measurement_missing_evidence" in state.verification_result["issues"]
     assert "livestock_rag_search" not in state.tool_results
+
+
+def test_verifier_agent_rejects_disease_reasoning_refs_outside_evidence_gate() -> None:
+    state = MultiAgentState(
+        session_id="s1",
+        user_query="calf diarrhea",
+        intent="disease_consultation",
+        evidence_status="success",
+        draft_answer="Evidence-based draft.",
+        tool_results={
+            "disease_evidence_gate": {
+                "allowed": True,
+                "evidence_refs": [{"source_uri": "rag://livestock/doc/chunk_1", "chunk_id": "chunk_1"}],
+            },
+            "disease_reasoning_shadow": {
+                "status": "success",
+                "reasoning": {
+                    "contributing_factors": [
+                        {
+                            "text": "Digestive disturbance may be relevant.",
+                            "evidence_refs": [{"source_uri": "rag://livestock/doc/chunk_2", "chunk_id": "chunk_2"}],
+                        }
+                    ],
+                    "safe_actions": [],
+                    "vet_triggers": [],
+                    "uncertainties": [],
+                    "not_diagnosis_notice": "This is not a diagnosis.",
+                },
+            },
+            "livestock_rag_search": {
+                "status": "success",
+                "hits": [{"chunk_id": "chunk_1", "source_uri": "rag://livestock/doc/chunk_1"}],
+                "citations": [
+                    {"title": "guide", "source_uri": "rag://livestock/doc/chunk_1", "chunk_id": "chunk_1"}
+                ],
+                "mapping_warnings": [],
+            },
+        },
+    )
+
+    VerifierAgent().verify(state)
+
+    assert state.verification_result is not None
+    assert state.verification_result["passed"] is False
+    assert "disease_reasoning_ref_outside_gate" in state.verification_result["disease_reasoning_issues"]
+    assert "disease_reasoning_ref_outside_gate" in state.verification_result["issues"]
+
+
+def test_verifier_agent_rejects_disease_reasoning_safety_redlines() -> None:
+    ref = {"source_uri": "rag://livestock/doc/chunk_1", "chunk_id": "chunk_1"}
+    state = MultiAgentState(
+        session_id="s1",
+        user_query="calf diarrhea",
+        intent="disease_consultation",
+        evidence_status="success",
+        draft_answer="Evidence-based draft.",
+        tool_results={
+            "disease_evidence_gate": {"allowed": True, "evidence_refs": [ref]},
+            "disease_reasoning_shadow": {
+                "status": "success",
+                "reasoning": {
+                    "contributing_factors": [{"text": "This is a definitive diagnosis of pneumonia.", "evidence_refs": [ref]}],
+                    "safe_actions": [{"text": "Give oxytetracycline 5 mg/kg now.", "evidence_refs": [ref]}],
+                    "vet_triggers": [],
+                    "uncertainties": [],
+                    "not_diagnosis_notice": "This is not a diagnosis.",
+                },
+            },
+            "livestock_rag_search": {
+                "status": "success",
+                "hits": [{"chunk_id": "chunk_1", "source_uri": "rag://livestock/doc/chunk_1"}],
+                "citations": [{"title": "guide", "source_uri": "rag://livestock/doc/chunk_1", "chunk_id": "chunk_1"}],
+                "mapping_warnings": [],
+            },
+        },
+    )
+
+    VerifierAgent().verify(state)
+
+    assert state.verification_result is not None
+    assert state.verification_result["passed"] is False
+    assert "disease_reasoning_safety_violation" in state.verification_result["disease_reasoning_issues"]
+    assert "disease_reasoning_safety_violation" in state.verification_result["issues"]
