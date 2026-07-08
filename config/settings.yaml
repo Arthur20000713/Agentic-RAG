@@ -18,8 +18,8 @@ v3:
   enabled: true
 model_router:
   enabled: true
-  shadow_mode: true
-  allow_low_risk_takeover: false
+  shadow_mode: false
+  allow_low_risk_takeover: true
   takeover_task_types:
     - query_normalization
     - structured_extraction
