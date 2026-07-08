@@ -5,6 +5,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from pydantic import ValidationError
 
+from backend.app.agent.extractor import SlotExtractor
+from backend.app.agent.graph import merge_session_slots
 from backend.app.db.connection import get_connection
 from backend.app.db.migrations import init_db
 from backend.app.services.session_context_service import SessionContextData, SessionContextService
@@ -37,6 +39,78 @@ def test_session_context_service_saves_and_reads_context() -> None:
     assert loaded.last_intent == "disease_consultation"
     assert loaded.pending_slots == ["temperature_c"]
     assert loaded.updated_at == datetime(2026, 5, 12, 12, 0, tzinfo=timezone.utc)
+
+
+def test_session_context_loads_legacy_json_with_new_fields_defaulted() -> None:
+    context = SessionContextData.model_validate(
+        {
+            "session_id": "legacy",
+            "last_intent": "disease_consultation",
+            "last_species": "sheep",
+            "pending_slots": ["temperature_c"],
+        }
+    )
+
+    assert context.confirmed_case_fields == {}
+    assert context.pending_questions == []
+    assert context.answered_questions == []
+    assert context.last_understanding is None
+    assert context.last_reasoning_result is None
+    assert context.evidence_refs == []
+
+
+def test_session_context_persists_confirmed_fields_and_evidence_refs() -> None:
+    service = _service()
+    saved = service.save_context(
+        SessionContextData(
+            session_id="s_confirmed",
+            confirmed_case_fields={"species": "sheep", "duration_days": 1, "temperature_c": 39.0},
+            pending_questions=["group_outbreak"],
+            answered_questions=["species", "duration_days", "temperature_c"],
+            last_understanding={"species": "sheep", "confidence": 0.86},
+            last_reasoning_result={"status": "shadow"},
+            evidence_refs=[{"source_uri": "rag://livestock/doc/chunk", "chunk_id": "chunk_1"}],
+        )
+    )
+
+    loaded = service.get_context("s_confirmed")
+
+    assert loaded == saved
+    assert loaded is not None
+    assert loaded.confirmed_case_fields["species"] == "sheep"
+    assert loaded.pending_questions == ["group_outbreak"]
+    assert loaded.answered_questions == ["species", "duration_days", "temperature_c"]
+    assert loaded.last_understanding == {"species": "sheep", "confidence": 0.86}
+    assert loaded.last_reasoning_result == {"status": "shadow"}
+    assert loaded.evidence_refs == [{"source_uri": "rag://livestock/doc/chunk", "chunk_id": "chunk_1"}]
+
+
+def test_merge_session_slots_rehydrates_confirmed_case_fields_for_extraction() -> None:
+    context = SessionContextData(
+        session_id="s_follow",
+        last_intent="disease_consultation",
+        last_species="sheep",
+        last_symptoms=["low_appetite"],
+        confirmed_case_fields={
+            "species": "sheep",
+            "symptoms": ["low_appetite"],
+            "duration_days": 1,
+            "temperature_c": 39.0,
+            "group_outbreak": False,
+        },
+        answered_questions=["species", "symptoms", "duration_days", "temperature_c", "group_outbreak"],
+    )
+
+    merged = merge_session_slots("still looks weak", context)
+    slots = SlotExtractor().extract(merged)
+
+    assert "[species=sheep]" in merged
+    assert "[symptom=low_appetite]" in merged
+    assert slots.species == "sheep"
+    assert slots.symptoms == ["low_appetite"]
+    assert slots.duration_days == 1
+    assert slots.temperature_c == 39.0
+    assert slots.group_outbreak is False
 
 
 def test_session_context_service_updates_existing_context() -> None:

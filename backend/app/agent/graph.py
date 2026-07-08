@@ -69,6 +69,7 @@ async def run_disease_graph(
         if not session_context_service.clear_conflicted_context(resolved_session_id, query):
             previous_context = session_context_service.get_context(resolved_session_id)
         if previous_context is not None:
+            state.session_context = previous_context.model_dump(mode="json")
             state.normalized_query = merge_session_slots(query, previous_context)
     DiseaseAgent(settings=settings).run(state)
     if session_context_service is not None:
@@ -93,10 +94,21 @@ async def run_disease_graph(
 
 def merge_session_slots(query: str, context: SessionContextData) -> str:
     parts = [query]
-    if context.last_species:
-        parts.append(_species_label(context.last_species))
-    for symptom in context.last_symptoms:
-        parts.append(_symptom_label(symptom))
+    fields = context.confirmed_case_fields or {}
+    species = fields.get("species") or context.last_species
+    if species:
+        parts.append(_species_label(str(species)))
+        parts.append(f"[species={species}]")
+    raw_symptoms = fields.get("symptoms") or context.last_symptoms
+    symptoms = raw_symptoms if isinstance(raw_symptoms, list) else [raw_symptoms]
+    for symptom in symptoms:
+        if not symptom:
+            continue
+        parts.append(_symptom_label(str(symptom)))
+        parts.append(f"[symptom={symptom}]")
+    for field in ("duration_days", "temperature_c", "group_outbreak"):
+        if field in fields and fields[field] is not None:
+            parts.append(f"[{field}={_context_tag_value(fields[field])}]")
     return " ".join(part for part in parts if part)
 
 
@@ -320,6 +332,7 @@ def _save_disease_context(session_context_service: SessionContextService, state:
     slots = state.extracted_slots
     disease_assessment = state.disease_assessment or {}
     pending_slots = list(disease_assessment.get("missing_info") or [])
+    confirmed_case_fields = _confirmed_case_fields(slots)
     slot_sources = {
         "species": "user_confirmed" if slots.get("species") else "missing",
         "symptoms": "user_confirmed" if slots.get("symptoms") else "missing",
@@ -337,10 +350,52 @@ def _save_disease_context(session_context_service: SessionContextService, state:
             last_species=slots.get("species"),
             last_symptoms=list(slots.get("symptoms") or []),
             pending_slots=pending_slots,
+            confirmed_case_fields=confirmed_case_fields,
+            pending_questions=pending_slots,
+            answered_questions=list(confirmed_case_fields.keys()),
+            last_understanding=_last_disease_understanding(state),
+            evidence_refs=_rag_evidence_refs(state),
             slot_sources=slot_sources,
             risk_context_status="incomplete" if pending_slots else str(disease_assessment.get("risk_level") or "complete"),
         )
     )
+
+
+def _confirmed_case_fields(slots: dict) -> dict[str, object]:
+    confirmed: dict[str, object] = {}
+    for field in ("species", "age_stage", "duration_days", "temperature_c", "group_outbreak"):
+        value = slots.get(field)
+        if value is not None:
+            confirmed[field] = value
+    symptoms = list(slots.get("symptoms") or [])
+    if symptoms:
+        confirmed["symptoms"] = symptoms
+    return confirmed
+
+
+def _last_disease_understanding(state: MultiAgentState) -> dict[str, object] | None:
+    for key in ("disease_understanding", "disease_understanding_shadow"):
+        result = state.tool_results.get(key)
+        if isinstance(result, dict) and isinstance(result.get("understanding"), dict):
+            return dict(result["understanding"])
+    return None
+
+
+def _rag_evidence_refs(state: MultiAgentState) -> list[dict[str, object]]:
+    rag_result = state.tool_results.get("livestock_rag_search")
+    if not isinstance(rag_result, dict):
+        return []
+    refs: list[dict[str, object]] = []
+    for hit in rag_result.get("hits") or []:
+        if isinstance(hit, dict) and (hit.get("source_uri") or hit.get("chunk_id")):
+            refs.append({"source_uri": hit.get("source_uri"), "chunk_id": hit.get("chunk_id")})
+    return refs
+
+
+def _context_tag_value(value: object) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
 
 
 def _species_label(species: str) -> str:

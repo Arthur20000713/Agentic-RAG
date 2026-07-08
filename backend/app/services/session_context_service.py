@@ -30,6 +30,12 @@ class SessionContextData(BaseModel):
     last_symptoms: list[str] = Field(default_factory=list)
     last_animal_id: str | None = None
     pending_slots: list[str] = Field(default_factory=list)
+    confirmed_case_fields: dict[str, Any] = Field(default_factory=dict)
+    pending_questions: list[str] = Field(default_factory=list)
+    answered_questions: list[str] = Field(default_factory=list)
+    last_understanding: dict[str, Any] | None = None
+    last_reasoning_result: dict[str, Any] | None = None
+    evidence_refs: list[dict[str, Any]] = Field(default_factory=list)
     slot_sources: dict[str, SlotSource] = Field(default_factory=dict)
     risk_context_status: str = "empty"
     updated_at: datetime = Field(default_factory=utc_now)
