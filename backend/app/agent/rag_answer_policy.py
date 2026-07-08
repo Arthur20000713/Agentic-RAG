@@ -81,6 +81,7 @@ _NO_ANSWER_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
         r"玉米期货|期货价格|corn\s+futures",
         r"明天.*数值|预测.*明天",
         r"当前没有入库|本场历史|没有照片|without\s+photos?",
+        r"empty\s+knowledge-base\s+question",
         r"未开放论文|完整复述|全文段落|complete\s+scoring\s+chart|exact\s+page\s+number",
         r"proprietary|private\s+dairy\s+standard|line\s+43|legal\s+clause|exact\s+farm",
         r"某未命名|未命名兽药|absent\s+from\s+the\s+corpus|exact\s+treatment\s+dose",

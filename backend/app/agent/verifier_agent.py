@@ -5,6 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from backend.app.agent.rag_answer_policy import NO_ANSWER_POLICY_WARNING, SAFETY_REFUSAL_POLICY_WARNING
 from backend.app.agent.state import MultiAgentState
 from backend.app.agent.verifier import VerifierLite
 from backend.app.schemas.agent import AgentToolError
@@ -83,6 +84,8 @@ class VerifierAgent:
     def _requires_citations(self, state: MultiAgentState) -> bool:
         if state.intent not in {"general_qa", "disease_consultation"}:
             return False
+        if self._rag_answer_policy_blocks_sources(state):
+            return False
         rag_result = self._rag_result(state)
         return state.evidence_status == "success" and bool(rag_result.get("hits") or state.retrieved_contexts)
 
@@ -92,6 +95,12 @@ class VerifierAgent:
     def _rag_result(self, state: MultiAgentState) -> dict[str, Any]:
         value = state.tool_results.get(RAG_TOOL_NAME)
         return value if isinstance(value, dict) else {}
+
+    def _rag_answer_policy_blocks_sources(self, state: MultiAgentState) -> bool:
+        policy = state.tool_results.get("rag_answer_policy")
+        if not isinstance(policy, dict):
+            return False
+        return policy.get("warning") in {NO_ANSWER_POLICY_WARNING, SAFETY_REFUSAL_POLICY_WARNING}
 
     def _citation_issues(self, state: MultiAgentState, base_issues: list[str]) -> list[str]:
         issues: list[str] = []
@@ -113,6 +122,8 @@ class VerifierAgent:
 
     def _claim_checks(self, state: MultiAgentState, answer: str) -> list[ClaimCheck]:
         if state.intent not in {"general_qa", "disease_consultation"}:
+            return []
+        if self._rag_answer_policy_blocks_sources(state):
             return []
         if not answer.strip() or self._is_fallback_answer(answer):
             return []

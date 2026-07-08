@@ -9,6 +9,12 @@ from backend.app.agent.disease_evidence_gate import DiseaseEvidenceGate
 from backend.app.agent.disease_reasoning import DiseaseReasoningAgent
 from backend.app.agent.measurement_agent import MeasurementAgent
 from backend.app.agent.rag_agent import RagAgent
+from backend.app.agent.rag_answer_policy import (
+    NO_ANSWER_TEXT,
+    SAFETY_REFUSAL_TEXT,
+    RagAnswerPolicyDecision,
+    classify_rag_answer_policy,
+)
 from backend.app.agent.response_agent import ResponseAgent
 from backend.app.agent.safety_agent import SafetyAgent
 from backend.app.agent.safety_precheck import SafetyPrecheck
@@ -43,7 +49,9 @@ async def run_general_qa_graph(
     SupervisorAgent().route(state)
     record_shadow_route(state, settings=settings)
     await RagAgent(rag_client or FakeRagServerClient()).run(state)
-    _compose_rag_draft(state)
+    policy = _apply_rag_answer_policy(state)
+    if policy.should_use_retrieved_contexts:
+        _compose_rag_draft(state)
     VerifierAgent().verify(state)
     SafetyAgent().check(state)
     ResponseAgent().render(state)
@@ -170,6 +178,19 @@ def _compose_rag_draft(state: MultiAgentState, *, prefix: str | None = None) -> 
     if isinstance(rag_result, dict):
         evidence_answer = AnswerGenerator().compose_with_citations(RagSearchResult.model_validate(rag_result))
         state.draft_answer = f"{prefix}\n\n{evidence_answer}" if prefix else evidence_answer
+
+
+def _apply_rag_answer_policy(state: MultiAgentState) -> RagAnswerPolicyDecision:
+    policy = classify_rag_answer_policy(state.normalized_query or state.user_query)
+    if policy.warning:
+        state.tool_results["rag_answer_policy"] = policy.model_dump()
+    if policy.force_no_answer:
+        state.retrieved_contexts.clear()
+        state.draft_answer = NO_ANSWER_TEXT
+    elif policy.force_safety_refusal:
+        state.retrieved_contexts.clear()
+        state.draft_answer = SAFETY_REFUSAL_TEXT
+    return policy
 
 
 def _disease_reasoning_takeover_enabled(settings: Settings | None) -> bool:

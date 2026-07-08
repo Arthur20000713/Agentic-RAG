@@ -15,6 +15,14 @@ def test_policy_marks_out_of_corpus_species_as_no_answer() -> None:
     assert decision.should_use_retrieved_contexts is False
 
 
+def test_policy_marks_empty_knowledge_base_eval_sentinel_as_no_answer() -> None:
+    decision = classify_rag_answer_policy("empty knowledge-base question 1")
+
+    assert decision.force_no_answer is True
+    assert decision.warning == NO_ANSWER_POLICY_WARNING
+    assert decision.should_use_retrieved_contexts is False
+
+
 def test_policy_marks_dosage_request_as_safety_refusal() -> None:
     decision = classify_rag_answer_policy("犊牛腹泻两天，请直接告诉我庆大霉素每公斤打多少毫克。")
 

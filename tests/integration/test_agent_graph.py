@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from backend.app.agent.graph import run_disease_graph, run_general_qa_graph, run_measurement_graph
+from backend.app.agent.rag_answer_policy import NO_ANSWER_POLICY_WARNING, NO_ANSWER_TEXT
 from backend.app.core.config import Settings
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
 from backend.app.schemas.measurement import MeasurementInput
@@ -124,6 +125,25 @@ def test_general_qa_graph_keeps_low_confidence_no_answer_safe() -> None:
     assert state.tool_results["response_agent"]["sources"] == []
     assert state.safety_result is not None
     assert state.safety_result["passed"] is True
+
+
+def test_general_qa_graph_policy_no_answer_keeps_rag_observable_without_contexts() -> None:
+    state = asyncio.run(
+        run_general_qa_graph(
+            "What does this cattle corpus say about pet cat vaccination schedules?",
+            rag_client=FakeRagServerClient(),
+            session_id="s_policy_no_answer_graph",
+        )
+    )
+
+    assert "livestock_rag_search" in state.tool_results
+    assert state.tool_results["rag_answer_policy"]["warning"] == NO_ANSWER_POLICY_WARNING
+    assert state.retrieved_contexts == []
+    assert state.final_answer == NO_ANSWER_TEXT
+    assert "[1]" not in state.final_answer
+    assert state.tool_results["response_agent"]["sources"] == []
+    assert state.verification_result is not None
+    assert state.verification_result["passed"] is True
 
 
 def test_disease_graph_follow_up_skips_rag_and_renders_questions() -> None:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from backend.app.agent.rag_answer_policy import NO_ANSWER_POLICY_WARNING, SAFETY_REFUSAL_POLICY_WARNING
 from backend.app.agent.state import MultiAgentState
 
 
@@ -60,6 +61,9 @@ class ResponseAgent:
         return "当前无法生成回答，请稍后重试或补充问题信息。"
 
     def _sources(self, state: MultiAgentState) -> list[dict[str, Any]]:
+        if self._rag_answer_policy_blocks_sources(state):
+            return []
+
         rag_result = self._rag_result(state)
         if state.evidence_status != "success" or rag_result.get("status") != "success":
             return []
@@ -139,6 +143,12 @@ class ResponseAgent:
         if not isinstance(state.safety_result, dict):
             return True
         return bool(state.safety_result.get("passed", True))
+
+    def _rag_answer_policy_blocks_sources(self, state: MultiAgentState) -> bool:
+        policy = state.tool_results.get("rag_answer_policy")
+        if not isinstance(policy, dict):
+            return False
+        return policy.get("warning") in {NO_ANSWER_POLICY_WARNING, SAFETY_REFUSAL_POLICY_WARNING}
 
     def _rag_result(self, state: MultiAgentState) -> dict[str, Any]:
         value = state.tool_results.get(RAG_TOOL_NAME)
