@@ -149,19 +149,28 @@ def test_v3_settings_default_to_disabled_without_changing_v2_behavior() -> None:
     assert settings.long_term_memory.read_enabled is False
     assert settings.enhanced_safety.precheck_enabled is True
     assert settings.enhanced_safety.final_guard_required is True
+    assert settings.primary_llm.enabled is False
+    assert settings.primary_llm.provider == "mock"
+    assert settings.primary_llm.api_key_env == "PRIMARY_LLM_API_KEY"
+    assert settings.disease_llm.enabled is False
+    assert settings.disease_llm.shadow_mode is True
+    assert settings.disease_llm.require_rag_evidence is True
+    assert settings.disease_llm.allow_rule_fallback is True
     assert isinstance(create_rag_server_client(settings), FakeRagServerClient)
 
 
-def test_product_settings_enable_v3_shadow_main_path_without_local_takeover() -> None:
+def test_product_settings_enable_v3_main_path_with_local_structured_takeover() -> None:
     settings = load_settings("config/settings.yaml")
     snapshot = FeatureFlagService(settings).snapshot()
 
     assert snapshot.v3_enabled is True
     assert snapshot.model_router_enabled is True
-    assert snapshot.model_router_shadow_mode is True
-    assert snapshot.model_router_low_risk_takeover_enabled is False
+    assert snapshot.model_router_shadow_mode is False
+    assert snapshot.model_router_low_risk_takeover_enabled is True
     assert snapshot.local_model_enabled is True
-    assert settings.model_router.allow_low_risk_takeover is False
+    assert snapshot.primary_llm_enabled is False
+    assert snapshot.disease_llm_enabled is False
+    assert settings.model_router.allow_low_risk_takeover is True
     assert settings.local_model.provider == "transformers"
     assert settings.local_model.model == "Qwen/Qwen2.5-0.5B-Instruct"
     assert settings.local_model.allow_final_answer is False
@@ -248,3 +257,52 @@ def test_v5_local_model_settings_load_real_backend_fields() -> None:
     assert settings.local_model.torch_dtype == "float16"
     assert settings.local_model.max_new_tokens == 96
     assert settings.local_model.temperature == 0
+
+
+def test_primary_llm_and_disease_llm_settings_load_without_key_value() -> None:
+    root = _test_dir()
+    config_path = root / "settings.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "primary_llm:",
+                "  enabled: true",
+                "  provider: deepseek",
+                "  model: deepseek-v4-flash",
+                "  base_url: https://api.deepseek.com",
+                "  api_key_env: DEEPSEEK_API_KEY",
+                "  timeout_seconds: 30",
+                "  max_retries: 1",
+                "disease_llm:",
+                "  enabled: true",
+                "  shadow_mode: true",
+                "  require_rag_evidence: true",
+                "  allow_rule_fallback: true",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.primary_llm.enabled is True
+    assert settings.primary_llm.provider == "deepseek"
+    assert settings.primary_llm.model == "deepseek-v4-flash"
+    assert settings.primary_llm.base_url == "https://api.deepseek.com"
+    assert settings.primary_llm.api_key_env == "DEEPSEEK_API_KEY"
+    assert settings.primary_llm.timeout_seconds == 30
+    assert settings.primary_llm.max_retries == 1
+    assert settings.disease_llm.enabled is True
+    assert settings.disease_llm.shadow_mode is True
+    assert settings.disease_llm.require_rag_evidence is True
+    assert settings.disease_llm.allow_rule_fallback is True
+
+
+def test_project_settings_declare_llm_sections_without_secret_values() -> None:
+    for path in ("config/settings.yaml", "config/settings.test.yaml", "config/settings.v5.example.yaml"):
+        settings = load_settings(path)
+
+        assert settings.primary_llm.api_key_env is not None
+        assert not hasattr(settings.primary_llm, "api_key")
+        assert settings.disease_llm.require_rag_evidence is True
+        assert settings.disease_llm.allow_rule_fallback is True

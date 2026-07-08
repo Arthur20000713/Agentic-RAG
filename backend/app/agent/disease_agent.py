@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from backend.app.agent.disease_understanding import DiseaseUnderstandingAgent
 from backend.app.agent.extractor import DiseaseSlots, SlotExtractor, build_follow_up_questions
 from backend.app.agent.safety_precheck import SafetyPrecheck
 from backend.app.agent.state import MultiAgentState
@@ -21,10 +22,15 @@ class DiseaseAgent:
         slot_extractor: SlotExtractor | None = None,
         risk_evaluator: DiseaseRiskEvaluator | None = None,
         settings: Settings | None = None,
+        primary_llm_client: Any | None = None,
     ) -> None:
         self.slot_extractor = slot_extractor or SlotExtractor()
         self.risk_evaluator = risk_evaluator or DiseaseRiskEvaluator()
         self.settings = settings or Settings()
+        self.understanding_agent = DiseaseUnderstandingAgent(
+            settings=self.settings,
+            primary_llm_client=primary_llm_client,
+        )
 
     def run(self, state: MultiAgentState) -> MultiAgentState:
         started_at = time.perf_counter()
@@ -33,6 +39,7 @@ class DiseaseAgent:
         slots = self.extract_slots_with_router(state.normalized_query or state.user_query, state=state)
         state.extracted_slots = slots.model_dump()
         state.tool_results["slot_extractor"] = state.extracted_slots
+        self.understanding_agent.run(state, rule_slots=slots)
 
         questions = build_follow_up_questions(slots)
         if questions:

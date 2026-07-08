@@ -38,6 +38,19 @@ local_model:
   torch_dtype: auto
   max_new_tokens: 128
   temperature: 0
+primary_llm:
+  enabled: false
+  provider: mock
+  model:
+  base_url:
+  api_key_env: PRIMARY_LLM_API_KEY
+  timeout_seconds: 3
+  max_retries: 0
+disease_llm:
+  enabled: false
+  shadow_mode: true
+  require_rag_evidence: true
+  allow_rule_fallback: true
 lora:
   dataset_enabled: false
   inference_enabled: false

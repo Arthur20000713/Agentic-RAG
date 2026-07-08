@@ -11,6 +11,9 @@ class FeatureFlagSnapshot(BaseModel):
     model_router_shadow_mode: bool
     model_router_low_risk_takeover_enabled: bool
     local_model_enabled: bool
+    primary_llm_enabled: bool
+    disease_llm_enabled: bool
+    disease_llm_shadow_mode: bool
     lora_dataset_enabled: bool
     lora_inference_enabled: bool
     memory_write_enabled: bool
@@ -30,6 +33,9 @@ class FeatureFlagService:
             model_router_shadow_mode=self.model_router_shadow_mode,
             model_router_low_risk_takeover_enabled=self.model_router_low_risk_takeover_enabled,
             local_model_enabled=self.local_model_enabled,
+            primary_llm_enabled=self.primary_llm_enabled,
+            disease_llm_enabled=self.disease_llm_enabled,
+            disease_llm_shadow_mode=self.disease_llm_shadow_mode,
             lora_dataset_enabled=self.lora_dataset_enabled,
             lora_inference_enabled=self.lora_inference_enabled,
             memory_write_enabled=self.memory_write_enabled,
@@ -61,6 +67,18 @@ class FeatureFlagService:
     @property
     def local_model_enabled(self) -> bool:
         return self.v3_enabled and self.settings.local_model.enabled
+
+    @property
+    def primary_llm_enabled(self) -> bool:
+        return self.v3_enabled and self.settings.primary_llm.enabled
+
+    @property
+    def disease_llm_enabled(self) -> bool:
+        return self.v3_enabled and self.settings.disease_llm.enabled
+
+    @property
+    def disease_llm_shadow_mode(self) -> bool:
+        return self.disease_llm_enabled and self.settings.disease_llm.shadow_mode
 
     @property
     def lora_dataset_enabled(self) -> bool:

@@ -76,6 +76,23 @@ class LocalModelSettings(BaseModel):
     temperature: float = 0.0
 
 
+class PrimaryLLMSettings(BaseModel):
+    enabled: bool = False
+    provider: str = "mock"
+    model: str | None = None
+    base_url: str | None = None
+    api_key_env: str | None = None
+    timeout_seconds: float = 30.0
+    max_retries: int = 0
+
+
+class DiseaseLLMSettings(BaseModel):
+    enabled: bool = False
+    shadow_mode: bool = True
+    require_rag_evidence: bool = True
+    allow_rule_fallback: bool = True
+
+
 class LoraSettings(BaseModel):
     dataset_enabled: bool = False
     inference_enabled: bool = False
@@ -100,6 +117,8 @@ class Settings(BaseModel):
     v3: V3Settings = Field(default_factory=V3Settings)
     model_router: ModelRouterSettings = Field(default_factory=ModelRouterSettings)
     local_model: LocalModelSettings = Field(default_factory=LocalModelSettings)
+    primary_llm: PrimaryLLMSettings = Field(default_factory=PrimaryLLMSettings)
+    disease_llm: DiseaseLLMSettings = Field(default_factory=DiseaseLLMSettings)
     lora: LoraSettings = Field(default_factory=LoraSettings)
     long_term_memory: LongTermMemorySettings = Field(default_factory=LongTermMemorySettings)
     enhanced_safety: EnhancedSafetySettings = Field(default_factory=EnhancedSafetySettings)
