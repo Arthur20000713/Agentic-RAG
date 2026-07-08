@@ -52,6 +52,8 @@ class SlotExtractor:
         return None
 
     def _extract_temperature(self, query: str) -> float | None:
+        if "正常体温" in query or "体温正常" in query or "没发烧" in query or "没有发烧" in query:
+            return 39.0
         match = re.search(r"体温\s*(\d+(?:\.\d+)?)\s*(?:度|℃|c|C)?", query)
         if match:
             return float(match.group(1))
@@ -73,6 +75,8 @@ class SlotExtractor:
         return None
 
     def _extract_group_outbreak(self, query: str) -> bool | None:
+        if "就一只" in query or "只有一只" in query or "单只" in query or "一只这样" in query:
+            return False
         if "没有群体发病" in query or "未群体发病" in query or "不是群体" in query:
             return False
         if "群体发病" in query or "多头" in query or "好几头" in query:
@@ -91,4 +95,3 @@ def build_follow_up_questions(slots: DiseaseSlots) -> list[str]:
     if not slots.symptoms:
         questions.append("主要症状有哪些，例如腹泻、咳嗽、精神差或采食下降？")
     return questions[:3]
-

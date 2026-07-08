@@ -27,3 +27,10 @@ def test_follow_up_questions_are_limited_to_three() -> None:
     assert "体温" in joined
     assert "群体" in joined
 
+
+def test_slot_extractor_understands_plain_follow_up_answers() -> None:
+    slots = SlotExtractor().extract("1天了，正常体温，就一只这样")
+
+    assert slots.duration_days == 1
+    assert slots.temperature_c == 39.0
+    assert slots.group_outbreak is False

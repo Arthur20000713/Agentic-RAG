@@ -11,6 +11,7 @@ from backend.app.integrations.rag_server.base import RagServerClient
 from backend.app.schemas.agent import AgentState
 from backend.app.schemas.api import ChatRequest
 from backend.app.services.feature_flag_service import FeatureFlagService, FeatureFlagSnapshot
+from backend.app.services.session_context_service import SessionContextService
 
 
 ASSISTANT_INTRO_ANSWER = (
@@ -21,9 +22,15 @@ ASSISTANT_INTRO_ANSWER = (
 
 
 class ChatService:
-    def __init__(self, rag_client: RagServerClient, settings: Settings | None = None) -> None:
+    def __init__(
+        self,
+        rag_client: RagServerClient,
+        settings: Settings | None = None,
+        session_context_service: SessionContextService | None = None,
+    ) -> None:
         self.rag_client = rag_client
         self.settings = settings or Settings()
+        self.session_context_service = session_context_service
         self.router = IntentRouter()
 
     async def ask(self, request: ChatRequest, *, request_id: str | None = None) -> AgentState | MultiAgentState:
@@ -35,6 +42,7 @@ class ChatService:
                 return await run_disease_graph(
                     request.query,
                     rag_client=self.rag_client,
+                    session_context_service=self.session_context_service,
                     session_id=request.session_id,
                     request_id=request_id,
                     settings=self.settings,

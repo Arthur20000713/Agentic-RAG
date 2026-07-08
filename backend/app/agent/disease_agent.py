@@ -11,6 +11,9 @@ from backend.app.model.router import ModelRouteRequest, ModelRouter
 from backend.app.rules.disease_risk import DiseaseRiskEvaluator
 
 
+FOLLOW_UP_INTRO = "我先按疾病问诊处理。采食或精神异常可能和发热、消化问题、饲料变化、寄生虫或应激有关；为了判断风险，请先补充以下信息："
+
+
 class DiseaseAgent:
     def __init__(
         self,
@@ -38,7 +41,7 @@ class DiseaseAgent:
                 "follow_up_questions": questions,
                 "missing_info": self._missing_info_from_questions(questions),
             }
-            state.draft_answer = "请先补充以下信息：\n" + "\n".join(f"- {item}" for item in questions)
+            state.draft_answer = FOLLOW_UP_INTRO + "\n" + "\n".join(f"- {item}" for item in questions)
             self._append_trace(
                 state,
                 status="follow_up",
@@ -56,7 +59,7 @@ class DiseaseAgent:
                 "status": "follow_up",
                 "follow_up_questions": questions,
             }
-            state.draft_answer = "请先补充以下信息：\n" + "\n".join(f"- {item}" for item in questions)
+            state.draft_answer = FOLLOW_UP_INTRO + "\n" + "\n".join(f"- {item}" for item in questions)
             self._append_trace(
                 state,
                 status="follow_up",

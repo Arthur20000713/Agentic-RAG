@@ -130,6 +130,33 @@ def test_chat_api_answers_assistant_intro_without_rag_or_domain_refusal() -> Non
     assert "livestock_rag_search" not in payload["data"]["tools_used"]
 
 
+def test_chat_api_disease_follow_up_uses_session_context_and_plain_answers() -> None:
+    settings = Settings(
+        database={"url": "sqlite:///:memory:"},
+        v3={"enabled": True},
+    )
+    app = create_app(settings=settings)
+    app.state.rag_client = FakeRagServerClient()
+    client = TestClient(app)
+
+    first = client.post("/api/chat", json={"query": "羊不吃饭", "session_id": "s_sheep_follow"}).json()
+    second = client.post(
+        "/api/chat",
+        json={"query": "1天了，正常体温，就一只这样", "session_id": "s_sheep_follow"},
+    ).json()
+
+    assert first["code"] == 0
+    assert first["data"]["intent"] == "disease_consultation"
+    assert "可能" in first["data"]["answer"]
+    assert "请先补充以下信息" in first["data"]["answer"]
+    assert "livestock_rag_search" not in first["data"]["tools_used"]
+    assert second["code"] == 0
+    assert second["data"]["intent"] == "disease_consultation"
+    assert "目前体温是多少" not in second["data"]["answer"]
+    assert "是否有群体发病" not in second["data"]["answer"]
+    assert "livestock_rag_search" in second["data"]["tools_used"]
+
+
 def test_chat_api_product_config_uses_v3_shadow_main_path() -> None:
     app = create_app(settings=load_settings("config/settings.yaml"))
     app.state.rag_client = FakeRagServerClient()

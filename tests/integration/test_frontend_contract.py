@@ -27,6 +27,8 @@ def test_frontend_chat_js_contract() -> None:
     assert "function renderChat" in response.text
     assert "async function submitChat" in response.text
     assert 'fetch("/api/chat"' in response.text
+    assert "chatSessionId" in response.text
+    assert "session_id: state.chatSessionId" in response.text
     assert "risk_level" in response.text
     assert "follow_up_questions" in response.text
 

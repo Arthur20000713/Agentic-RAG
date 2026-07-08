@@ -2,6 +2,7 @@ const state = {
   lastResponse: null,
   ragStatus: null,
   pendingAssistantNode: null,
+  chatSessionId: getOrCreateChatSessionId(),
 };
 
 const labels = {
@@ -144,7 +145,7 @@ async function submitChat(event) {
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query }),
+      body: JSON.stringify({ query, session_id: state.chatSessionId }),
     });
     const payload = await response.json();
     renderChat(payload.data || {});
@@ -310,6 +311,19 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function getOrCreateChatSessionId() {
+  const key = "livestock_agentic_rag_chat_session_id";
+  try {
+    const existing = window.localStorage.getItem(key);
+    if (existing) return existing;
+    const generated = `web_${crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)}`;
+    window.localStorage.setItem(key, generated);
+    return generated;
+  } catch {
+    return `web_${Date.now().toString(36)}`;
+  }
 }
 
 document.querySelectorAll(".tab").forEach((tab) => {
