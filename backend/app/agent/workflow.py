@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from backend.app.agent.extractor import SlotExtractor, build_follow_up_questions
 from backend.app.agent.rag_answer_policy import (
     NO_ANSWER_TEXT,
     RagAnswerPolicyDecision,
@@ -15,7 +14,6 @@ from backend.app.agent.verifier import VerifierLite
 from backend.app.integrations.rag_server.base import RagServerClient
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
 from backend.app.model.answer_generator import AnswerGenerator
-from backend.app.rules.disease_risk import DiseaseRiskEvaluator
 from backend.app.schemas.agent import AgentState, AgentToolError, RetrievedContext
 from backend.app.schemas.measurement import MeasurementInput
 from backend.app.schemas.rag_server import RagSearchResult
@@ -80,21 +78,8 @@ async def run_disease_consultation(
         _verify_answer(state, require_citations=False, rag_result=rag_result)
         return state
 
-    slots = SlotExtractor().extract(query)
-    state.tool_results["slot_extractor"] = slots.model_dump()
-    questions = build_follow_up_questions(slots)
-    if questions:
-        state.need_follow_up = True
-        state.follow_up_questions = questions
-        state.final_answer = "请先补充以下信息：\n" + "\n".join(f"- {item}" for item in questions)
-        return state
-
-    risk_result = DiseaseRiskEvaluator().evaluate(**slots.model_dump())
-    state.risk_level = risk_result.risk_level
-    state.tool_results["disease_risk_evaluator"] = risk_result.model_dump()
-
-    rag_query = f"{query} 风险等级 {risk_result.risk_level} 处理原则"
-    rag_result = await rag_client.query(rag_query, top_k=4, domain="disease", species=slots.species, request_id=request_id)
+    rag_query = f"{query} 畜牧疾病咨询 可能相关因素 安全处理 需要兽医的情况"
+    rag_result = await rag_client.query(rag_query, top_k=4, domain="disease", request_id=request_id)
     state.tool_results["livestock_rag_search"] = rag_result.model_dump()
     _record_policy_decision(state, policy)
     if policy.should_use_retrieved_contexts:
@@ -103,13 +88,7 @@ async def run_disease_consultation(
     if unsafe_draft_for_test is not None:
         draft = unsafe_draft_for_test
     else:
-        evidence_answer = AnswerGenerator().compose_with_citations(rag_result)
-        draft = (
-            f"初步风险等级：{risk_result.risk_level}。\n"
-            f"{risk_result.reason}\n"
-            f"是否建议联系兽医：{'是' if risk_result.need_vet else '视情况'}。\n\n"
-            f"{evidence_answer}"
-        )
+        draft = AnswerGenerator().compose_with_citations(rag_result)
     state.draft_answer = draft
     state.final_answer = FinalSafetyGuard().enforce(draft)
     _verify_answer(state, require_citations=rag_result.has_usable_hits, rag_result=rag_result)

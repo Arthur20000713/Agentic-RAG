@@ -34,7 +34,7 @@ def test_model_route_request_and_decision_schema_are_stable() -> None:
 
 def test_model_router_disabled_keeps_primary_model() -> None:
     decision = ModelRouter(Settings()).route(
-        ModelRouteRequest(task_type="structured_extraction", safety_level="S1")
+        ModelRouteRequest(task_type="measurement_analysis", safety_level="S1")
     )
 
     assert decision.selected_model == "primary"
@@ -51,7 +51,7 @@ def test_model_router_shadow_records_local_small_without_takeover() -> None:
     )
 
     decision = ModelRouter(settings).route(
-        ModelRouteRequest(task_type="structured_extraction", safety_level="S1")
+        ModelRouteRequest(task_type="measurement_analysis", safety_level="S1")
     )
 
     assert decision.selected_model == "primary"
@@ -76,22 +76,22 @@ def test_model_router_takeover_allows_only_low_risk_structured_tasks() -> None:
     assert decision.local_candidate_allowed is True
 
 
-def test_model_router_allows_s2_structured_extraction_but_not_final_answer() -> None:
+def test_model_router_allows_s2_measurement_analysis_but_not_final_answer() -> None:
     settings = Settings(
         v3={"enabled": True},
         model_router={"enabled": True, "shadow_mode": False, "allow_low_risk_takeover": True},
         local_model={"enabled": True},
     )
 
-    extraction = ModelRouter(settings).route(
-        ModelRouteRequest(task_type="structured_extraction", safety_level="S2")
+    measurement = ModelRouter(settings).route(
+        ModelRouteRequest(task_type="measurement_analysis", safety_level="S2")
     )
     final_answer = ModelRouter(settings).route(
         ModelRouteRequest(task_type="final_answer", safety_level="S2", requires_final_answer=True)
     )
 
-    assert extraction.selected_model == "local_small"
-    assert extraction.local_candidate_allowed is True
+    assert measurement.selected_model == "local_small"
+    assert measurement.local_candidate_allowed is True
     assert final_answer.selected_model == "primary"
     assert final_answer.local_candidate_allowed is False
 

@@ -5,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from pydantic import ValidationError
 
-from backend.app.agent.extractor import SlotExtractor
 from backend.app.agent.graph import merge_session_slots
 from backend.app.db.connection import get_connection
 from backend.app.db.migrations import init_db
@@ -85,32 +84,32 @@ def test_session_context_persists_confirmed_fields_and_evidence_refs() -> None:
     assert loaded.evidence_refs == [{"source_uri": "rag://livestock/doc/chunk", "chunk_id": "chunk_1"}]
 
 
-def test_merge_session_slots_rehydrates_confirmed_case_fields_for_extraction() -> None:
+def test_merge_session_slots_rehydrates_dynamic_case_context_for_follow_up() -> None:
     context = SessionContextData(
         session_id="s_follow",
         last_intent="disease_consultation",
         last_species="sheep",
         last_symptoms=["low_appetite"],
         confirmed_case_fields={
-            "species": "sheep",
-            "symptoms": ["low_appetite"],
-            "duration_days": 1,
-            "temperature_c": 39.0,
-            "group_outbreak": False,
+            "case_summary": "Sheep has reduced appetite.",
+            "observed_signs": ["low_appetite"],
+            "explicit_user_facts": {"temperature_status": "normal"},
         },
-        answered_questions=["species", "symptoms", "duration_days", "temperature_c", "group_outbreak"],
+        last_understanding={
+            "case_summary": "Sheep has reduced appetite.",
+            "observed_signs": ["low_appetite"],
+            "context_factors": ["normal temperature"],
+        },
+        answered_questions=["case_summary", "observed_signs"],
     )
 
     merged = merge_session_slots("still looks weak", context)
-    slots = SlotExtractor().extract(merged)
 
-    assert "[species=sheep]" in merged
-    assert "[symptom=low_appetite]" in merged
-    assert slots.species == "sheep"
-    assert slots.symptoms == ["low_appetite"]
-    assert slots.duration_days == 1
-    assert slots.temperature_c == 39.0
-    assert slots.group_outbreak is False
+    assert "still looks weak" in merged
+    assert "Sheep has reduced appetite." in merged
+    assert "low_appetite" in merged
+    assert "normal temperature" in merged
+    assert "temperature_status" in merged
 
 
 def test_session_context_service_updates_existing_context() -> None:

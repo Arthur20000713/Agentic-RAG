@@ -26,6 +26,7 @@ class DiseaseReasoningResult(BaseModel):
     schema_name: Literal["disease_reasoning"] = "disease_reasoning"
     contributing_factors: list[DiseaseReasoningItem] = Field(default_factory=list)
     uncertainties: list[str] = Field(default_factory=list)
+    follow_up_questions: list[str] = Field(default_factory=list)
     safe_actions: list[DiseaseReasoningItem] = Field(default_factory=list)
     vet_triggers: list[DiseaseReasoningItem] = Field(default_factory=list)
     not_diagnosis_notice: str
@@ -87,16 +88,18 @@ class DiseaseReasoningAgent:
             schema_name="disease_reasoning",
             context={
                 "session_id": state.session_id,
-                "slots": state.extracted_slots,
+                "case_understanding": _case_understanding(state),
                 "disease_assessment": state.disease_assessment,
                 "evidence_gate": self._gate(state),
+                "rag_query": state.rag_query,
                 "rag_result": state.tool_results.get("livestock_rag_search"),
             },
             system_prompt=(
                 "You provide livestock disease consultation reasoning. "
                 "Return one JSON object matching disease_reasoning. "
                 "Do not diagnose. Do not prescribe drugs or dosages. "
-                "Every contributing factor, safe action, and vet trigger must cite evidence_refs."
+                "Every contributing factor, safe action, and vet trigger must cite evidence_refs. "
+                "Ask follow_up_questions dynamically from the specific case and evidence; do not use a fixed checklist."
             ),
         )
         return _run_coroutine_sync(self.primary_llm_client.generate_json(request))
@@ -136,3 +139,11 @@ class DiseaseReasoningAgent:
                 "latency_ms": max(0, int((time.perf_counter() - started_at) * 1000)),
             }
         )
+
+
+def _case_understanding(state: MultiAgentState) -> dict[str, Any] | None:
+    for key in ("disease_understanding", "disease_understanding_shadow"):
+        result = state.tool_results.get(key)
+        if isinstance(result, dict) and isinstance(result.get("understanding"), dict):
+            return result["understanding"]
+    return None

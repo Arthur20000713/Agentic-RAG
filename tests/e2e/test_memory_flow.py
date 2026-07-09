@@ -90,8 +90,7 @@ def test_disease_graph_writes_user_confirmed_facts_without_diagnosis_memory() ->
 
     event = written[0]
     assert event.payload["fact_type"] == "user_confirmed_observation"
-    assert event.payload["value"]["species"] == "cattle"
-    assert event.payload["value"]["symptoms"] == ["diarrhea", "depression", "low_appetite"]
+    assert event.payload["value"]["case_summary"] == "犊牛腹泻两天，体温40.2度，精神差，不吃草，没有群体发病"
     assert "risk_level" not in event.payload["value"]
     assert "diagnosis" not in event.payload["value"]
     assert "recommendation" not in event.payload["value"]

@@ -142,21 +142,20 @@ async def run_disease_graph(
 
 def merge_session_slots(query: str, context: SessionContextData) -> str:
     parts = [query]
+    if isinstance(context.last_understanding, dict):
+        summary = context.last_understanding.get("case_summary")
+        if summary:
+            parts.append(str(summary))
+        for key in ("observed_signs", "context_factors"):
+            value = context.last_understanding.get(key)
+            if isinstance(value, list):
+                parts.extend(str(item) for item in value if str(item).strip())
     fields = context.confirmed_case_fields or {}
-    species = fields.get("species") or context.last_species
-    if species:
-        parts.append(_species_label(str(species)))
-        parts.append(f"[species={species}]")
-    raw_symptoms = fields.get("symptoms") or context.last_symptoms
-    symptoms = raw_symptoms if isinstance(raw_symptoms, list) else [raw_symptoms]
-    for symptom in symptoms:
-        if not symptom:
-            continue
-        parts.append(_symptom_label(str(symptom)))
-        parts.append(f"[symptom={symptom}]")
-    for field in ("duration_days", "temperature_c", "temperature_status", "group_outbreak"):
-        if field in fields and fields[field] is not None:
-            parts.append(f"[{field}={_context_tag_value(fields[field])}]")
+    for value in fields.values():
+        if isinstance(value, list):
+            parts.extend(str(item) for item in value if str(item).strip())
+        elif value not in (None, "", {}, []):
+            parts.append(str(value))
     return " ".join(part for part in parts if part)
 
 
@@ -239,6 +238,9 @@ def _compose_disease_reasoning_draft(state: MultiAgentState) -> bool:
     if reasoning.get("uncertainties"):
         lines.append("仍需确认：")
         lines.extend(f"- {item}" for item in reasoning["uncertainties"])
+    if reasoning.get("follow_up_questions"):
+        lines.append("建议继续确认：")
+        lines.extend(f"- {item}" for item in reasoning["follow_up_questions"])
     _append_reasoning_section(lines, "可先做的安全处理", reasoning.get("safe_actions") or [])
     _append_reasoning_section(lines, "需要联系兽医的情况", reasoning.get("vet_triggers") or [])
     state.draft_answer = "\n".join(lines)
@@ -430,17 +432,15 @@ def _maybe_write_user_confirmed_facts(
 
 
 def _build_user_confirmed_observation_fact(state: MultiAgentState, animal_id: str) -> MemoryFact | None:
-    slots = state.extracted_slots or {}
     value: dict[str, object] = {}
-    for field in ("species", "age_stage", "duration_days", "temperature_c", "temperature_status", "group_outbreak"):
-        slot_value = slots.get(field)
-        if slot_value is not None:
-            value[field] = slot_value
-    symptoms = list(slots.get("symptoms") or [])
-    if symptoms:
-        value["symptoms"] = symptoms
+    understanding = _last_disease_understanding(state)
+    if isinstance(understanding, dict):
+        for field in ("case_summary", "species", "observed_signs", "context_factors", "explicit_user_facts"):
+            item = understanding.get(field)
+            if item not in (None, "", [], {}):
+                value[field] = item
     if not value:
-        return None
+        value["case_summary"] = state.normalized_query or state.user_query
     return MemoryFact(
         subject_type="animal",
         subject_id=animal_id,
@@ -476,51 +476,50 @@ def _new_session_id() -> str:
 
 
 def _save_disease_context(session_context_service: SessionContextService, state: MultiAgentState) -> None:
-    slots = state.extracted_slots
     disease_assessment = state.disease_assessment or {}
-    pending_slots = list(disease_assessment.get("missing_info") or [])
-    confirmed_case_fields = _confirmed_case_fields(slots)
-    slot_sources = {
-        "species": "user_confirmed" if slots.get("species") else "missing",
-        "symptoms": "user_confirmed" if slots.get("symptoms") else "missing",
-        "duration_days": "user_confirmed" if slots.get("duration_days") is not None else "missing",
-        "temperature_c": "user_confirmed"
-        if slots.get("temperature_c") is not None or slots.get("temperature_status") in {"normal", "fever", "low"}
-        else "missing",
-        "temperature_status": "user_confirmed" if slots.get("temperature_status") in {"normal", "fever", "low"} else "missing",
-        "group_outbreak": "user_confirmed" if slots.get("group_outbreak") is not None else "missing",
-    }
-    if disease_assessment.get("risk_level"):
-        slot_sources["risk_level"] = "tool_result"
+    confirmed_case_fields = _confirmed_case_fields(state)
 
     session_context_service.save_context(
         SessionContextData(
             session_id=state.session_id,
             last_intent="disease_consultation",
-            last_species=slots.get("species"),
-            last_symptoms=list(slots.get("symptoms") or []),
-            pending_slots=pending_slots,
+            last_species=_understanding_species(state),
+            last_symptoms=_understanding_signs(state),
+            pending_slots=[],
             confirmed_case_fields=confirmed_case_fields,
-            pending_questions=pending_slots,
+            pending_questions=[],
             answered_questions=list(confirmed_case_fields.keys()),
             last_understanding=_last_disease_understanding(state),
             evidence_refs=_rag_evidence_refs(state),
-            slot_sources=slot_sources,
-            risk_context_status="incomplete" if pending_slots else str(disease_assessment.get("risk_level") or "complete"),
+            slot_sources={},
+            risk_context_status=str(disease_assessment.get("status") or "active"),
         )
     )
 
 
-def _confirmed_case_fields(slots: dict) -> dict[str, object]:
+def _confirmed_case_fields(state: MultiAgentState) -> dict[str, object]:
     confirmed: dict[str, object] = {}
-    for field in ("species", "age_stage", "duration_days", "temperature_c", "temperature_status", "group_outbreak"):
-        value = slots.get(field)
-        if value is not None:
-            confirmed[field] = value
-    symptoms = list(slots.get("symptoms") or [])
-    if symptoms:
-        confirmed["symptoms"] = symptoms
+    understanding = _last_disease_understanding(state)
+    if isinstance(understanding, dict):
+        for field in ("case_summary", "species", "observed_signs", "context_factors", "explicit_user_facts"):
+            value = understanding.get(field)
+            if value not in (None, "", [], {}):
+                confirmed[field] = value
     return confirmed
+
+
+def _understanding_species(state: MultiAgentState) -> str | None:
+    understanding = _last_disease_understanding(state)
+    if isinstance(understanding, dict) and understanding.get("species"):
+        return str(understanding["species"])
+    return None
+
+
+def _understanding_signs(state: MultiAgentState) -> list[str]:
+    understanding = _last_disease_understanding(state)
+    if isinstance(understanding, dict) and isinstance(understanding.get("observed_signs"), list):
+        return [str(item) for item in understanding["observed_signs"] if str(item).strip()]
+    return []
 
 
 def _last_disease_understanding(state: MultiAgentState) -> dict[str, object] | None:
@@ -540,23 +539,3 @@ def _rag_evidence_refs(state: MultiAgentState) -> list[dict[str, object]]:
         if isinstance(hit, dict) and (hit.get("source_uri") or hit.get("chunk_id")):
             refs.append({"source_uri": hit.get("source_uri"), "chunk_id": hit.get("chunk_id")})
     return refs
-
-
-def _context_tag_value(value: object) -> str:
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    return str(value)
-
-
-def _species_label(species: str) -> str:
-    return {"cattle": "牛", "sheep": "羊", "pig": "猪"}.get(species, species)
-
-
-def _symptom_label(symptom: str) -> str:
-    return {
-        "diarrhea": "腹泻",
-        "depression": "精神差",
-        "low_appetite": "不吃草",
-        "cough": "咳嗽",
-        "breathing_difficulty": "呼吸困难",
-    }.get(symptom, symptom)

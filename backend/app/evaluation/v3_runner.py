@@ -230,7 +230,7 @@ class V3EvalRunner:
         return all(key in report for key in ("summary", "abnormal_items", "evidence", "recommendation"))
 
     def _route_decision_value(self, state: Any, key: str) -> str | None:
-        for tool_name in ("model_router_shadow", "disease_slot_router", "measurement_json_renderer"):
+        for tool_name in ("model_router_shadow", "measurement_json_renderer"):
             result = state.tool_results.get(tool_name)
             if not isinstance(result, dict):
                 continue

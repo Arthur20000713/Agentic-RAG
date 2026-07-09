@@ -1,67 +1,28 @@
 from __future__ import annotations
 
 import asyncio
-import re
 import threading
 import time
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
-from backend.app.agent.extractor import DiseaseSlots
 from backend.app.agent.state import MultiAgentState
 from backend.app.core.config import Settings
 from backend.app.model.primary_llm import PrimaryLLMClient, PrimaryLLMRequest
 
 
-Species = Literal["cattle", "sheep", "pig", "unknown"]
-TemperatureStatus = Literal["normal", "fever", "low", "unknown"]
-AppetiteStatus = Literal["normal", "reduced", "none", "unknown"]
-
-
 class DiseaseCaseUnderstanding(BaseModel):
     status: Literal["success"] = "success"
     schema_name: Literal["disease_case_understanding"] = "disease_case_understanding"
-    species: Species = "unknown"
-    age_stage: str | None = None
-    symptoms_raw: list[str] = Field(default_factory=list)
-    symptoms_normalized: list[str] = Field(default_factory=list)
-    duration_text: str | None = None
-    duration_days: float | None = Field(default=None, ge=0)
-    temperature_c: float | None = Field(default=None, ge=30, le=45)
-    temperature_status: TemperatureStatus = "unknown"
-    appetite_status: AppetiteStatus = "unknown"
-    feces_status: str | None = None
-    respiratory_status: str | None = None
-    group_outbreak: bool | None = None
-    severity_signals: list[str] = Field(default_factory=list)
-    missing_critical_info: list[str] = Field(default_factory=list)
-    answered_questions: list[str] = Field(default_factory=list)
+    case_summary: str | None = None
+    species: str | None = None
+    observed_signs: list[str] = Field(default_factory=list)
+    context_factors: list[str] = Field(default_factory=list)
+    explicit_user_facts: dict[str, Any] = Field(default_factory=dict)
+    information_gaps: list[str] = Field(default_factory=list)
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     source_spans: list[str] = Field(default_factory=list)
-
-
-def slots_from_understanding(
-    understanding: DiseaseCaseUnderstanding,
-    *,
-    fallback_slots: DiseaseSlots | None = None,
-) -> DiseaseSlots:
-    fallback_slots = fallback_slots or DiseaseSlots()
-    species = None if understanding.species == "unknown" else understanding.species
-    symptoms = _dedupe([*understanding.symptoms_normalized, *fallback_slots.symptoms])
-    return DiseaseSlots(
-        species=species or fallback_slots.species,
-        age_stage=understanding.age_stage or fallback_slots.age_stage,
-        symptoms=symptoms,
-        temperature_c=understanding.temperature_c if understanding.temperature_c is not None else fallback_slots.temperature_c,
-        temperature_status=understanding.temperature_status
-        if understanding.temperature_status != "unknown"
-        else fallback_slots.temperature_status,
-        duration_days=understanding.duration_days if understanding.duration_days is not None else fallback_slots.duration_days,
-        group_outbreak=understanding.group_outbreak
-        if understanding.group_outbreak is not None
-        else fallback_slots.group_outbreak,
-    )
 
 
 class DiseaseUnderstandingAgent:
@@ -69,19 +30,18 @@ class DiseaseUnderstandingAgent:
         self.settings = settings or Settings()
         self.primary_llm_client = primary_llm_client or PrimaryLLMClient(self.settings)
 
-    def run(self, state: MultiAgentState, *, rule_slots: DiseaseSlots) -> MultiAgentState:
+    def run(self, state: MultiAgentState) -> MultiAgentState:
         if not self.settings.disease_llm.enabled:
             return state
 
         started_at = time.perf_counter()
-        payload = self._call_llm(state)
         key = "disease_understanding_shadow" if self.settings.disease_llm.shadow_mode else "disease_understanding"
         record: dict[str, Any] = {
             "fallback_used": False,
             "fallback_reason": None,
-            "rule_slots": rule_slots.model_dump(),
         }
         try:
+            payload = self._call_llm(state)
             understanding = DiseaseCaseUnderstanding.model_validate(_normalize_understanding_payload(payload))
             record["understanding"] = understanding.model_dump()
         except ValidationError:
@@ -117,27 +77,21 @@ class DiseaseUnderstandingAgent:
                 "session_context": state.session_context,
             },
             system_prompt=(
-                "You extract livestock disease consultation facts. "
-                "Return exactly one flat JSON object matching disease_case_understanding; do not wrap it. "
-                "Required keys: status, schema_name, species, age_stage, symptoms_raw, symptoms_normalized, "
-                "duration_text, duration_days, temperature_c, temperature_status, appetite_status, feces_status, "
-                "respiratory_status, group_outbreak, severity_signals, missing_critical_info, answered_questions, "
-                "confidence, source_spans. species must be one of cattle, sheep, pig, unknown. "
-                "Map cow/calf/bovine and Chinese cattle terms to cattle; lamb/ovine to sheep; swine/porcine to pig. "
-                "temperature_status must be normal, fever, low, or unknown; use fever for high temperatures. "
-                "appetite_status must be normal, reduced, none, or unknown. "
-                "Use numbers for duration_days and temperature_c. Use unknown/null when the user did not state a fact. "
-                "Do not diagnose."
+                "You understand livestock disease consultation messages. "
+                "Return exactly one flat JSON object matching disease_case_understanding. "
+                "Do not diagnose and do not force a fixed slot list. "
+                "Capture all clinically relevant user-stated details as observed_signs, context_factors, "
+                "explicit_user_facts, and source_spans. "
+                "Use information_gaps only for case-specific details that would materially improve the next answer."
             ),
         )
         return _run_coroutine_sync(self.primary_llm_client.generate_json(request))
 
     def _prompt(self, state: MultiAgentState) -> str:
         return (
-            "Extract structured livestock disease case information from the user message. "
+            "Summarize the livestock disease consultation context for retrieval and reasoning. "
             "Keep source_spans as exact user text fragments. "
-            "If the user mentions similar animals in the herd, set group_outbreak=true. "
-            "If the user mentions reduced feed intake, set appetite_status=reduced.\n"
+            "Preserve unusual signs, animal group context, feeding/environment changes, and user negatives. "
             f"User message: {state.normalized_query or state.user_query}"
         )
 
@@ -168,15 +122,6 @@ def _run_coroutine_sync(value: Any) -> dict[str, Any]:
     return dict(result or {})
 
 
-def _dedupe(values: list[str]) -> list[str]:
-    deduped: list[str] = []
-    for value in values:
-        normalized = value.strip()
-        if normalized and normalized not in deduped:
-            deduped.append(normalized)
-    return deduped
-
-
 def _normalize_understanding_payload(payload: dict[str, Any]) -> dict[str, Any]:
     content = payload.get("disease_case_understanding")
     normalized = dict(payload)
@@ -185,7 +130,23 @@ def _normalize_understanding_payload(payload: dict[str, Any]) -> dict[str, Any]:
         payload = normalized
     if normalized.get("status") != "error":
         normalized["status"] = "success"
+
+    observed_signs = _dedupe(
+        _list_field_values(payload.get("observed_signs"))
+        or _list_field_values(payload.get("symptoms_normalized"))
+        or _list_field_values(payload.get("symptoms"))
+        or _list_field_values(payload.get("clinical_signs"))
+    )
+    context_factors = _dedupe(_list_field_values(payload.get("context_factors")) or _legacy_context_factors(payload))
+    explicit_facts = _explicit_user_facts(payload)
     source_spans = _dedupe([*_list_strings(normalized.get("source_spans")), *_collect_source_spans(payload)])
+
+    if observed_signs:
+        normalized["observed_signs"] = observed_signs
+    if context_factors:
+        normalized["context_factors"] = context_factors
+    if explicit_facts:
+        normalized["explicit_user_facts"] = explicit_facts
     if source_spans:
         normalized["source_spans"] = source_spans
 
@@ -193,91 +154,62 @@ def _normalize_understanding_payload(payload: dict[str, Any]) -> dict[str, Any]:
     if confidence is not None:
         normalized["confidence"] = confidence
 
-    species = _coerce_species(_field_value(payload, "species"))
-    if species:
-        normalized["species"] = species
+    if not normalized.get("case_summary"):
+        normalized["case_summary"] = _build_case_summary(payload, observed_signs, context_factors)
+    if normalized.get("species") is not None:
+        normalized["species"] = str(normalized["species"])
 
-    age_stage = _field_value(payload, "age_stage") or _field_value(payload, "age")
-    if age_stage is not None:
-        normalized["age_stage"] = str(age_stage)
-
-    raw_symptom_candidates = (
-        _list_field_values(payload.get("symptoms_normalized"))
-        or _list_field_values(payload.get("symptoms"))
-        or _list_field_values(payload.get("clinical_signs"))
-    )
-    symptoms = _filter_non_symptom_context(raw_symptom_candidates)
-    if symptoms:
-        normalized["symptoms_raw"] = _list_field_values(payload.get("symptoms_raw")) or symptoms
-        normalized["symptoms_normalized"] = symptoms
-    elif raw_symptom_candidates:
-        normalized["symptoms_raw"] = []
-        normalized["symptoms_normalized"] = []
-
-    duration = payload.get("duration")
-    duration_text = _field_value(payload, "duration_text") or _field_value(payload, "duration")
-    if duration_text is not None:
-        normalized["duration_text"] = str(duration_text)
-    duration_days = _field_value(payload, "duration_days")
-    if duration_days is None and isinstance(duration, dict):
-        duration_days = duration.get("days") or duration.get("duration_days")
-    if duration_days is None and isinstance(duration, (int, float, str)):
-        duration_days = duration
-    if duration_days is None and duration_text is not None:
-        duration_days = duration_text
-    if duration_days is not None:
-        parsed_duration_days = _coerce_duration_days(duration_days)
-        if parsed_duration_days is not None:
-            normalized["duration_days"] = parsed_duration_days
-
-    temperature = payload.get("temperature")
-    temperature_c = _field_value(payload, "temperature_c")
-    if temperature_c is None and isinstance(temperature, dict):
-        temperature_c = temperature.get("temperature_c") or temperature.get("celsius") or temperature.get("value")
-    if temperature_c is None and isinstance(temperature, (int, float, str)):
-        temperature_c = temperature
-    if temperature_c is None:
-        temperature_c = _field_value(payload, "fever_temperature")
-    if temperature_c is not None:
-        parsed_temperature_c = _coerce_number(temperature_c)
-        if parsed_temperature_c is not None:
-            normalized["temperature_c"] = parsed_temperature_c
-            temperature_c = parsed_temperature_c
-
-    temperature_status = _coerce_temperature_status(
-        _field_value(payload, "temperature_status")
-        or (temperature.get("status") if isinstance(temperature, dict) else None),
-        temperature_c,
-    )
-    if temperature_status:
-        normalized["temperature_status"] = temperature_status
-
-    appetite_status = _coerce_appetite_status(
-        _field_value(payload, "appetite_status")
-        or _field_value(payload, "appetite")
-        or _field_value(payload, "feed_intake_change")
-    )
-    if appetite_status is None:
-        appetite_status = _appetite_status_from_symptoms(symptoms)
-    if appetite_status:
-        normalized["appetite_status"] = appetite_status
-
-    group_outbreak = _field_value(payload, "group_outbreak")
-    if group_outbreak is None:
-        group_outbreak = _group_outbreak_from_count(_field_value(payload, "number_sick"))
-    if group_outbreak is None:
-        group_outbreak = _group_outbreak_from_count(_field_value(payload, "similar_cases_count"))
-    if group_outbreak is None:
-        group_outbreak = _group_outbreak_from_count(_field_value(payload, "similar_cases"))
-    if group_outbreak is None:
-        group_outbreak = _group_outbreak_from_count(_field_value(payload, "herd_similar_count"))
-    if group_outbreak is not None:
-        normalized["group_outbreak"] = group_outbreak
-
-    for key in ("symptoms_raw", "symptoms_normalized", "severity_signals", "missing_critical_info", "answered_questions"):
+    for key in ("observed_signs", "context_factors", "information_gaps", "source_spans"):
         if normalized.get(key) is None:
             normalized[key] = []
+    if normalized.get("explicit_user_facts") is None:
+        normalized["explicit_user_facts"] = {}
     return normalized
+
+
+def _explicit_user_facts(payload: dict[str, Any]) -> dict[str, Any]:
+    facts = payload.get("explicit_user_facts") if isinstance(payload.get("explicit_user_facts"), dict) else {}
+    result = dict(facts)
+    for key in (
+        "species",
+        "age_stage",
+        "duration_text",
+        "duration_days",
+        "temperature_c",
+        "temperature_status",
+        "appetite_status",
+        "feces_status",
+        "respiratory_status",
+        "group_outbreak",
+    ):
+        value = _field_value(payload, key)
+        if value is not None and value != "" and value != []:
+            result[key] = value
+    return result
+
+
+def _legacy_context_factors(payload: dict[str, Any]) -> list[str]:
+    factors: list[str] = []
+    for key in ("age_stage", "appetite_status", "feces_status", "respiratory_status", "temperature_status"):
+        value = _field_value(payload, key)
+        if value is not None and value != "unknown":
+            factors.append(f"{key}: {value}")
+    group_outbreak = _field_value(payload, "group_outbreak")
+    if group_outbreak is not None:
+        factors.append(f"group_outbreak: {group_outbreak}")
+    return factors
+
+
+def _build_case_summary(payload: dict[str, Any], observed_signs: list[str], context_factors: list[str]) -> str | None:
+    summary_parts: list[str] = []
+    species = _field_value(payload, "species")
+    if species and species != "unknown":
+        summary_parts.append(f"species: {species}")
+    if observed_signs:
+        summary_parts.append(f"observed signs: {', '.join(observed_signs)}")
+    if context_factors:
+        summary_parts.append(f"context: {', '.join(context_factors)}")
+    return "; ".join(summary_parts) if summary_parts else None
 
 
 def _field_value(payload: dict[str, Any], key: str) -> Any:
@@ -297,29 +229,6 @@ def _list_field_values(value: Any) -> list[str]:
         if item_value is not None:
             values.append(str(item_value))
     return _dedupe(values)
-
-
-def _filter_non_symptom_context(values: list[str]) -> list[str]:
-    return _dedupe([value for value in values if not _is_non_symptom_context(value)])
-
-
-def _is_non_symptom_context(value: str) -> bool:
-    normalized = value.strip().lower()
-    if not normalized:
-        return True
-    non_symptom_markers = {
-        "normal temperature",
-        "temperature normal",
-        "normal body temperature",
-        "body temperature normal",
-        "no fever",
-        "afebrile",
-        "unknown",
-        "none",
-    }
-    if normalized in non_symptom_markers:
-        return True
-    return any(token in normalized for token in {"体温正常", "正常体温", "没发烧", "没有发烧"})
 
 
 def _list_strings(value: Any) -> list[str]:
@@ -353,126 +262,18 @@ def _collect_source_spans(value: Any) -> list[str]:
     return _dedupe(spans)
 
 
-def _coerce_species(value: Any) -> Species | None:
-    if value is None:
-        return None
-    normalized = str(value).strip().lower()
-    if normalized in {"cattle", "cow", "calf", "bovine"}:
-        return "cattle"
-    if any(token in normalized for token in {"\u725b", "\u5c0f\u725b", "\u728a\u725b"}):
-        return "cattle"
-    if normalized in {"sheep", "lamb", "ovine"}:
-        return "sheep"
-    if "\u7f8a" in normalized:
-        return "sheep"
-    if normalized in {"pig", "swine", "porcine", "hog"}:
-        return "pig"
-    if "\u732a" in normalized:
-        return "pig"
-    if normalized in {"unknown", "unclear", "not specified"}:
-        return "unknown"
-    return None
-
-
-def _coerce_temperature_status(value: Any, temperature_c: Any) -> TemperatureStatus | None:
-    if value is not None:
-        normalized = str(value).strip().lower()
-        if normalized in {"normal", "fever", "low", "unknown"}:
-            return normalized  # type: ignore[return-value]
-        if normalized in {"high", "elevated", "febrile"}:
-            return "fever"
-    try:
-        numeric_temperature = float(temperature_c)
-    except (TypeError, ValueError):
-        return None
-    if numeric_temperature >= 39.5:
-        return "fever"
-    if numeric_temperature < 37.0:
-        return "low"
-    return "normal"
-
-
-def _coerce_appetite_status(value: Any) -> AppetiteStatus | None:
-    if value is None:
-        return None
-    normalized = str(value).strip().lower()
-    if normalized in {"normal", "reduced", "none", "unknown"}:
-        return normalized  # type: ignore[return-value]
-    if normalized in {"low", "decreased", "poor", "reduced feed intake", "less"}:
-        return "reduced"
-    if any(token in normalized for token in {"\u4e0b\u964d", "\u51cf\u5c11", "\u5dee"}):
-        return "reduced"
-    if normalized in {"no", "absent", "not eating", "anorexia"}:
-        return "none"
-    return None
-
-
-def _appetite_status_from_symptoms(symptoms: list[str]) -> AppetiteStatus | None:
-    for symptom in symptoms:
-        status = _coerce_appetite_status(symptom)
-        if status is not None:
-            return status
-    return None
-
-
-def _group_outbreak_from_count(value: Any) -> bool | None:
-    number = _coerce_number(value)
-    return number > 1 if number is not None else None
-
-
-def _coerce_number(value: Any) -> float | None:
-    if isinstance(value, (int, float)):
-        return float(value)
-    if not isinstance(value, str):
-        return None
-    match = re.search(r"-?\d+(?:\.\d+)?", value)
-    return float(match.group(0)) if match else None
-
-
-def _coerce_duration_days(value: Any) -> float | None:
-    number = _coerce_number(value)
-    if number is not None:
-        return number
-    if not isinstance(value, str):
-        return None
-    normalized = value.strip().lower()
-    if "半天" in normalized or "half day" in normalized:
-        return 0.5
-    chinese_days = {
-        "一": 1,
-        "二": 2,
-        "两": 2,
-        "三": 3,
-        "四": 4,
-        "五": 5,
-        "六": 6,
-        "七": 7,
-        "八": 8,
-        "九": 9,
-        "十": 10,
-    }
-    for token, days in chinese_days.items():
-        if f"{token}天" in normalized:
-            return float(days)
-    english_days = {
-        "one day": 1,
-        "two days": 2,
-        "three days": 3,
-        "four days": 4,
-        "five days": 5,
-        "six days": 6,
-        "seven days": 7,
-    }
-    for token, days in english_days.items():
-        if token in normalized:
-            return float(days)
-    return None
+def _dedupe(values: list[str]) -> list[str]:
+    deduped: list[str] = []
+    for value in values:
+        normalized = value.strip()
+        if normalized and normalized not in deduped:
+            deduped.append(normalized)
+    return deduped
 
 
 def _coerce_confidence(value: Any) -> float | None:
-    number = _coerce_number(value)
-    if number is not None:
-        return max(0.0, min(1.0, number))
+    if isinstance(value, (int, float)):
+        return max(0.0, min(1.0, float(value)))
     if not isinstance(value, str):
         return None
     normalized = value.strip().lower()
@@ -482,4 +283,7 @@ def _coerce_confidence(value: Any) -> float | None:
         return 0.55
     if normalized == "low":
         return 0.25
-    return None
+    try:
+        return max(0.0, min(1.0, float(normalized)))
+    except ValueError:
+        return None

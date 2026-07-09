@@ -52,7 +52,7 @@ def test_v3_disabled_general_qa_matches_v2_path() -> None:
     assert disabled_data["v3_debug"]["flags"]["memory_write_enabled"] is False
 
 
-def test_v3_disabled_disease_follow_up_matches_v2_path() -> None:
+def test_v3_disabled_disease_rag_path_matches_v2_path() -> None:
     payload = {
         "query": "The calf has diarrhea. What should I do?",
         "session_id": "s_v3_disabled_disease",
@@ -63,9 +63,8 @@ def test_v3_disabled_disease_follow_up_matches_v2_path() -> None:
 
     assert disabled_data == v2_data
     assert disabled_data["intent"] == "disease_consultation"
-    assert disabled_data["need_follow_up"] is True
-    assert disabled_data["tools_used"] == ["slot_extractor"]
-    assert "livestock_rag_search" not in disabled_data["tools_used"]
+    assert disabled_data["need_follow_up"] is False
+    assert disabled_data["tools_used"] == ["livestock_rag_search"]
     assert disabled_data["v3_debug"]["flags"]["local_model_enabled"] is False
 
 

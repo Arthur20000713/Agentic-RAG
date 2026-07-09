@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
-from backend.app.agent.disease_agent import DiseaseAgent
+from backend.app.agent.disease_understanding import DiseaseUnderstandingAgent
 from backend.app.agent.state import MultiAgentState
 from backend.app.core.config import Settings
 from backend.app.model.primary_llm import PrimaryLLMRequest
@@ -19,262 +18,99 @@ class FakePrimaryLLM:
         return dict(self.payload)
 
 
-def test_disease_agent_records_llm_understanding_shadow_without_replacing_rule_slots() -> None:
-    settings = Settings(
-        disease_llm={"enabled": True, "shadow_mode": True},
-        primary_llm={"enabled": True, "provider": "mock"},
+def _settings(*, shadow_mode: bool = False) -> Settings:
+    return Settings(
+        disease_llm={"enabled": True, "shadow_mode": shadow_mode},
+        primary_llm={"enabled": True, "provider": "openai_compatible", "model": "model", "base_url": "http://llm"},
     )
+
+
+def test_disease_understanding_records_dynamic_case_context() -> None:
     llm = FakePrimaryLLM(
         {
             "status": "success",
             "schema_name": "disease_case_understanding",
+            "case_summary": "Sheep has reduced appetite and normal temperature.",
             "species": "sheep",
-            "symptoms_raw": ["不吃饭"],
-            "symptoms_normalized": ["low_appetite"],
-            "appetite_status": "reduced",
-            "missing_critical_info": ["duration", "temperature_status", "group_outbreak"],
-            "confidence": 0.83,
-            "source_spans": ["羊不吃饭"],
+            "observed_signs": ["reduced appetite"],
+            "context_factors": ["normal temperature"],
+            "explicit_user_facts": {"duration": "one day"},
+            "information_gaps": ["feces appearance"],
+            "source_spans": ["reduced appetite", "normal temperature"],
+            "confidence": "high",
         }
     )
-    state = MultiAgentState(session_id="s1", user_query="羊不吃饭", intent="disease_consultation")
+    state = MultiAgentState(session_id="s1", user_query="羊不吃饭，一天了，体温正常", intent="disease_consultation")
 
-    DiseaseAgent(settings=settings, primary_llm_client=llm).run(state)
+    DiseaseUnderstandingAgent(settings=_settings(), primary_llm_client=llm).run(state)
 
-    assert state.extracted_slots["species"] == "sheep"
-    assert "low_appetite" in state.extracted_slots["symptoms"]
-    assert "disease_understanding_shadow" in state.tool_results
-    assert state.tool_results["disease_understanding_shadow"]["understanding"]["species"] == "sheep"
-    assert state.tool_results["disease_understanding_shadow"]["fallback_used"] is False
-    assert llm.requests[0].schema_name == "disease_case_understanding"
-    assert "temperature_c" in (llm.requests[0].system_prompt or "")
-    assert "species must be one of cattle, sheep, pig, unknown" in (llm.requests[0].system_prompt or "")
-    assert state.agent_trace[-2]["node"] == "disease_understanding_agent"
+    payload = state.tool_results["disease_understanding"]
+    assert payload["fallback_used"] is False
+    understanding = payload["understanding"]
+    assert understanding["case_summary"] == "Sheep has reduced appetite and normal temperature."
+    assert understanding["species"] == "sheep"
+    assert understanding["observed_signs"] == ["reduced appetite"]
+    assert understanding["context_factors"] == ["normal temperature"]
+    assert understanding["explicit_user_facts"] == {"duration": "one day", "species": "sheep"}
+    assert understanding["information_gaps"] == ["feces appearance"]
+    assert understanding["confidence"] == 0.85
+    assert "do not force a fixed slot list" in (llm.requests[0].system_prompt or "").lower()
 
 
-def test_disease_agent_records_llm_understanding_fallback_on_invalid_json() -> None:
-    settings = Settings(
-        disease_llm={"enabled": True, "shadow_mode": True},
-        primary_llm={"enabled": True, "provider": "mock"},
-    )
+def test_disease_understanding_maps_legacy_llm_fields_without_slot_application() -> None:
     llm = FakePrimaryLLM(
         {
             "status": "success",
             "schema_name": "disease_case_understanding",
-            "species": "dragon",
-            "confidence": 0.9,
+            "species": "cattle",
+            "symptoms_normalized": ["diarrhea", "depression"],
+            "temperature_status": "fever",
+            "group_outbreak": {"value": True, "source_span": "2 similar calves"},
+            "confidence": 0.7,
         }
     )
+    state = MultiAgentState(session_id="s1", user_query="two calves have diarrhea", intent="disease_consultation")
+
+    DiseaseUnderstandingAgent(settings=_settings(), primary_llm_client=llm).run(state)
+
+    payload = state.tool_results["disease_understanding"]
+    understanding = payload["understanding"]
+    assert payload["fallback_used"] is False
+    assert understanding["observed_signs"] == ["diarrhea", "depression"]
+    assert understanding["context_factors"] == ["temperature_status: fever", "group_outbreak: True"]
+    assert understanding["explicit_user_facts"]["species"] == "cattle"
+    assert understanding["explicit_user_facts"]["temperature_status"] == "fever"
+    assert understanding["explicit_user_facts"]["group_outbreak"] is True
+    assert understanding["source_spans"] == ["2 similar calves"]
+    assert "applied_to_slots" not in payload
+    assert state.extracted_slots == {}
+
+
+def test_disease_understanding_shadow_mode_uses_shadow_key() -> None:
+    llm = FakePrimaryLLM(
+        {
+            "status": "success",
+            "schema_name": "disease_case_understanding",
+            "case_summary": "Pig cough case.",
+            "observed_signs": ["cough"],
+        }
+    )
+    state = MultiAgentState(session_id="s1", user_query="猪咳嗽", intent="disease_consultation")
+
+    DiseaseUnderstandingAgent(settings=_settings(shadow_mode=True), primary_llm_client=llm).run(state)
+
+    assert "disease_understanding_shadow" in state.tool_results
+    assert "disease_understanding" not in state.tool_results
+    assert state.tool_results["disease_understanding_shadow"]["understanding"]["observed_signs"] == ["cough"]
+
+
+def test_disease_understanding_invalid_schema_falls_back_without_errors() -> None:
+    llm = FakePrimaryLLM({"status": "success", "schema_name": "wrong"})
     state = MultiAgentState(session_id="s1", user_query="羊不吃饭", intent="disease_consultation")
 
-    DiseaseAgent(settings=settings, primary_llm_client=llm).run(state)
+    DiseaseUnderstandingAgent(settings=_settings(), primary_llm_client=llm).run(state)
 
-    payload = state.tool_results["disease_understanding_shadow"]
+    payload = state.tool_results["disease_understanding"]
     assert payload["fallback_used"] is True
     assert payload["fallback_reason"] == "schema_validation_failed"
-    assert payload["rule_slots"]["species"] == "sheep"
-
-
-def test_disease_agent_normalizes_deepseek_understanding_payload_before_takeover() -> None:
-    settings = Settings(
-        disease_llm={"enabled": True, "shadow_mode": False, "allow_rule_fallback": False},
-        primary_llm={"enabled": True, "provider": "deepseek", "model": "deepseek-v4-flash", "base_url": "https://api.deepseek.com"},
-    )
-    llm = FakePrimaryLLM(
-        {
-            "status": "success",
-            "schema_name": "disease_case_understanding",
-            "species": {"value": "bovine", "source_span": "calf"},
-            "age": {"value": "3 months", "source_span": "3-month-old calf"},
-            "symptoms": [
-                {"value": "cough", "source_span": "coughing"},
-                {"value": "fever", "source_span": "40.5 C"},
-            ],
-            "duration": {"value": "2 days", "days": 2, "source_span": "2 days"},
-            "temperature": {"value": 40.5, "status": "fever", "source_span": "40.5 C"},
-            "appetite": {"value": "reduced", "source_span": "reduced feed intake"},
-            "group_outbreak": {"value": True, "source_span": "2 similar calves"},
-            "confidence": 0.86,
-        }
-    )
-    state = MultiAgentState(
-        session_id="s1",
-        user_query="3-month-old calf coughing with 40.5 C fever for 2 days",
-        intent="disease_consultation",
-    )
-
-    DiseaseAgent(settings=settings, primary_llm_client=llm).run(state)
-
-    payload = state.tool_results["disease_understanding"]
-    assert payload["fallback_used"] is False
-    assert payload["slot_source"] == "disease_llm"
-    assert payload["understanding"]["species"] == "cattle"
-    assert payload["understanding"]["temperature_c"] == 40.5
-    assert payload["understanding"]["duration_days"] == 2
-    assert payload["understanding"]["appetite_status"] == "reduced"
-    assert "calf" in payload["understanding"]["source_spans"]
-    assert state.extracted_slots["species"] == "cattle"
-    assert state.extracted_slots["temperature_c"] == 40.5
-    assert state.extracted_slots["duration_days"] == 2
-    assert state.extracted_slots["group_outbreak"] is True
-
-
-def test_disease_agent_normalizes_chinese_deepseek_payload_shape() -> None:
-    settings = Settings(
-        disease_llm={"enabled": True, "shadow_mode": False, "allow_rule_fallback": False},
-        primary_llm={"enabled": True, "provider": "deepseek", "model": "deepseek-v4-flash", "base_url": "https://api.deepseek.com"},
-    )
-    llm = FakePrimaryLLM(
-        {
-            "status": "success",
-            "schema_name": "disease_case_understanding",
-            "species": "\u725b",
-            "age": 3,
-            "age_unit": "\u6708\u9f84",
-            "clinical_signs": "\u54b3\u55fd\u53d1\u70e7",
-            "duration": 2,
-            "duration_unit": "\u5929",
-            "temperature": 40.5,
-            "temperature_unit": "\u5ea6",
-            "feed_intake_change": "\u91c7\u98df\u4e0b\u964d",
-            "similar_cases_count": 2,
-            "source_spans": {
-                "species": "\u5c0f\u725b",
-                "clinical_signs": "\u54b3\u55fd\u53d1\u70e7",
-                "temperature": "40.5\u5ea6",
-            },
-        }
-    )
-    state = MultiAgentState(
-        session_id="s1",
-        user_query="\u4e09\u6708\u9f84\u5c0f\u725b\u54b3\u55fd\u53d1\u70e740.5\u5ea6",
-        intent="disease_consultation",
-    )
-
-    DiseaseAgent(settings=settings, primary_llm_client=llm).run(state)
-
-    payload = state.tool_results["disease_understanding"]
-    assert payload["fallback_used"] is False
-    assert payload["understanding"]["species"] == "cattle"
-    assert payload["understanding"]["temperature_c"] == 40.5
-    assert payload["understanding"]["temperature_status"] == "fever"
-    assert payload["understanding"]["duration_days"] == 2
-    assert payload["understanding"]["appetite_status"] == "reduced"
-    assert payload["understanding"]["source_spans"] == ["\u5c0f\u725b", "\u54b3\u55fd\u53d1\u70e7", "40.5\u5ea6"]
-    assert state.extracted_slots["species"] == "cattle"
-    assert state.extracted_slots["group_outbreak"] is True
-
-
-def test_disease_agent_unwraps_schema_named_understanding_payload() -> None:
-    settings = Settings(
-        disease_llm={"enabled": True, "shadow_mode": False, "allow_rule_fallback": False},
-        primary_llm={"enabled": True, "provider": "deepseek", "model": "deepseek-v4-flash", "base_url": "https://api.deepseek.com"},
-    )
-    llm = FakePrimaryLLM(
-        {
-            "status": "success",
-            "schema_name": "disease_case_understanding",
-            "disease_case_understanding": {
-                "species": "\u725b",
-                "clinical_signs": "\u54b3\u55fd\u53d1\u70e7",
-                "duration": "2\u5929",
-                "temperature": "40.5\u2103",
-                "feed_intake_change": "\u91c7\u98df\u4e0b\u964d",
-                "herd_similar_count": 2,
-            },
-        }
-    )
-    state = MultiAgentState(
-        session_id="s1",
-        user_query="\u5c0f\u725b\u54b3\u55fd\u53d1\u70e740.5\u5ea6",
-        intent="disease_consultation",
-    )
-
-    DiseaseAgent(settings=settings, primary_llm_client=llm).run(state)
-
-    payload = state.tool_results["disease_understanding"]
-    assert payload["fallback_used"] is False
-    assert payload["understanding"]["species"] == "cattle"
-    assert payload["understanding"]["temperature_c"] == 40.5
-    assert state.extracted_slots["group_outbreak"] is True
-
-
-def test_disease_agent_normalizes_alternate_deepseek_field_names() -> None:
-    settings = Settings(
-        disease_llm={"enabled": True, "shadow_mode": False, "allow_rule_fallback": False},
-        primary_llm={"enabled": True, "provider": "deepseek", "model": "deepseek-v4-flash", "base_url": "https://api.deepseek.com"},
-    )
-    llm = FakePrimaryLLM(
-        {
-            "status": "incomplete",
-            "schema_name": "disease_case_understanding",
-            "species": "\u5c0f\u725b",
-            "species_span": "\u5c0f\u725b",
-            "symptoms": ["\u54b3\u55fd", "\u53d1\u70e7", "\u91c7\u98df\u4e0b\u964d"],
-            "symptoms_span": "\u54b3\u55fd\u53d1\u70e7",
-            "duration": 2,
-            "duration_span": "\u6301\u7eed2\u5929",
-            "fever_temperature": 40.5,
-            "fever_temperature_span": "40.5\u5ea6",
-            "similar_cases": 2,
-            "similar_cases_span": "\u8fd8\u67092\u5934\u7c7b\u4f3c",
-            "confidence": "high",
-            "source_spans": "\u5c0f\u725b\u54b3\u55fd\u53d1\u70e740.5\u5ea6",
-        }
-    )
-    state = MultiAgentState(
-        session_id="s1",
-        user_query="\u5c0f\u725b\u54b3\u55fd\u53d1\u70e740.5\u5ea6",
-        intent="disease_consultation",
-    )
-
-    DiseaseAgent(settings=settings, primary_llm_client=llm).run(state)
-
-    payload = state.tool_results["disease_understanding"]
-    assert payload["fallback_used"] is False
-    assert payload["understanding"]["species"] == "cattle"
-    assert payload["understanding"]["temperature_c"] == 40.5
-    assert payload["understanding"]["appetite_status"] == "reduced"
-    assert "\u5c0f\u725b\u54b3\u55fd\u53d1\u70e740.5\u5ea6" in payload["understanding"]["source_spans"]
-    assert state.extracted_slots["group_outbreak"] is True
-
-
-def test_disease_agent_coerces_normal_temperature_and_duration_text_without_false_symptom() -> None:
-    settings = Settings(
-        disease_llm={"enabled": True, "shadow_mode": False, "allow_rule_fallback": False},
-        primary_llm={"enabled": True, "provider": "deepseek", "model": "deepseek-v4-flash", "base_url": "https://api.deepseek.com"},
-    )
-    llm = FakePrimaryLLM(
-        {
-            "status": "success",
-            "schema_name": "disease_case_understanding",
-            "species": "sheep",
-            "symptoms_normalized": ["normal temperature"],
-            "duration_text": "\u4e00\u5929\u4e86",
-            "temperature_status": "normal",
-            "group_outbreak": False,
-            "confidence": 0.8,
-        }
-    )
-    state = MultiAgentState(
-        session_id="s1",
-        user_query="\u4e00\u5929\u4e86\uff0c\u4f53\u6e29\u6b63\u5e38",
-        normalized_query="[species=sheep] [symptom=low_appetite]",
-        intent="disease_consultation",
-    )
-
-    DiseaseAgent(settings=settings, primary_llm_client=llm).run(state)
-
-    payload = state.tool_results["disease_understanding"]
-    assert payload["fallback_used"] is False
-    assert payload["understanding"]["duration_days"] == 1
-    assert payload["understanding"]["temperature_status"] == "normal"
-    assert payload["understanding"]["temperature_c"] is None
-    assert "normal temperature" not in payload["understanding"]["symptoms_normalized"]
-    assert state.extracted_slots["duration_days"] == 1
-    assert state.extracted_slots["temperature_status"] == "normal"
-    assert state.extracted_slots["temperature_c"] is None
-    assert "normal temperature" not in state.extracted_slots["symptoms"]
-    assert "low_appetite" in state.extracted_slots["symptoms"]
-    assert state.disease_assessment is not None
-    assert state.disease_assessment["status"] == "success"
+    assert payload["understanding"] is None

@@ -99,7 +99,14 @@ class ChatService:
         context = self.session_context_service.get_context(request.session_id)
         if context is None or context.last_intent != "disease_consultation":
             return False
-        return bool(context.pending_slots or context.risk_context_status == "incomplete")
+        route = self.router.route(request.query)
+        if route.intent in {"disease_consultation", "general_qa"}:
+            return True
+        if route.intent == "out_of_scope":
+            if self.router._contains_any(request.query, self.router.out_of_scope_keywords):
+                return False
+            return len(request.query.strip()) <= 40
+        return False
 
 
 def state_to_chat_data(state: AgentState | MultiAgentState, *, settings: Settings | None = None) -> dict:
@@ -156,8 +163,6 @@ def _disease_llm_debug_summary(settings: Settings, state: AgentState | MultiAgen
             "status": "fallback" if fallback_used else "success",
             "fallback_used": fallback_used,
             "fallback_reason": understanding.get("fallback_reason"),
-            "applied_to_slots": bool(understanding.get("applied_to_slots")),
-            "slot_source": understanding.get("slot_source"),
         }
 
     gate = state.tool_results.get("disease_evidence_gate")

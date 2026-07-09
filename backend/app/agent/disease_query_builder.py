@@ -6,15 +6,6 @@ from typing import Any
 from backend.app.agent.state import MultiAgentState
 
 
-DIAGNOSIS_KEYS = {
-    "diagnosis",
-    "likely_diagnosis",
-    "suspected_disease",
-    "suspected_diseases",
-    "possible_diagnoses",
-}
-
-
 @dataclass(frozen=True)
 class DiseaseRagQuery:
     query: str
@@ -25,53 +16,38 @@ class DiseaseRagQuery:
 class DiseaseQueryBuilder:
     def build(self, state: MultiAgentState) -> DiseaseRagQuery:
         facts = self._facts(state)
-        terms = ["livestock disease consultation", "evidence-based guidance", "safe actions", "vet triggers"]
-        if species := facts.get("species"):
-            terms.append(str(species))
-        for symptom in facts.get("symptoms") or []:
-            terms.append(str(symptom))
-        for field in ("duration_days", "temperature_c", "temperature_status", "group_outbreak"):
-            if field in facts and facts[field] is not None:
-                terms.append(f"{field}:{self._format_value(facts[field])}")
-        return DiseaseRagQuery(query=" ".join(terms), facts=facts)
+        parts = [
+            "livestock disease consultation",
+            "evidence-based contributing factors",
+            "safe actions",
+            "vet escalation triggers",
+            state.normalized_query or state.user_query,
+        ]
+        parts.extend(self._fact_terms(facts))
+        query = " ".join(_dedupe([_compact(part) for part in parts if _compact(part)]))
+        warnings = [] if facts else ["disease_query_used_raw_user_message_only"]
+        return DiseaseRagQuery(query=query, facts=facts, warnings=warnings)
 
     def _facts(self, state: MultiAgentState) -> dict[str, Any]:
         facts: dict[str, Any] = {}
-        self._merge_confirmed_fields(facts, state.session_context)
-        self._merge_slots(facts, state.extracted_slots)
+        self._merge_session_context(facts, state.session_context)
         self._merge_understanding(facts, self._understanding(state))
         return facts
 
-    def _merge_confirmed_fields(self, facts: dict[str, Any], session_context: dict[str, Any]) -> None:
+    def _merge_session_context(self, facts: dict[str, Any], session_context: dict[str, Any]) -> None:
+        if isinstance(session_context.get("last_understanding"), dict):
+            self._merge_understanding(facts, session_context["last_understanding"])
         confirmed = session_context.get("confirmed_case_fields")
         if isinstance(confirmed, dict):
-            self._merge_slots(facts, confirmed)
-
-    def _merge_slots(self, facts: dict[str, Any], slots: dict[str, Any]) -> None:
-        for field in ("species", "duration_days", "temperature_c", "temperature_status", "group_outbreak"):
-            value = slots.get(field)
-            if value is not None:
-                facts[field] = value
-        symptoms = slots.get("symptoms")
-        if isinstance(symptoms, list) and symptoms:
-            facts["symptoms"] = list(symptoms)
+            facts.setdefault("session_context", confirmed)
 
     def _merge_understanding(self, facts: dict[str, Any], understanding: dict[str, Any]) -> None:
         if not understanding:
             return
-        for field in DIAGNOSIS_KEYS:
-            understanding.pop(field, None)
-        species = understanding.get("species")
-        if species and species != "unknown" and not facts.get("species"):
-            facts["species"] = species
-        symptoms = understanding.get("symptoms_normalized")
-        if isinstance(symptoms, list) and symptoms and not facts.get("symptoms"):
-            facts["symptoms"] = list(symptoms)
-        temperature_status = understanding.get("temperature_status")
-        if temperature_status and temperature_status != "unknown" and not facts.get("temperature_c"):
-            facts["temperature_status"] = temperature_status
-        if understanding.get("group_outbreak") is not None and "group_outbreak" not in facts:
-            facts["group_outbreak"] = understanding["group_outbreak"]
+        for key in ("case_summary", "species", "observed_signs", "context_factors", "explicit_user_facts", "information_gaps"):
+            value = understanding.get(key)
+            if value not in (None, "", [], {}):
+                facts[key] = value
 
     def _understanding(self, state: MultiAgentState) -> dict[str, Any]:
         for key in ("disease_understanding", "disease_understanding_shadow"):
@@ -80,7 +56,44 @@ class DiseaseQueryBuilder:
                 return dict(record["understanding"])
         return {}
 
-    def _format_value(self, value: Any) -> str:
-        if isinstance(value, bool):
-            return "true" if value else "false"
-        return str(value)
+    def _fact_terms(self, facts: dict[str, Any]) -> list[str]:
+        terms: list[str] = []
+        for key in ("case_summary", "species"):
+            value = facts.get(key)
+            if isinstance(value, str):
+                terms.append(value)
+        for key in ("observed_signs", "context_factors", "information_gaps"):
+            value = facts.get(key)
+            if isinstance(value, list):
+                terms.extend(str(item) for item in value)
+        for key in ("explicit_user_facts", "session_context"):
+            value = facts.get(key)
+            if isinstance(value, dict):
+                terms.extend(_flatten_dict_terms(value))
+        return terms
+
+
+def _flatten_dict_terms(value: dict[str, Any]) -> list[str]:
+    terms: list[str] = []
+    for key, item in value.items():
+        if item in (None, "", [], {}):
+            continue
+        if isinstance(item, dict):
+            terms.extend(_flatten_dict_terms(item))
+        elif isinstance(item, list):
+            terms.extend(str(nested) for nested in item if str(nested).strip())
+        else:
+            terms.append(f"{key}: {item}")
+    return terms
+
+
+def _compact(value: str) -> str:
+    return " ".join(value.split())
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    deduped: list[str] = []
+    for value in values:
+        if value and value not in deduped:
+            deduped.append(value)
+    return deduped
