@@ -41,16 +41,16 @@ local_model:
   max_new_tokens: 96
   temperature: 0
 primary_llm:
-  enabled: false
-  provider: openai_compatible
-  model:
-  base_url:
-  api_key_env: PRIMARY_LLM_API_KEY
+  enabled: true
+  provider: deepseek
+  model: deepseek-v4-flash
+  base_url: https://api.deepseek.com
+  api_key_env: DEEPSEEK_API_KEY
   timeout_seconds: 30
   max_retries: 1
 disease_llm:
-  enabled: false
-  shadow_mode: true
+  enabled: true
+  shadow_mode: false
   require_rag_evidence: true
   allow_rule_fallback: true
 lora:

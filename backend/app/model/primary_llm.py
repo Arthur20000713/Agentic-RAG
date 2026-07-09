@@ -6,6 +6,7 @@ import os
 import time
 import urllib.request
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable
 
 from backend.app.core.config import Settings
@@ -75,11 +76,7 @@ class PrimaryLLMClient:
         return result
 
     def _api_key(self) -> str | None:
-        env_name = self.settings.primary_llm.api_key_env
-        if not env_name:
-            return None
-        value = os.getenv(env_name)
-        return value if value else None
+        return resolve_primary_llm_api_key(self.settings)
 
     def _messages(self, request: PrimaryLLMRequest) -> list[dict[str, str]]:
         system = request.system_prompt or "Return exactly one JSON object. Do not include prose."
@@ -129,3 +126,38 @@ def _fallback(schema_name: str, error_code: str, reason: str) -> dict[str, Any]:
 
 def _latency_ms(started_at: float) -> int:
     return max(0, int((time.perf_counter() - started_at) * 1000))
+
+
+def resolve_primary_llm_api_key(settings: Settings) -> str | None:
+    env_name = settings.primary_llm.api_key_env
+    if not env_name:
+        return None
+    value = os.getenv(env_name)
+    if value:
+        return value
+    repo_path = settings.rag_server.repo_path
+    if not repo_path:
+        return None
+    return _read_dotenv_value(Path(repo_path) / ".env", env_name)
+
+
+def _read_dotenv_value(path: Path, env_name: str) -> str | None:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return None
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        name, value = stripped.split("=", 1)
+        name = name.strip()
+        if name.startswith("export "):
+            name = name.removeprefix("export ").strip()
+        if name != env_name:
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            value = value[1:-1]
+        return value or None
+    return None

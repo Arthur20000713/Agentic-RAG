@@ -215,7 +215,8 @@ def test_chat_api_product_config_uses_v3_local_structured_takeover_path() -> Non
     assert payload["data"]["v3_debug"]["flags"]["model_router_enabled"] is True
     assert payload["data"]["v3_debug"]["flags"]["model_router_shadow_mode"] is False
     assert payload["data"]["v3_debug"]["flags"]["model_router_low_risk_takeover_enabled"] is True
-    assert payload["data"]["v3_debug"]["flags"]["disease_llm_enabled"] is False
+    assert payload["data"]["v3_debug"]["flags"]["disease_llm_enabled"] is True
+    assert payload["data"]["v3_debug"]["flags"]["disease_llm_shadow_mode"] is False
 
 
 def test_measurement_api_contract() -> None:

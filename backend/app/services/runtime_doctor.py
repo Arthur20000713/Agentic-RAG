@@ -7,6 +7,7 @@ from typing import Any
 
 from backend.app.core.config import PROJECT_ROOT, Settings
 from backend.app.integrations.rag_server.health import resolve_rag_server_path
+from backend.app.model.primary_llm import resolve_primary_llm_api_key
 from backend.app.services.feature_flag_service import FeatureFlagService
 
 
@@ -116,12 +117,14 @@ class RuntimeDoctor:
         flags = FeatureFlagService(self.settings).snapshot()
         primary = self.settings.primary_llm
         takeover_enabled = flags.disease_llm_enabled and not flags.disease_llm_shadow_mode
+        primary_api_key_present = bool(resolve_primary_llm_api_key(self.settings))
         primary_configured = (
             primary.enabled
             and primary.provider != "mock"
             and bool(primary.model)
             and bool(primary.base_url)
             and bool(primary.api_key_env)
+            and primary_api_key_present
         )
         passed = not takeover_enabled or primary_configured
         return {
@@ -134,6 +137,7 @@ class RuntimeDoctor:
             "primary_llm_model_configured": bool(primary.model),
             "primary_llm_base_url_configured": bool(primary.base_url),
             "primary_llm_api_key_env_configured": bool(primary.api_key_env),
+            "primary_llm_api_key_present": primary_api_key_present,
             "error_code": None if passed else "DISEASE_LLM_TAKEOVER_PRIMARY_LLM_NOT_CONFIGURED",
         }
 

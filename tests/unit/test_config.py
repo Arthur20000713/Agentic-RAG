@@ -168,12 +168,17 @@ def test_product_settings_enable_v3_main_path_with_local_structured_takeover() -
     assert snapshot.model_router_shadow_mode is False
     assert snapshot.model_router_low_risk_takeover_enabled is True
     assert snapshot.local_model_enabled is True
-    assert snapshot.primary_llm_enabled is False
-    assert snapshot.disease_llm_enabled is False
+    assert snapshot.primary_llm_enabled is True
+    assert snapshot.disease_llm_enabled is True
     assert settings.model_router.allow_low_risk_takeover is True
     assert settings.local_model.provider == "transformers"
     assert settings.local_model.model == "Qwen/Qwen2.5-0.5B-Instruct"
     assert settings.local_model.allow_final_answer is False
+    assert settings.primary_llm.provider == "deepseek"
+    assert settings.primary_llm.model == "deepseek-v4-flash"
+    assert settings.primary_llm.base_url == "https://api.deepseek.com"
+    assert settings.primary_llm.api_key_env == "DEEPSEEK_API_KEY"
+    assert settings.disease_llm.shadow_mode is False
 
 
 def test_v3_settings_can_be_enabled_from_existing_config_root() -> None:

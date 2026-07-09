@@ -86,3 +86,41 @@ def test_primary_llm_client_reports_missing_api_key_without_leaking_value(monkey
     assert result["error_code"] == "PRIMARY_LLM_API_KEY_MISSING"
     assert result["api_key_env"] == "DEEPSEEK_API_KEY"
     assert "secret" not in str(result).lower()
+
+
+def test_primary_llm_client_reads_same_key_from_rag_server_env_file(monkeypatch, tmp_path) -> None:
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    rag_server = tmp_path / "RAG-SERVER"
+    rag_server.mkdir()
+    (rag_server / ".env").write_text("DEEPSEEK_API_KEY=secret-from-rag-server\n", encoding="utf-8")
+    settings = Settings(
+        rag_server={"repo_path": str(rag_server)},
+        primary_llm={
+            "enabled": True,
+            "provider": "deepseek",
+            "model": "deepseek-v4-flash",
+            "base_url": "https://api.deepseek.com",
+            "api_key_env": "DEEPSEEK_API_KEY",
+        },
+    )
+    transport = RecordingTransport(
+        {
+            "choices": [
+                {
+                    "message": {
+                        "content": '{"status":"success","species":"cattle","confidence":0.86}'
+                    }
+                }
+            ]
+        }
+    )
+
+    result = asyncio.run(
+        PrimaryLLMClient(settings=settings, transport=transport).generate_json(
+            PrimaryLLMRequest(prompt="Extract disease case", schema_name="disease_case_understanding")
+        )
+    )
+
+    assert result["status"] == "success"
+    assert transport.calls[0][2]["Authorization"] == "Bearer secret-from-rag-server"
+    assert "secret-from-rag-server" not in str(result)
