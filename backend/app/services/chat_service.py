@@ -35,10 +35,11 @@ class ChatService:
 
     async def ask(self, request: ChatRequest, *, request_id: str | None = None) -> AgentState | MultiAgentState:
         route = self.router.route(request.query)
-        if route.intent == "assistant_intro":
+        v3_enabled = FeatureFlagService(self.settings).v3_enabled
+        if route.intent == "assistant_intro" and not v3_enabled:
             return self._assistant_intro_state(request, confidence=route.confidence)
-        if FeatureFlagService(self.settings).v3_enabled:
-            if route.intent == "disease_consultation":
+        if v3_enabled:
+            if route.intent == "disease_consultation" or self._should_continue_disease_context(request):
                 return await run_disease_graph(
                     request.query,
                     rag_client=self.rag_client,
@@ -47,7 +48,7 @@ class ChatService:
                     request_id=request_id,
                     settings=self.settings,
                 )
-            if route.intent == "general_qa":
+            if route.intent in {"assistant_intro", "general_qa", "out_of_scope"}:
                 return await run_general_qa_graph(
                     request.query,
                     rag_client=self.rag_client,
@@ -89,6 +90,16 @@ class ChatService:
             intent_confidence=confidence,
             final_answer=ASSISTANT_INTRO_ANSWER,
         )
+
+    def _should_continue_disease_context(self, request: ChatRequest) -> bool:
+        if self.session_context_service is None or not request.session_id:
+            return False
+        if self.session_context_service.clear_conflicted_context(request.session_id, request.query):
+            return False
+        context = self.session_context_service.get_context(request.session_id)
+        if context is None or context.last_intent != "disease_consultation":
+            return False
+        return bool(context.pending_slots or context.risk_context_status == "incomplete")
 
 
 def state_to_chat_data(state: AgentState | MultiAgentState, *, settings: Settings | None = None) -> dict:

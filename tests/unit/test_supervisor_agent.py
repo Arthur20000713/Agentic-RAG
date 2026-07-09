@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from backend.app.agent.state import MultiAgentState
+from backend.app.model.intent_router import IntentRoutingResult
 from backend.app.agent.supervisor import SupervisorAgent
 
 
@@ -44,3 +45,24 @@ def test_supervisor_preserves_existing_normalized_query() -> None:
     SupervisorAgent().route(state)
 
     assert state.normalized_query == "normalized calf feeding"
+
+
+def test_supervisor_can_use_model_route_override() -> None:
+    state = MultiAgentState(session_id="s1", user_query="hello")
+    route = IntentRoutingResult(
+        intent="assistant_intro",
+        confidence=0.92,
+        reason="greeting",
+        should_use_rag=False,
+        selected_model="local_small",
+        route_mode="takeover",
+        fallback_used=False,
+    )
+
+    SupervisorAgent().route(state, route_override=route)
+
+    assert state.intent == "assistant_intro"
+    assert state.active_agent == "response_agent"
+    assert state.tool_results["supervisor"]["route_source"] == "model"
+    assert state.tool_results["intent_router_model"]["selected_model"] == "local_small"
+    assert state.tool_results["intent_router_model"]["should_use_rag"] is False

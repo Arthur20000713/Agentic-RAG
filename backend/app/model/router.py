@@ -13,6 +13,7 @@ from backend.app.services.feature_flag_service import FeatureFlagService
 ModelName = Literal["primary", "local_small"]
 ModelTaskType = Literal[
     "final_answer",
+    "intent_routing",
     "query_normalization",
     "structured_extraction",
     "measurement_analysis",

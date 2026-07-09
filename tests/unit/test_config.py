@@ -171,6 +171,7 @@ def test_product_settings_enable_v3_main_path_with_local_structured_takeover() -
     assert snapshot.primary_llm_enabled is True
     assert snapshot.disease_llm_enabled is True
     assert settings.model_router.allow_low_risk_takeover is True
+    assert "intent_routing" in settings.model_router.takeover_task_types
     assert settings.local_model.provider == "transformers"
     assert settings.local_model.model == "Qwen/Qwen2.5-0.5B-Instruct"
     assert settings.local_model.allow_final_answer is False

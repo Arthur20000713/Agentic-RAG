@@ -6,6 +6,7 @@ from backend.app.agent.graph import run_disease_graph, run_general_qa_graph, run
 from backend.app.agent.rag_answer_policy import NO_ANSWER_POLICY_WARNING, NO_ANSWER_TEXT
 from backend.app.core.config import Settings
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
+from backend.app.model.intent_router import IntentRoutingResult
 from backend.app.schemas.measurement import MeasurementInput
 from backend.app.schemas.rag_server import RagCitation, RagSearchHit, RagSearchResult
 
@@ -51,6 +52,16 @@ class FakeReasoningClient:
             "safe_actions": [{"text": "Monitor hydration and isolate if condition worsens.", "evidence_refs": [ref]}],
             "vet_triggers": [{"text": "Contact a vet if fever or depression appears.", "evidence_refs": [ref]}],
             "not_diagnosis_notice": "This is not a diagnosis.",
+        }
+
+
+class FakeDirectAnswerClient:
+    async def generate_json(self, request) -> dict:
+        return {
+            "status": "success",
+            "schema_name": request.schema_name,
+            "answer_draft": "你好，我是由 LLM 生成草稿的畜牧业智能助手，可以结合知识库和工具帮助你。",
+            "fallback_required": False,
         }
 
 
@@ -110,6 +121,40 @@ def test_general_qa_graph_records_query_normalizer_takeover_when_enabled() -> No
     assert [item["node"] for item in state.agent_trace][:2] == ["query_normalizer", "supervisor"]
 
 
+def test_general_graph_uses_primary_llm_draft_for_assistant_intro_without_rag() -> None:
+    settings = Settings(
+        v3={"enabled": True},
+        primary_llm={
+            "enabled": True,
+            "provider": "deepseek",
+            "model": "deepseek-v4-flash",
+            "base_url": "https://api.deepseek.com",
+        },
+    )
+
+    state = asyncio.run(
+        run_general_qa_graph(
+            "hello",
+            rag_client=FakeRagServerClient(),
+            session_id="s_intro_direct_llm",
+            settings=settings,
+            primary_llm_client=FakeDirectAnswerClient(),
+        )
+    )
+
+    assert state.intent == "assistant_intro"
+    assert "LLM 生成草稿" in state.final_answer
+    assert "livestock_rag_search" not in state.tool_results
+    assert state.tool_results["direct_answer_planner"]["fallback_used"] is False
+    assert [item["node"] for item in state.agent_trace] == [
+        "supervisor",
+        "direct_answer_planner",
+        "verifier_agent",
+        "safety_agent",
+        "response_agent",
+    ]
+
+
 def test_general_qa_graph_keeps_low_confidence_no_answer_safe() -> None:
     state = asyncio.run(
         run_general_qa_graph(
@@ -167,6 +212,44 @@ def test_disease_graph_follow_up_skips_rag_and_renders_questions() -> None:
         "safety_agent",
         "response_agent",
     ]
+
+
+def test_disease_graph_guardrails_model_route_misclassification(monkeypatch) -> None:
+    async def fake_route_intent(*args, **kwargs):
+        return IntentRoutingResult(
+            intent="general_qa",
+            confidence=0.99,
+            reason="model misclassified disease case",
+            should_use_rag=True,
+            selected_model="local_small",
+            route_mode="takeover",
+            fallback_used=False,
+        )
+
+    monkeypatch.setattr("backend.app.agent.graph.route_intent_with_model", fake_route_intent)
+    settings = Settings(
+        v3={"enabled": True},
+        model_router={
+            "enabled": True,
+            "shadow_mode": False,
+            "allow_low_risk_takeover": True,
+            "takeover_task_types": ["intent_routing"],
+        },
+        local_model={"enabled": True},
+    )
+
+    state = asyncio.run(
+        run_disease_graph(
+            "sick calf [species=cattle] [symptom=diarrhea]",
+            rag_client=FakeRagServerClient(),
+            session_id="s_disease_route_guard",
+            settings=settings,
+        )
+    )
+
+    assert state.intent == "disease_consultation"
+    assert state.tool_results["intent_router_model"]["fallback_used"] is True
+    assert state.tool_results["intent_router_model"]["fallback_reason"] == "disease_graph_guardrail"
 
 
 def test_disease_graph_high_risk_uses_rag_verifier_safety_response() -> None:

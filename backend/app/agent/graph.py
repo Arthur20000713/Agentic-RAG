@@ -4,6 +4,7 @@ from dataclasses import asdict
 from typing import Any
 from uuid import uuid4
 
+from backend.app.agent.direct_answer_agent import DirectAnswerAgent, fallback_direct_answer
 from backend.app.agent.disease_agent import DiseaseAgent
 from backend.app.agent.disease_evidence_gate import DiseaseEvidenceGate
 from backend.app.agent.disease_reasoning import DiseaseReasoningAgent
@@ -26,6 +27,7 @@ from backend.app.integrations.rag_server.base import RagServerClient
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
 from backend.app.model.answer_generator import AnswerGenerator
 from backend.app.model.base import BaseModelClient
+from backend.app.model.intent_router import IntentRoutingResult, route_intent_with_model
 from backend.app.model.query_normalizer import normalize_query_with_router
 from backend.app.model.router import ModelRouteRequest, ModelRouter, ModelTaskType
 from backend.app.schemas.measurement import MeasurementInput
@@ -43,11 +45,19 @@ async def run_general_qa_graph(
     request_id: str | None = None,
     settings: Settings | None = None,
     query_normalizer_client: BaseModelClient | None = None,
+    primary_llm_client: Any | None = None,
 ) -> MultiAgentState:
     state = MultiAgentState(session_id=session_id or _new_session_id(), request_id=request_id, user_query=query)
     await _maybe_normalize_query(state, settings=settings, client=query_normalizer_client)
-    SupervisorAgent().route(state)
-    record_shadow_route(state, settings=settings)
+    route_override = await _maybe_route_intent_with_model(state, settings=settings)
+    SupervisorAgent().route(state, route_override=route_override)
+    if route_override is None:
+        record_shadow_route(state, settings=settings)
+    if await _compose_direct_draft(state, settings=settings, primary_llm_client=primary_llm_client):
+        VerifierAgent().verify(state)
+        SafetyAgent().check(state)
+        ResponseAgent().render(state)
+        return state
     await RagAgent(rag_client or FakeRagServerClient()).run(state)
     policy = _apply_rag_answer_policy(state)
     if policy.should_use_retrieved_contexts:
@@ -75,8 +85,6 @@ async def run_disease_graph(
     resolved_session_id = session_id or _new_session_id()
     state = MultiAgentState(session_id=resolved_session_id, request_id=request_id, user_query=query)
     await _maybe_normalize_query(state, settings=settings, client=query_normalizer_client)
-    SupervisorAgent().route(state)
-    record_shadow_route(state, settings=settings)
     if session_context_service is not None:
         previous_context = None
         if not session_context_service.clear_conflicted_context(resolved_session_id, query):
@@ -84,6 +92,11 @@ async def run_disease_graph(
         if previous_context is not None:
             state.session_context = previous_context.model_dump(mode="json")
             state.normalized_query = merge_session_slots(query, previous_context)
+    route_override = await _maybe_route_intent_with_model(state, settings=settings, session_context=state.session_context)
+    route_override = _guard_disease_route_override(route_override)
+    SupervisorAgent().route(state, route_override=route_override)
+    if route_override is None:
+        record_shadow_route(state, settings=settings)
     DiseaseAgent(settings=settings, primary_llm_client=primary_llm_client).run(state)
     if session_context_service is not None:
         _save_disease_context(session_context_service, state)
@@ -178,6 +191,25 @@ def _compose_rag_draft(state: MultiAgentState, *, prefix: str | None = None) -> 
     if isinstance(rag_result, dict):
         evidence_answer = AnswerGenerator().compose_with_citations(RagSearchResult.model_validate(rag_result))
         state.draft_answer = f"{prefix}\n\n{evidence_answer}" if prefix else evidence_answer
+
+
+async def _compose_direct_draft(
+    state: MultiAgentState,
+    *,
+    settings: Settings | None = None,
+    primary_llm_client: Any | None = None,
+) -> bool:
+    if state.intent not in {"assistant_intro", "out_of_scope", "measurement_analysis"}:
+        return False
+
+    app_settings = settings or Settings()
+    if FeatureFlagService(app_settings).primary_llm_enabled:
+        await DirectAnswerAgent(settings=app_settings, primary_llm_client=primary_llm_client).run(state)
+        return True
+
+    state.draft_answer = fallback_direct_answer(state.intent)
+    state.evidence_status = "empty"
+    return True
 
 
 def _apply_rag_answer_policy(state: MultiAgentState) -> RagAnswerPolicyDecision:
@@ -277,7 +309,7 @@ async def _maybe_normalize_query(
 
     result = await normalize_query_with_router(state.user_query, settings=app_settings, client=client)
     state.normalized_query = result.normalized_query
-    if result.route_mode == "disabled":
+    if result.selected_model != "local_small":
         return
 
     state.tool_results["query_normalizer_router"] = {
@@ -305,6 +337,34 @@ async def _maybe_normalize_query(
             "fallback_reason": result.fallback_reason,
         }
     )
+
+
+async def _maybe_route_intent_with_model(
+    state: MultiAgentState,
+    *,
+    settings: Settings | None = None,
+    session_context: dict[str, Any] | None = None,
+) -> IntentRoutingResult | None:
+    app_settings = settings or Settings()
+    if not FeatureFlagService(app_settings).model_router_enabled:
+        return None
+    return await route_intent_with_model(
+        state.normalized_query or state.user_query,
+        settings=app_settings,
+        session_context=session_context or state.session_context,
+    )
+
+
+def _guard_disease_route_override(route: IntentRoutingResult | None) -> IntentRoutingResult | None:
+    if route is None or route.intent == "disease_consultation":
+        return route
+    guarded = route.model_copy(deep=True)
+    guarded.intent = "disease_consultation"
+    guarded.reason = "disease graph/context requires disease consultation"
+    guarded.should_use_rag = True
+    guarded.fallback_used = True
+    guarded.fallback_reason = "disease_graph_guardrail"
+    return guarded
 
 
 def record_model_fallback(

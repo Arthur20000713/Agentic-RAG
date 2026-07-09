@@ -173,6 +173,36 @@ def test_chat_api_answers_assistant_intro_without_rag_or_domain_refusal() -> Non
     assert "livestock_rag_search" not in payload["data"]["tools_used"]
 
 
+def test_chat_api_v3_intro_uses_model_intent_router_instead_of_precomputed_template() -> None:
+    settings = Settings(
+        database={"url": "sqlite:///:memory:"},
+        v3={"enabled": True},
+        model_router={
+            "enabled": True,
+            "shadow_mode": False,
+            "allow_low_risk_takeover": True,
+            "takeover_task_types": ["intent_routing"],
+        },
+        local_model={"enabled": True},
+    )
+    client = TestClient(create_app(settings=settings))
+
+    response = client.post("/api/chat", json={"query": "hello", "session_id": "s_intro_model_route"})
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["code"] == 0
+    assert payload["data"]["intent"] == "assistant_intro"
+    assert "intent_router_model" in payload["data"]["tools_used"]
+    assert "livestock_rag_search" not in payload["data"]["tools_used"]
+    assert payload["data"]["v3_debug"]["agent_path"] == [
+        "supervisor",
+        "verifier_agent",
+        "safety_agent",
+        "response_agent",
+    ]
+
+
 def test_chat_api_disease_follow_up_uses_session_context_and_plain_answers() -> None:
     settings = Settings(
         database={"url": "sqlite:///:memory:"},
@@ -198,6 +228,39 @@ def test_chat_api_disease_follow_up_uses_session_context_and_plain_answers() -> 
     assert "目前体温是多少" not in second["data"]["answer"]
     assert "是否有群体发病" not in second["data"]["answer"]
     assert "livestock_rag_search" in second["data"]["tools_used"]
+
+
+def test_chat_api_model_router_keeps_plain_follow_up_in_disease_context() -> None:
+    settings = Settings(
+        database={"url": "sqlite:///:memory:"},
+        v3={"enabled": True},
+        model_router={
+            "enabled": True,
+            "shadow_mode": False,
+            "allow_low_risk_takeover": True,
+            "takeover_task_types": ["intent_routing", "structured_extraction"],
+        },
+        local_model={"enabled": True},
+    )
+    app = create_app(settings=settings)
+    app.state.rag_client = FakeRagServerClient()
+    client = TestClient(app)
+
+    first = client.post(
+        "/api/chat",
+        json={"query": "sick calf [species=cattle] [symptom=diarrhea]", "session_id": "s_model_follow"},
+    ).json()
+    second = client.post(
+        "/api/chat",
+        json={"query": "[duration_days=1] [group_outbreak=false]", "session_id": "s_model_follow"},
+    ).json()
+
+    assert first["code"] == 0
+    assert first["data"]["intent"] == "disease_consultation"
+    assert second["code"] == 0
+    assert second["data"]["intent"] == "disease_consultation"
+    assert "livestock_rag_search" not in second["data"]["tools_used"]
+    assert "slot_extractor" in second["data"]["tools_used"]
 
 
 def test_chat_api_product_config_uses_v3_local_structured_takeover_path() -> None:

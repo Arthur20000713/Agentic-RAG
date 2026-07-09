@@ -145,6 +145,22 @@ class LocalModelClient(BaseModelClient):
                 "language": self._detect_language(prompt),
                 "fallback_required": False,
             }
+        if normalized_schema == "intent_routing":
+            from backend.app.agent.router import IntentRouter
+
+            route_query = str((context or {}).get("user_query") or prompt)
+            route = IntentRouter().route(route_query)
+            return {
+                "status": "success",
+                "schema_name": normalized_schema,
+                "intent": route.intent,
+                "confidence": route.confidence,
+                "should_use_rag": route.intent in {"general_qa", "disease_consultation"},
+                "should_use_tools": [],
+                "reason": route.reason,
+                "fallback_required": False,
+                "provider": self.provider,
+            }
         return {
             "status": "success",
             "schema_name": normalized_schema,

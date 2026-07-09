@@ -80,6 +80,34 @@ def test_local_model_client_detects_chinese_query_language() -> None:
     assert result["normalized_query"] == "犊牛断奶后怎么饲喂？"
 
 
+def test_local_model_client_returns_deterministic_intent_routing_json() -> None:
+    client = LocalModelClient()
+
+    result = asyncio.run(client.generate_json("Calf diarrhea and fever", schema_name="intent_routing"))
+
+    assert result["status"] == "success"
+    assert result["schema_name"] == "intent_routing"
+    assert result["intent"] == "disease_consultation"
+    assert result["confidence"] >= 0.8
+    assert result["should_use_rag"] is True
+    assert result["fallback_required"] is False
+
+
+def test_local_model_client_routes_intent_from_user_query_context_not_prompt_instructions() -> None:
+    client = LocalModelClient()
+
+    result = asyncio.run(
+        client.generate_json(
+            "Allowed intents for a livestock assistant include general_qa. User message: hello",
+            schema_name="intent_routing",
+            context={"user_query": "hello"},
+        )
+    )
+
+    assert result["intent"] == "assistant_intro"
+    assert result["should_use_rag"] is False
+
+
 def test_local_model_client_refuses_final_answer_schema() -> None:
     client = LocalModelClient()
 
@@ -196,6 +224,26 @@ def test_local_model_client_calls_transformers_backend_without_endpoint() -> Non
     assert result["model"] == "Qwen/Qwen2.5-0.5B-Instruct"
     assert backend.requests[0].endpoint == ""
     assert backend.requests[0].options["max_new_tokens"] == 96
+
+
+def test_local_model_client_calls_transformers_backend_for_intent_routing() -> None:
+    settings = Settings(
+        local_model={
+            "enabled": True,
+            "provider": "transformers",
+            "model": "Qwen/Qwen2.5-0.5B-Instruct",
+            "timeout_seconds": 8,
+        }
+    )
+    backend = RecordingBackend()
+    backend.provider = "transformers"
+    client = RecordingClient(settings, backend)
+
+    result = asyncio.run(client.generate_json("Calf diarrhea and fever", schema_name="intent_routing"))
+
+    assert result["provider"] == "transformers"
+    assert result["model"] == "Qwen/Qwen2.5-0.5B-Instruct"
+    assert backend.requests[0].schema_name == "intent_routing"
 
 
 def test_local_model_client_passes_lora_adapter_option_when_enabled() -> None:

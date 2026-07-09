@@ -169,3 +169,22 @@ def test_model_router_takeover_uses_configured_task_types() -> None:
     assert blocked.blocked_reason == "task_type_not_enabled_for_local_takeover"
     assert allowed.selected_model == "local_small"
     assert allowed.local_candidate_allowed is True
+
+
+def test_model_router_allows_intent_routing_as_low_risk_structured_task() -> None:
+    settings = Settings(
+        v3={"enabled": True},
+        model_router={
+            "enabled": True,
+            "shadow_mode": False,
+            "allow_low_risk_takeover": True,
+            "takeover_task_types": ["intent_routing"],
+        },
+        local_model={"enabled": True},
+    )
+
+    decision = ModelRouter(settings).route(ModelRouteRequest(task_type="intent_routing", safety_level="S1"))
+
+    assert decision.selected_model == "local_small"
+    assert decision.route_mode == "takeover"
+    assert decision.local_candidate_allowed is True

@@ -171,17 +171,17 @@ class TransformersBackend(BaseLocalBackend):
             "temperature": request.options.get("temperature", 0.0),
         }
         normalized_schema = request.schema_name.strip().lower()
-        if normalized_schema != "query_normalization":
+        if normalized_schema not in {"query_normalization", "intent_routing"}:
             return _backend_failure(
                 request,
                 self.provider,
                 payload,
                 started,
                 error_code="LOCAL_MODEL_SCHEMA_UNSUPPORTED",
-                reason="transformers backend currently supports query_normalization only",
+                reason="transformers backend currently supports query_normalization and intent_routing only",
             )
 
-        prompt = _query_normalization_prompt(request.prompt)
+        prompt = _prompt_for_schema(request.prompt, normalized_schema)
         try:
             raw_text = await asyncio.wait_for(
                 asyncio.to_thread(self._generate_text, prompt, request),
@@ -212,7 +212,7 @@ class TransformersBackend(BaseLocalBackend):
             )
 
         content = parse_local_json_response(raw_text, normalized_schema)
-        content = _normalize_query_normalization_content(content, normalized_schema)
+        content = _normalize_schema_content(content, normalized_schema)
         return LocalBackendResponse(
             status=str(content.get("status", "success")),
             schema_name=normalized_schema,
@@ -258,11 +258,7 @@ class TransformersBackend(BaseLocalBackend):
         messages = [
             {
                 "role": "system",
-                "content": (
-                    "You normalize livestock questions for retrieval. "
-                    "Return exactly one JSON object and no prose. "
-                    "Set fallback_required to false when you can produce a normalized query."
-                ),
+                "content": _system_prompt_for_schema(request.schema_name),
             },
             {"role": "user", "content": prompt},
         ]
@@ -347,11 +343,57 @@ def _query_normalization_prompt(query: str) -> str:
     )
 
 
-def _normalize_query_normalization_content(content: dict[str, Any], schema_name: str) -> dict[str, Any]:
+def _intent_routing_prompt(query: str) -> str:
+    return (
+        "Classify the livestock user question. "
+        "Return exactly one JSON object with keys: status, intent, confidence, should_use_rag, should_use_tools, reason, fallback_required. "
+        "Allowed intents: assistant_intro, general_qa, disease_consultation, measurement_analysis, out_of_scope. "
+        "Use disease_consultation for animal symptoms, disease, fever, diarrhea, cough, appetite changes, or health risk. "
+        "Use general_qa for livestock management or knowledge questions. "
+        "Use assistant_intro only for greeting or asking what the assistant can do. "
+        "Use out_of_scope for non-livestock requests. "
+        "Set should_use_rag=true for general_qa and disease_consultation. "
+        'Example: {"status":"success","intent":"disease_consultation","confidence":0.9,'
+        '"should_use_rag":true,"should_use_tools":["disease_agent"],"reason":"animal symptoms","fallback_required":false}\n'
+        f"User question: {query.strip()}"
+    )
+
+
+def _prompt_for_schema(query: str, schema_name: str) -> str:
+    if schema_name == "intent_routing":
+        return _intent_routing_prompt(query)
+    return _query_normalization_prompt(query)
+
+
+def _system_prompt_for_schema(schema_name: str) -> str:
+    normalized = schema_name.strip().lower()
+    if normalized == "intent_routing":
+        return (
+            "You route livestock assistant messages. Return exactly one JSON object and no prose. "
+            "Never answer the user; only classify the message."
+        )
+    return (
+        "You normalize livestock questions for retrieval. "
+        "Return exactly one JSON object and no prose. "
+        "Set fallback_required to false when you can produce a normalized query."
+    )
+
+
+def _normalize_schema_content(content: dict[str, Any], schema_name: str) -> dict[str, Any]:
+    if schema_name == "intent_routing":
+        return _normalize_intent_routing_content(content)
     if schema_name != "query_normalization":
         return content
     if content.get("status") == "success" and str(content.get("normalized_query", "")).strip():
         content["fallback_required"] = False
+    return content
+
+
+def _normalize_intent_routing_content(content: dict[str, Any]) -> dict[str, Any]:
+    if content.get("status") == "success" and content.get("intent"):
+        content["fallback_required"] = False
+    if "should_use_tools" not in content:
+        content["should_use_tools"] = []
     return content
 
 

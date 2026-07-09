@@ -141,6 +141,36 @@ def test_transformers_backend_normalizes_successful_query_fallback_flag() -> Non
     assert response.content["fallback_required"] is False
 
 
+def test_transformers_backend_builds_intent_routing_prompt() -> None:
+    captured: dict[str, object] = {}
+
+    def fake_generator(prompt: str, request: LocalBackendRequest) -> str:
+        captured["prompt"] = prompt
+        captured["request"] = request
+        return (
+            '{"status":"success","intent":"disease_consultation","confidence":0.91,'
+            '"should_use_rag":true,"should_use_tools":["disease_agent"],'
+            '"reason":"livestock symptoms","fallback_required":false}'
+        )
+
+    backend = TransformersBackend(generator=fake_generator)
+    request = LocalBackendRequest(
+        prompt="calf diarrhea and fever",
+        schema_name="intent_routing",
+        endpoint="",
+        model="Qwen/Qwen2.5-0.5B-Instruct",
+    )
+
+    response = asyncio.run(backend.generate(request))
+
+    assert "Classify the livestock user question" in str(captured["prompt"])
+    assert "assistant_intro" in str(captured["prompt"])
+    assert response.status == "success"
+    assert response.provider == "transformers"
+    assert response.content["intent"] == "disease_consultation"
+    assert response.content["fallback_required"] is False
+
+
 def test_transformers_backend_accepts_chat_template_batch_encoding() -> None:
     class FakeTensor:
         def __init__(self, values: list[int]) -> None:
@@ -193,7 +223,7 @@ def test_transformers_backend_accepts_chat_template_batch_encoding() -> None:
     assert model.received_attention_mask is not None
 
 
-def test_transformers_backend_rejects_non_query_normalization_schema() -> None:
+def test_transformers_backend_rejects_unsupported_schema() -> None:
     backend = TransformersBackend(generator=lambda prompt, request: "{}")
     request = LocalBackendRequest(
         prompt="extract slots",
