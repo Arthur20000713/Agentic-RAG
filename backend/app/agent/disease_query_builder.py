@@ -48,7 +48,7 @@ class DiseaseQueryBuilder:
             self._merge_slots(facts, confirmed)
 
     def _merge_slots(self, facts: dict[str, Any], slots: dict[str, Any]) -> None:
-        for field in ("species", "duration_days", "temperature_c", "group_outbreak"):
+        for field in ("species", "duration_days", "temperature_c", "temperature_status", "group_outbreak"):
             value = slots.get(field)
             if value is not None:
                 facts[field] = value

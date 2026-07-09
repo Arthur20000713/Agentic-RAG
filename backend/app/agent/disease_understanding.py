@@ -54,6 +54,9 @@ def slots_from_understanding(
         age_stage=understanding.age_stage or fallback_slots.age_stage,
         symptoms=symptoms,
         temperature_c=understanding.temperature_c if understanding.temperature_c is not None else fallback_slots.temperature_c,
+        temperature_status=understanding.temperature_status
+        if understanding.temperature_status != "unknown"
+        else fallback_slots.temperature_status,
         duration_days=understanding.duration_days if understanding.duration_days is not None else fallback_slots.duration_days,
         group_outbreak=understanding.group_outbreak
         if understanding.group_outbreak is not None
@@ -198,14 +201,18 @@ def _normalize_understanding_payload(payload: dict[str, Any]) -> dict[str, Any]:
     if age_stage is not None:
         normalized["age_stage"] = str(age_stage)
 
-    symptoms = (
+    raw_symptom_candidates = (
         _list_field_values(payload.get("symptoms_normalized"))
         or _list_field_values(payload.get("symptoms"))
         or _list_field_values(payload.get("clinical_signs"))
     )
+    symptoms = _filter_non_symptom_context(raw_symptom_candidates)
     if symptoms:
         normalized["symptoms_raw"] = _list_field_values(payload.get("symptoms_raw")) or symptoms
         normalized["symptoms_normalized"] = symptoms
+    elif raw_symptom_candidates:
+        normalized["symptoms_raw"] = []
+        normalized["symptoms_normalized"] = []
 
     duration = payload.get("duration")
     duration_text = _field_value(payload, "duration_text") or _field_value(payload, "duration")
@@ -216,8 +223,10 @@ def _normalize_understanding_payload(payload: dict[str, Any]) -> dict[str, Any]:
         duration_days = duration.get("days") or duration.get("duration_days")
     if duration_days is None and isinstance(duration, (int, float, str)):
         duration_days = duration
+    if duration_days is None and duration_text is not None:
+        duration_days = duration_text
     if duration_days is not None:
-        parsed_duration_days = _coerce_number(duration_days)
+        parsed_duration_days = _coerce_duration_days(duration_days)
         if parsed_duration_days is not None:
             normalized["duration_days"] = parsed_duration_days
 
@@ -288,6 +297,29 @@ def _list_field_values(value: Any) -> list[str]:
         if item_value is not None:
             values.append(str(item_value))
     return _dedupe(values)
+
+
+def _filter_non_symptom_context(values: list[str]) -> list[str]:
+    return _dedupe([value for value in values if not _is_non_symptom_context(value)])
+
+
+def _is_non_symptom_context(value: str) -> bool:
+    normalized = value.strip().lower()
+    if not normalized:
+        return True
+    non_symptom_markers = {
+        "normal temperature",
+        "temperature normal",
+        "normal body temperature",
+        "body temperature normal",
+        "no fever",
+        "afebrile",
+        "unknown",
+        "none",
+    }
+    if normalized in non_symptom_markers:
+        return True
+    return any(token in normalized for token in {"体温正常", "正常体温", "没发烧", "没有发烧"})
 
 
 def _list_strings(value: Any) -> list[str]:
@@ -395,6 +427,46 @@ def _coerce_number(value: Any) -> float | None:
         return None
     match = re.search(r"-?\d+(?:\.\d+)?", value)
     return float(match.group(0)) if match else None
+
+
+def _coerce_duration_days(value: Any) -> float | None:
+    number = _coerce_number(value)
+    if number is not None:
+        return number
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    if "半天" in normalized or "half day" in normalized:
+        return 0.5
+    chinese_days = {
+        "一": 1,
+        "二": 2,
+        "两": 2,
+        "三": 3,
+        "四": 4,
+        "五": 5,
+        "六": 6,
+        "七": 7,
+        "八": 8,
+        "九": 9,
+        "十": 10,
+    }
+    for token, days in chinese_days.items():
+        if f"{token}天" in normalized:
+            return float(days)
+    english_days = {
+        "one day": 1,
+        "two days": 2,
+        "three days": 3,
+        "four days": 4,
+        "five days": 5,
+        "six days": 6,
+        "seven days": 7,
+    }
+    for token, days in english_days.items():
+        if token in normalized:
+            return float(days)
+    return None
 
 
 def _coerce_confidence(value: Any) -> float | None:

@@ -237,3 +237,44 @@ def test_disease_agent_normalizes_alternate_deepseek_field_names() -> None:
     assert payload["understanding"]["appetite_status"] == "reduced"
     assert "\u5c0f\u725b\u54b3\u55fd\u53d1\u70e740.5\u5ea6" in payload["understanding"]["source_spans"]
     assert state.extracted_slots["group_outbreak"] is True
+
+
+def test_disease_agent_coerces_normal_temperature_and_duration_text_without_false_symptom() -> None:
+    settings = Settings(
+        disease_llm={"enabled": True, "shadow_mode": False, "allow_rule_fallback": False},
+        primary_llm={"enabled": True, "provider": "deepseek", "model": "deepseek-v4-flash", "base_url": "https://api.deepseek.com"},
+    )
+    llm = FakePrimaryLLM(
+        {
+            "status": "success",
+            "schema_name": "disease_case_understanding",
+            "species": "sheep",
+            "symptoms_normalized": ["normal temperature"],
+            "duration_text": "\u4e00\u5929\u4e86",
+            "temperature_status": "normal",
+            "group_outbreak": False,
+            "confidence": 0.8,
+        }
+    )
+    state = MultiAgentState(
+        session_id="s1",
+        user_query="\u4e00\u5929\u4e86\uff0c\u4f53\u6e29\u6b63\u5e38",
+        normalized_query="[species=sheep] [symptom=low_appetite]",
+        intent="disease_consultation",
+    )
+
+    DiseaseAgent(settings=settings, primary_llm_client=llm).run(state)
+
+    payload = state.tool_results["disease_understanding"]
+    assert payload["fallback_used"] is False
+    assert payload["understanding"]["duration_days"] == 1
+    assert payload["understanding"]["temperature_status"] == "normal"
+    assert payload["understanding"]["temperature_c"] is None
+    assert "normal temperature" not in payload["understanding"]["symptoms_normalized"]
+    assert state.extracted_slots["duration_days"] == 1
+    assert state.extracted_slots["temperature_status"] == "normal"
+    assert state.extracted_slots["temperature_c"] is None
+    assert "normal temperature" not in state.extracted_slots["symptoms"]
+    assert "low_appetite" in state.extracted_slots["symptoms"]
+    assert state.disease_assessment is not None
+    assert state.disease_assessment["status"] == "success"

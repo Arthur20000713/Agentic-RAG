@@ -10,6 +10,7 @@ class DiseaseSlots(BaseModel):
     age_stage: str | None = None
     symptoms: list[str] = Field(default_factory=list)
     temperature_c: float | None = None
+    temperature_status: str | None = None
     duration_days: float | None = None
     group_outbreak: bool | None = None
 
@@ -37,6 +38,7 @@ class SlotExtractor:
             age_stage=self._extract_age_stage(query),
             symptoms=symptoms,
             temperature_c=self._extract_tag_float(query, "temperature_c") or self._extract_temperature(query),
+            temperature_status=self._extract_tag_value(query, "temperature_status") or self._extract_temperature_status(query),
             duration_days=self._extract_tag_float(query, "duration_days") or self._extract_duration_days(query),
             group_outbreak=self._extract_group_outbreak_with_tag(query),
         )
@@ -88,8 +90,6 @@ class SlotExtractor:
         return None
 
     def _extract_temperature(self, query: str) -> float | None:
-        if "正常体温" in query or "体温正常" in query or "没发烧" in query or "没有发烧" in query:
-            return 39.0
         match = re.search(r"体温\s*(\d+(?:\.\d+)?)\s*(?:度|℃|c|C)?", query)
         if match:
             return float(match.group(1))
@@ -98,6 +98,13 @@ class SlotExtractor:
             value = float(match.group(1))
             if 35 <= value <= 43:
                 return value
+        return None
+
+    def _extract_temperature_status(self, query: str) -> str | None:
+        if "正常体温" in query or "体温正常" in query or "没发烧" in query or "没有发烧" in query:
+            return "normal"
+        if "发烧" in query or "发热" in query:
+            return "fever"
         return None
 
     def _extract_duration_days(self, query: str) -> float | None:
@@ -124,7 +131,7 @@ def build_follow_up_questions(slots: DiseaseSlots) -> list[str]:
     questions: list[str] = []
     if slots.duration_days is None:
         questions.append("症状已经持续多久了？")
-    if slots.temperature_c is None:
+    if slots.temperature_c is None and slots.temperature_status not in {"normal", "fever", "low"}:
         questions.append("目前体温是多少？")
     if slots.group_outbreak is None:
         questions.append("是否有群体发病或多头同时出现类似症状？")

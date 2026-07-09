@@ -31,6 +31,7 @@ class DiseaseRiskEvaluator:
         age_stage: str | None = None,
         symptoms: list[str] | None = None,
         temperature_c: float | None = None,
+        temperature_status: str | None = None,
         duration_days: float | None = None,
         group_outbreak: bool | None = None,
     ) -> DiseaseRiskResult:
@@ -39,6 +40,7 @@ class DiseaseRiskEvaluator:
             species=species,
             symptoms=symptoms,
             temperature_c=temperature_c,
+            temperature_status=temperature_status,
             duration_days=duration_days,
             group_outbreak=group_outbreak,
         )
@@ -58,7 +60,9 @@ class DiseaseRiskEvaluator:
 
         has_emergency_symptom = bool(normalized_symptoms & emergency_symptoms)
         has_high_risk_symptom = bool(normalized_symptoms & high_risk_symptoms)
-        has_fever = temperature_c is not None and temperature_c >= float(self.rules["fever_threshold_c"])
+        has_fever = (temperature_c is not None and temperature_c >= float(self.rules["fever_threshold_c"])) or (
+            temperature_status == "fever"
+        )
         has_long_duration = duration_days is not None and duration_days >= float(self.rules["high_duration_days"])
 
         if group_outbreak and has_emergency_symptom:
@@ -95,6 +99,7 @@ class DiseaseRiskEvaluator:
         species: str | None,
         symptoms: list[str],
         temperature_c: float | None,
+        temperature_status: str | None,
         duration_days: float | None,
         group_outbreak: bool | None,
     ) -> list[str]:
@@ -107,6 +112,8 @@ class DiseaseRiskEvaluator:
         }
         missing: list[str] = []
         for field in self.rules["required_slots"]:
+            if field == "temperature_c" and temperature_status in {"normal", "fever", "low"}:
+                continue
             value = values[field]
             if value is None or value == "" or value == []:
                 missing.append(field)
@@ -122,4 +129,3 @@ class DiseaseRiskEvaluator:
             "emergency_symptoms": data.get("emergency_symptoms", []),
             "high_risk_symptoms": data.get("high_risk_symptoms", []),
         }
-

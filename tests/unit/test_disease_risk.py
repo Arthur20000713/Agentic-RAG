@@ -43,3 +43,15 @@ def test_high_risk_for_fever_and_digestive_symptoms() -> None:
     assert result.risk_level == "high"
     assert result.need_vet is True
 
+
+def test_normal_temperature_status_satisfies_temperature_slot_without_numeric_value() -> None:
+    result = DiseaseRiskEvaluator().evaluate(
+        species="sheep",
+        symptoms=["low_appetite"],
+        temperature_status="normal",
+        duration_days=1,
+        group_outbreak=False,
+    )
+
+    assert result.status == "success"
+    assert "temperature_c" not in result.missing_info

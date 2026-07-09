@@ -32,5 +32,6 @@ def test_slot_extractor_understands_plain_follow_up_answers() -> None:
     slots = SlotExtractor().extract("1天了，正常体温，就一只这样")
 
     assert slots.duration_days == 1
-    assert slots.temperature_c == 39.0
+    assert slots.temperature_c is None
+    assert slots.temperature_status == "normal"
     assert slots.group_outbreak is False

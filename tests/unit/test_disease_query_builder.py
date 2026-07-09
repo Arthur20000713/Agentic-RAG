@@ -57,3 +57,19 @@ def test_disease_query_builder_falls_back_to_session_confirmed_fields() -> None:
     assert "diarrhea" in result.query
     assert "depression" in result.query
     assert "duration_days:2" in result.query
+
+
+def test_disease_query_builder_uses_temperature_status_when_numeric_temperature_is_missing() -> None:
+    state = MultiAgentState(session_id="s3", user_query="sheep stopped eating", intent="disease_consultation")
+    state.extracted_slots = {
+        "species": "sheep",
+        "symptoms": ["low_appetite"],
+        "duration_days": 1,
+        "temperature_status": "normal",
+        "group_outbreak": False,
+    }
+
+    result = DiseaseQueryBuilder().build(state)
+
+    assert "temperature_status:normal" in result.query
+    assert "temperature_c:" not in result.query

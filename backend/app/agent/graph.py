@@ -154,7 +154,7 @@ def merge_session_slots(query: str, context: SessionContextData) -> str:
             continue
         parts.append(_symptom_label(str(symptom)))
         parts.append(f"[symptom={symptom}]")
-    for field in ("duration_days", "temperature_c", "group_outbreak"):
+    for field in ("duration_days", "temperature_c", "temperature_status", "group_outbreak"):
         if field in fields and fields[field] is not None:
             parts.append(f"[{field}={_context_tag_value(fields[field])}]")
     return " ".join(part for part in parts if part)
@@ -432,7 +432,7 @@ def _maybe_write_user_confirmed_facts(
 def _build_user_confirmed_observation_fact(state: MultiAgentState, animal_id: str) -> MemoryFact | None:
     slots = state.extracted_slots or {}
     value: dict[str, object] = {}
-    for field in ("species", "age_stage", "duration_days", "temperature_c", "group_outbreak"):
+    for field in ("species", "age_stage", "duration_days", "temperature_c", "temperature_status", "group_outbreak"):
         slot_value = slots.get(field)
         if slot_value is not None:
             value[field] = slot_value
@@ -484,7 +484,10 @@ def _save_disease_context(session_context_service: SessionContextService, state:
         "species": "user_confirmed" if slots.get("species") else "missing",
         "symptoms": "user_confirmed" if slots.get("symptoms") else "missing",
         "duration_days": "user_confirmed" if slots.get("duration_days") is not None else "missing",
-        "temperature_c": "user_confirmed" if slots.get("temperature_c") is not None else "missing",
+        "temperature_c": "user_confirmed"
+        if slots.get("temperature_c") is not None or slots.get("temperature_status") in {"normal", "fever", "low"}
+        else "missing",
+        "temperature_status": "user_confirmed" if slots.get("temperature_status") in {"normal", "fever", "low"} else "missing",
         "group_outbreak": "user_confirmed" if slots.get("group_outbreak") is not None else "missing",
     }
     if disease_assessment.get("risk_level"):
@@ -510,7 +513,7 @@ def _save_disease_context(session_context_service: SessionContextService, state:
 
 def _confirmed_case_fields(slots: dict) -> dict[str, object]:
     confirmed: dict[str, object] = {}
-    for field in ("species", "age_stage", "duration_days", "temperature_c", "group_outbreak"):
+    for field in ("species", "age_stage", "duration_days", "temperature_c", "temperature_status", "group_outbreak"):
         value = slots.get(field)
         if value is not None:
             confirmed[field] = value
