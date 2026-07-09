@@ -35,12 +35,12 @@ class FakeReasoningClient:
             return {
                 "status": "success",
                 "schema_name": "disease_case_understanding",
+                "case_summary": "Calf has diarrhea and reduced appetite.",
                 "species": "cattle",
-                "symptoms_raw": ["diarrhea"],
-                "symptoms_normalized": ["diarrhea"],
-                "temperature_status": "fever",
-                "appetite_status": "reduced",
-                "group_outbreak": False,
+                "observed_signs": ["diarrhea", "reduced appetite"],
+                "context_factors": ["fever mentioned"],
+                "explicit_user_facts": {"group_context": "single animal"},
+                "information_gaps": ["feces appearance"],
                 "confidence": 0.9,
             }
         ref = request.context["evidence_gate"]["evidence_refs"][0]
@@ -49,6 +49,7 @@ class FakeReasoningClient:
             "schema_name": "disease_reasoning",
             "contributing_factors": [{"text": "Digestive disturbance may be relevant.", "evidence_refs": [ref]}],
             "uncertainties": ["Remote consultation cannot confirm a cause."],
+            "follow_up_questions": ["What does the feces look like and has feed changed recently?"],
             "safe_actions": [{"text": "Monitor hydration and isolate if condition worsens.", "evidence_refs": [ref]}],
             "vet_triggers": [{"text": "Contact a vet if fever or depression appears.", "evidence_refs": [ref]}],
             "not_diagnosis_notice": "This is not a diagnosis.",
@@ -191,7 +192,7 @@ def test_general_qa_graph_policy_no_answer_keeps_rag_observable_without_contexts
     assert state.verification_result["passed"] is True
 
 
-def test_disease_graph_follow_up_skips_rag_and_renders_questions() -> None:
+def test_disease_graph_uses_rag_without_fixed_slot_follow_up() -> None:
     state = asyncio.run(
         run_disease_graph(
             "牛拉稀了怎么办？",
@@ -202,13 +203,19 @@ def test_disease_graph_follow_up_skips_rag_and_renders_questions() -> None:
 
     assert state.intent == "disease_consultation"
     assert state.disease_assessment is not None
-    assert state.disease_assessment["status"] == "follow_up"
-    assert "livestock_rag_search" not in state.tool_results
+    assert state.disease_assessment["status"] == "rag_ready"
+    assert "livestock_rag_search" in state.tool_results
+    assert "slot_extractor" not in state.tool_results
+    assert "disease_slot_router" not in state.tool_results
     assert state.final_answer is not None
-    assert "请先补充以下信息" in state.final_answer
+    assert "症状已经持续多久" not in state.final_answer
+    assert "目前体温是多少" not in state.final_answer
     assert [item["node"] for item in state.agent_trace] == [
         "supervisor",
         "disease_agent",
+        "rag_agent",
+        "disease_evidence_gate",
+        "verifier_agent",
         "safety_agent",
         "response_agent",
     ]
@@ -263,14 +270,14 @@ def test_disease_graph_high_risk_uses_rag_verifier_safety_response() -> None:
 
     assert state.intent == "disease_consultation"
     assert state.disease_assessment is not None
-    assert state.disease_assessment["risk_level"] == "high"
+    assert state.disease_assessment["status"] == "rag_ready"
     assert state.evidence_status == "success"
     assert state.verification_result is not None
     assert state.verification_result["passed"] is True
     assert state.safety_result is not None
     assert state.safety_result["passed"] is True
     assert state.final_answer is not None
-    assert "初步风险等级：high" in state.final_answer
+    assert "初步风险等级" not in state.final_answer
     assert "参考依据" in state.final_answer
     assert "livestock_rag_search" in state.tool_results
     assert [item["node"] for item in state.agent_trace] == [
@@ -347,6 +354,7 @@ def test_disease_graph_reasoning_takeover_replaces_rule_risk_draft_when_enabled(
     assert state.final_answer is not None
     assert "Digestive disturbance may be relevant." in state.final_answer
     assert "Monitor hydration" in state.final_answer
+    assert "feces look like" in state.final_answer
     assert "rag://" in state.final_answer
     assert "初步风险等级" not in state.final_answer
     assert state.verification_result is not None
@@ -355,7 +363,7 @@ def test_disease_graph_reasoning_takeover_replaces_rule_risk_draft_when_enabled(
     assert state.safety_result["passed"] is True
 
 
-def test_disease_graph_uses_router_slot_extraction_without_rag_for_follow_up() -> None:
+def test_disease_graph_does_not_use_router_slot_extraction() -> None:
     settings = Settings(
         v3={"enabled": True},
         model_router={"enabled": True, "shadow_mode": False, "allow_low_risk_takeover": True},
@@ -366,16 +374,16 @@ def test_disease_graph_uses_router_slot_extraction_without_rag_for_follow_up() -
         run_disease_graph(
             "犊牛腹泻了怎么办？",
             rag_client=FakeRagServerClient(),
-            session_id="s_disease_slot_router",
+            session_id="s_disease_no_slot_router",
             settings=settings,
         )
     )
 
     assert state.disease_assessment is not None
-    assert state.disease_assessment["status"] == "follow_up"
-    assert "livestock_rag_search" not in state.tool_results
-    assert state.tool_results["disease_slot_router"]["route_decision"]["selected_model"] == "local_small"
-    assert state.tool_results["disease_slot_router"]["fallback_used"] is False
+    assert state.disease_assessment["status"] == "rag_ready"
+    assert "livestock_rag_search" in state.tool_results
+    assert "disease_slot_router" not in state.tool_results
+    assert "slot_extractor" not in state.tool_results
     assert state.final_answer is not None
 
 

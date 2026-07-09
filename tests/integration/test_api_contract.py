@@ -96,8 +96,7 @@ def test_chat_debug_payload_summarizes_disease_llm_without_raw_payload() -> None
     state.tool_results["disease_understanding"] = {
         "fallback_used": False,
         "fallback_reason": None,
-        "applied_to_slots": True,
-        "understanding": {"species": "cattle", "source_spans": ["raw user text"]},
+        "understanding": {"case_summary": "cattle disease case", "source_spans": ["raw user text"]},
     }
     state.tool_results["disease_evidence_gate"] = {
         "allowed": True,
@@ -118,7 +117,6 @@ def test_chat_debug_payload_summarizes_disease_llm_without_raw_payload() -> None
     assert disease_debug["enabled"] is True
     assert disease_debug["shadow_mode"] is False
     assert disease_debug["understanding"]["status"] == "success"
-    assert disease_debug["understanding"]["applied_to_slots"] is True
     assert disease_debug["evidence_gate"]["allowed"] is True
     assert disease_debug["evidence_gate"]["evidence_ref_count"] == 1
     assert disease_debug["reasoning"]["status"] == "success"
@@ -220,9 +218,8 @@ def test_chat_api_disease_follow_up_uses_session_context_and_plain_answers() -> 
 
     assert first["code"] == 0
     assert first["data"]["intent"] == "disease_consultation"
-    assert "可能" in first["data"]["answer"]
-    assert "请先补充以下信息" in first["data"]["answer"]
-    assert "livestock_rag_search" not in first["data"]["tools_used"]
+    assert "请先补充以下信息" not in first["data"]["answer"]
+    assert "livestock_rag_search" in first["data"]["tools_used"]
     assert second["code"] == 0
     assert second["data"]["intent"] == "disease_consultation"
     assert "目前体温是多少" not in second["data"]["answer"]
@@ -238,7 +235,7 @@ def test_chat_api_model_router_keeps_plain_follow_up_in_disease_context() -> Non
             "enabled": True,
             "shadow_mode": False,
             "allow_low_risk_takeover": True,
-            "takeover_task_types": ["intent_routing", "structured_extraction"],
+            "takeover_task_types": ["intent_routing"],
         },
         local_model={"enabled": True},
     )
@@ -259,8 +256,9 @@ def test_chat_api_model_router_keeps_plain_follow_up_in_disease_context() -> Non
     assert first["data"]["intent"] == "disease_consultation"
     assert second["code"] == 0
     assert second["data"]["intent"] == "disease_consultation"
-    assert "livestock_rag_search" not in second["data"]["tools_used"]
-    assert "slot_extractor" in second["data"]["tools_used"]
+    assert "livestock_rag_search" in second["data"]["tools_used"]
+    assert "slot_extractor" not in second["data"]["tools_used"]
+    assert "disease_slot_router" not in second["data"]["tools_used"]
 
 
 def test_chat_api_product_config_uses_v3_local_structured_takeover_path() -> None:

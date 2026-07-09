@@ -310,12 +310,12 @@ def _check_stage_d() -> list[str]:
             failures.append(f"query_normalizer.py is missing required text: {required_text}")
         if required_text not in normalizer_tests:
             failures.append(f"test_query_normalizer.py is missing required coverage text: {required_text}")
-    for required_text in ("extract_slots_with_router", "disease_slot_router", "ModelRouter", "fallback_used"):
-        if required_text not in disease_agent:
-            failures.append(f"disease_agent.py is missing required router slot text: {required_text}")
-    for required_text in ("disease_slot_router", "fallback_used", "local_small", "selected_model"):
+    for removed_text in ("extract_slots_with_router", "disease_slot_router", "slot_extractor"):
+        if removed_text in disease_agent:
+            failures.append(f"disease_agent.py still contains removed slot extraction text: {removed_text}")
+    for required_text in ("rag_ready", "without_fixed_slot_follow_up", "does_not_block_rag_query"):
         if required_text not in disease_tests:
-            failures.append(f"test_disease_agent.py is missing required router slot coverage text: {required_text}")
+            failures.append(f"test_disease_agent.py is missing dynamic disease RAG coverage text: {required_text}")
     for required_text in ("render_measurement_json", "measurement_json_renderer", "ModelRouter", "report_json"):
         if required_text not in measurement_agent:
             failures.append(f"measurement_agent.py is missing required JSON renderer text: {required_text}")

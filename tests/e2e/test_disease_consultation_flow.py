@@ -6,7 +6,7 @@ from backend.app.agent.workflow import run_disease_consultation
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
 
 
-def test_disease_consultation_follow_up_without_rag_call() -> None:
+def test_disease_consultation_uses_rag_without_fixed_follow_up() -> None:
     state = asyncio.run(
         run_disease_consultation(
             "牛拉稀了怎么办？",
@@ -16,12 +16,13 @@ def test_disease_consultation_follow_up_without_rag_call() -> None:
     )
 
     assert state.intent == "disease_consultation"
-    assert state.need_follow_up is True
-    assert len(state.follow_up_questions) <= 3
-    assert "livestock_rag_search" not in state.tool_results
+    assert state.need_follow_up is False
+    assert state.follow_up_questions == []
+    assert "livestock_rag_search" in state.tool_results
+    assert "slot_extractor" not in state.tool_results
 
 
-def test_disease_consultation_risk_and_rag_branch() -> None:
+def test_disease_consultation_rag_branch_without_rule_risk() -> None:
     state = asyncio.run(
         run_disease_consultation(
             "犊牛腹泻两天，体温40.2度，精神差，不吃草，没有群体发病",
@@ -31,11 +32,10 @@ def test_disease_consultation_risk_and_rag_branch() -> None:
     )
 
     assert state.need_follow_up is False
-    assert state.risk_level == "high"
-    assert "disease_risk_evaluator" in state.tool_results
+    assert state.risk_level is None
+    assert "disease_risk_evaluator" not in state.tool_results
     assert "livestock_rag_search" in state.tool_results
     assert state.final_answer is not None
-    assert "兽医" in state.final_answer
     assert "参考依据" in state.final_answer
 
 
@@ -52,4 +52,3 @@ def test_disease_consultation_final_safety_blocks_unsafe_draft() -> None:
     assert state.final_answer is not None
     assert "5 mg/kg" not in state.final_answer
     assert "不能提供具体药物剂量" in state.final_answer
-

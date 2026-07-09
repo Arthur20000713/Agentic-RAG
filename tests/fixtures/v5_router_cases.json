@@ -20,8 +20,8 @@
     }
   },
   {
-    "case_id": "V5_SLOT_TAKEOVER",
-    "task_type": "structured_extraction",
+    "case_id": "V5_INTENT_ROUTING_TAKEOVER",
+    "task_type": "intent_routing",
     "safety_level": "S2",
     "requires_final_answer": false,
     "expected": {

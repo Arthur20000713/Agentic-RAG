@@ -22,7 +22,6 @@ model_router:
   allow_low_risk_takeover: false
   takeover_task_types:
     - query_normalization
-    - structured_extraction
     - measurement_analysis
     - summarization
   blocked_safety_levels:

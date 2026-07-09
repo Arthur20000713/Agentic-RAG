@@ -123,91 +123,91 @@
     "case_id": "D001",
     "category": "disease_consultation",
     "query": "calf has a health problem",
-    "expected": {"intent": "disease_consultation", "rag_call": false, "follow_up": true}
+    "expected": {"intent": "disease_consultation", "rag_call": true, "citation": true, "follow_up": false}
   },
   {
     "case_id": "D002",
     "category": "disease_consultation",
     "query": "young cattle seems abnormal",
-    "expected": {"intent": "disease_consultation", "rag_call": false, "follow_up": true}
+    "expected": {"intent": "disease_consultation", "rag_call": true, "citation": true, "follow_up": false}
   },
   {
     "case_id": "D003",
     "category": "disease_consultation",
     "query": "cow may be sick",
-    "expected": {"intent": "disease_consultation", "rag_call": false, "follow_up": true}
+    "expected": {"intent": "disease_consultation", "rag_call": true, "citation": true, "follow_up": false}
   },
   {
     "case_id": "D004",
     "category": "disease_consultation",
     "query": "animal condition needs advice",
-    "expected": {"intent": "disease_consultation", "rag_call": false, "follow_up": true}
+    "expected": {"intent": "disease_consultation", "rag_call": true, "citation": true, "follow_up": false}
   },
   {
     "case_id": "D005",
     "category": "disease_consultation",
     "query": "need disease consultation but details are missing",
-    "expected": {"intent": "disease_consultation", "rag_call": false, "follow_up": true}
+    "expected": {"intent": "disease_consultation", "rag_call": true, "citation": true, "follow_up": false}
   },
   {
     "case_id": "D006",
     "category": "disease_consultation",
     "query": "犊牛腹泻两天，体温40.2度，精神差，不吃草，没有群体发病",
-    "expected": {"intent": "disease_consultation", "rag_call": true, "citation": true, "follow_up": false, "risk_level": "high"}
+    "expected": {"intent": "disease_consultation", "rag_call": true, "citation": true, "follow_up": false}
   },
   {
     "case_id": "D007",
     "category": "disease_consultation",
     "query": "犊牛腹泻两天，体温40.2度，精神差，不吃草，没有群体发病",
-    "expected": {"intent": "disease_consultation", "rag_call": true, "citation": true, "follow_up": false, "risk_level": "high"}
+    "expected": {"intent": "disease_consultation", "rag_call": true, "citation": true, "follow_up": false}
   },
   {
     "case_id": "D008",
     "category": "disease_consultation",
     "query": "犊牛腹泻两天，体温40.2度，精神差，不吃草，没有群体发病",
-    "expected": {"intent": "disease_consultation", "rag_call": true, "citation": true, "follow_up": false, "risk_level": "high"}
+    "expected": {"intent": "disease_consultation", "rag_call": true, "citation": true, "follow_up": false}
   },
   {
     "case_id": "D009",
     "category": "disease_consultation",
     "query": "犊牛腹泻两天，体温40.2度，精神差，不吃草，没有群体发病",
-    "expected": {"intent": "disease_consultation", "rag_call": true, "citation": true, "follow_up": false, "risk_level": "high"}
+    "expected": {"intent": "disease_consultation", "rag_call": true, "citation": true, "follow_up": false}
   },
   {
     "case_id": "D010",
     "category": "disease_consultation",
     "query": "犊牛腹泻两天，体温40.2度，精神差，不吃草，没有群体发病",
-    "expected": {"intent": "disease_consultation", "rag_call": true, "citation": true, "follow_up": false, "risk_level": "high"}
+    "expected": {"intent": "disease_consultation", "rag_call": true, "citation": true, "follow_up": false}
   },
   {
     "case_id": "D011",
     "category": "disease_consultation",
     "query": "犊牛腹泻两天，体温40.2度，精神差，不吃草，没有群体发病",
-    "expected": {"intent": "disease_consultation", "rag_call": true, "citation": true, "follow_up": false, "risk_level": "high"}
+    "expected": {"intent": "disease_consultation", "rag_call": true, "citation": true, "follow_up": false}
   },
   {
     "case_id": "D012",
     "category": "disease_consultation",
     "query": "犊牛腹泻两天，体温40.2度，精神差，不吃草，没有群体发病",
-    "expected": {"intent": "disease_consultation", "rag_call": true, "citation": true, "follow_up": false, "risk_level": "high"}
+    "expected": {"intent": "disease_consultation", "rag_call": true, "citation": true, "follow_up": false}
   },
   {
     "case_id": "D013",
     "category": "disease_consultation",
     "query": "犊牛腹泻两天，体温40.2度，精神差，不吃草，没有群体发病",
-    "expected": {"intent": "disease_consultation", "rag_call": true, "citation": true, "follow_up": false, "risk_level": "high"}
+    "expected": {"intent": "disease_consultation", "rag_call": true, "citation": true, "follow_up": false}
   },
   {
     "case_id": "D014",
     "category": "disease_consultation",
     "query": "犊牛腹泻两天，体温40.2度，精神差，不吃草，没有群体发病",
-    "expected": {"intent": "disease_consultation", "rag_call": true, "citation": true, "follow_up": false, "risk_level": "high"}
+    "expected": {"intent": "disease_consultation", "rag_call": true, "citation": true, "follow_up": false}
   },
   {
     "case_id": "D015",
     "category": "disease_consultation",
     "query": "犊牛腹泻两天，体温40.2度，精神差，不吃草，没有群体发病",
-    "expected": {"intent": "disease_consultation", "rag_call": true, "citation": true, "follow_up": false, "risk_level": "high"}
+    "expected": {"intent": "disease_consultation", "rag_call": true, "citation": true, "follow_up": false}
   },
   {
     "case_id": "R001",

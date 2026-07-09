@@ -119,7 +119,7 @@ def test_multi_agent_eval_runner_computes_route_path_safety_and_trace_metrics() 
                     "case_id": "MA_FOLLOW_UP",
                     "category": "disease_consultation",
                     "query": "牛拉稀了怎么办？",
-                    "expected": {"intent": "disease_consultation", "rag_call": False, "follow_up": True},
+                    "expected": {"intent": "disease_consultation", "rag_call": True, "follow_up": False, "citation": True},
                 },
                 {
                     "case_id": "MA_SAFETY",

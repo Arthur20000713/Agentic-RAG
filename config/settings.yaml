@@ -23,7 +23,6 @@ model_router:
   takeover_task_types:
     - intent_routing
     - query_normalization
-    - structured_extraction
     - measurement_analysis
     - summarization
   blocked_safety_levels:

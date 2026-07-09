@@ -16,9 +16,9 @@ def test_model_route_log_repository_persists_shadow_decision() -> None:
         local_model={"enabled": True},
     )
     route_request = ModelRouteRequest(
-        task_type="structured_extraction",
+        task_type="measurement_analysis",
         safety_level="S1",
-        user_query="extract measurement slots",
+        user_query="analyze measurement structure",
         metadata={"animal_id": "yak_032"},
     )
     route_decision = ModelRouter(settings).route(route_request)
@@ -38,7 +38,7 @@ def test_model_route_log_repository_persists_shadow_decision() -> None:
     assert row is not None
     assert row["session_id"] == "s_shadow"
     assert row["request_id"] == "req_shadow"
-    assert row["task_type"] == "structured_extraction"
+    assert row["task_type"] == "measurement_analysis"
     assert row["safety_level"] == "S1"
     assert row["selected_model"] == "primary"
     assert row["route_mode"] == "shadow"

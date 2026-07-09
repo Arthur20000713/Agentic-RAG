@@ -59,7 +59,7 @@ def _route_summary(trace_items: list[dict]) -> dict:
     route_nodes = [
         item
         for item in trace_items
-        if item.get("node") in {"model_router_shadow", "disease_slot_router", "measurement_json_renderer"}
+        if item.get("node") in {"model_router_shadow", "measurement_json_renderer"}
     ]
     if not route_nodes:
         return {"status": "not_available"}
