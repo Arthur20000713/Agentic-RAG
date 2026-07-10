@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import asdict
 from typing import Any
 from uuid import uuid4
 
 from backend.app.agent.direct_answer_agent import DirectAnswerAgent, fallback_direct_answer
 from backend.app.agent.disease_agent import DiseaseAgent
-from backend.app.agent.disease_evidence_gate import DiseaseEvidenceGate
-from backend.app.agent.disease_reasoning import DiseaseReasoningAgent
+from backend.app.agent.grounded_answer_agent import GroundedAnswerAgent
 from backend.app.agent.measurement_agent import MeasurementAgent
 from backend.app.agent.rag_agent import RagAgent
 from backend.app.agent.rag_answer_policy import (
@@ -25,13 +23,11 @@ from backend.app.agent.verifier_agent import VerifierAgent
 from backend.app.core.config import Settings
 from backend.app.integrations.rag_server.base import RagServerClient
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
-from backend.app.model.answer_generator import AnswerGenerator
 from backend.app.model.base import BaseModelClient
 from backend.app.model.intent_router import IntentRoutingResult, route_intent_with_model
 from backend.app.model.query_normalizer import normalize_query_with_router
 from backend.app.model.router import ModelRouteRequest, ModelRouter, ModelTaskType
 from backend.app.schemas.measurement import MeasurementInput
-from backend.app.schemas.rag_server import RagSearchResult
 from backend.app.services.feature_flag_service import FeatureFlagService
 from backend.app.services.memory_service import MemoryEvent, MemoryFact, MemoryService, build_measurement_memory_fact
 from backend.app.services.session_context_service import SessionContextData, SessionContextService
@@ -61,7 +57,7 @@ async def run_general_qa_graph(
     await RagAgent(rag_client or FakeRagServerClient()).run(state)
     policy = _apply_rag_answer_policy(state)
     if policy.should_use_retrieved_contexts:
-        _compose_rag_draft(state)
+        await GroundedAnswerAgent(settings=settings, primary_llm_client=primary_llm_client).run(state)
     VerifierAgent().verify(state)
     SafetyAgent().check(state)
     ResponseAgent().render(state)
@@ -107,31 +103,10 @@ async def run_disease_graph(
         settings=settings,
     )
     if state.rag_query:
-        disease_draft = state.draft_answer or ""
         await RagAgent(rag_client or FakeRagServerClient()).run(state)
-        gate_result = DiseaseEvidenceGate().evaluate(state)
-        state.tool_results["disease_evidence_gate"] = asdict(gate_result)
-        state.agent_trace.append(
-            {
-                "node": "disease_evidence_gate",
-                "status": "passed" if gate_result.allowed else "blocked",
-                "allowed": gate_result.allowed,
-                "error_code": gate_result.error_code,
-                "evidence_ref_count": len(gate_result.evidence_refs),
-                "latency_ms": 0,
-            }
-        )
-        DiseaseReasoningAgent(settings=settings, primary_llm_client=primary_llm_client).run(state)
-        if _disease_reasoning_takeover_enabled(settings) and _compose_disease_reasoning_draft(state):
-            pass
-        elif gate_result.allowed:
-            _compose_rag_draft(state, prefix=disease_draft)
-        else:
-            state.draft_answer = (
-                f"{disease_draft}\n\n"
-                "当前检索结果缺少可追溯来源，不能基于证据展开疾病分析。"
-                "请补充更多现场信息，或联系兽医进行判断。"
-            )
+        policy = _apply_rag_answer_policy(state)
+        if policy.should_use_retrieved_contexts:
+            await GroundedAnswerAgent(settings=settings, primary_llm_client=primary_llm_client).run(state)
         if unsafe_draft_for_test is not None:
             state.draft_answer = unsafe_draft_for_test
         VerifierAgent().verify(state)
@@ -185,13 +160,6 @@ async def run_measurement_graph(
     return state
 
 
-def _compose_rag_draft(state: MultiAgentState, *, prefix: str | None = None) -> None:
-    rag_result = state.tool_results.get("livestock_rag_search")
-    if isinstance(rag_result, dict):
-        evidence_answer = AnswerGenerator().compose_with_citations(RagSearchResult.model_validate(rag_result))
-        state.draft_answer = f"{prefix}\n\n{evidence_answer}" if prefix else evidence_answer
-
-
 async def _compose_direct_draft(
     state: MultiAgentState,
     *,
@@ -222,48 +190,6 @@ def _apply_rag_answer_policy(state: MultiAgentState) -> RagAnswerPolicyDecision:
         state.retrieved_contexts.clear()
         state.draft_answer = SAFETY_REFUSAL_TEXT
     return policy
-
-
-def _disease_reasoning_takeover_enabled(settings: Settings | None) -> bool:
-    return bool(settings and settings.disease_llm.enabled and not settings.disease_llm.shadow_mode)
-
-
-def _compose_disease_reasoning_draft(state: MultiAgentState) -> bool:
-    record = state.tool_results.get("disease_reasoning")
-    if not isinstance(record, dict) or record.get("status") != "success" or not isinstance(record.get("reasoning"), dict):
-        return False
-    reasoning = record["reasoning"]
-    lines = ["以下内容基于已检索到的资料整理，不能替代兽医现场判断。"]
-    _append_reasoning_section(lines, "可能相关因素", reasoning.get("contributing_factors") or [])
-    if reasoning.get("uncertainties"):
-        lines.append("仍需确认：")
-        lines.extend(f"- {item}" for item in reasoning["uncertainties"])
-    if reasoning.get("follow_up_questions"):
-        lines.append("建议继续确认：")
-        lines.extend(f"- {item}" for item in reasoning["follow_up_questions"])
-    _append_reasoning_section(lines, "可先做的安全处理", reasoning.get("safe_actions") or [])
-    _append_reasoning_section(lines, "需要联系兽医的情况", reasoning.get("vet_triggers") or [])
-    state.draft_answer = "\n".join(lines)
-    state.tool_results["disease_reasoning_takeover"] = {"applied": True}
-    return True
-
-
-def _append_reasoning_section(lines: list[str], title: str, items: list[dict]) -> None:
-    if not items:
-        return
-    lines.append(f"{title}：")
-    for item in items:
-        text = str(item.get("text") or "").strip()
-        refs = _format_reasoning_refs(item.get("evidence_refs") or [])
-        lines.append(f"- {text}{refs}")
-
-
-def _format_reasoning_refs(refs: list[dict]) -> str:
-    formatted = []
-    for ref in refs:
-        if isinstance(ref, dict) and ref.get("source_uri") and ref.get("chunk_id"):
-            formatted.append(f"{ref['source_uri']}#{ref['chunk_id']}")
-    return f"（依据：{'; '.join(formatted)}）" if formatted else ""
 
 
 def record_shadow_route(state: MultiAgentState, *, settings: Settings | None = None) -> None:

@@ -120,3 +120,25 @@ def test_route_intent_with_model_guardrails_greeting_away_from_rag_when_model_is
     assert result.should_use_rag is False
     assert result.fallback_used is True
     assert result.fallback_reason == "direct_intent_guardrail"
+
+
+def test_route_intent_with_model_guardrails_ordinary_chat_away_from_rag() -> None:
+    client = FakeIntentClient(
+        {
+            "status": "success",
+            "schema_name": "intent_routing",
+            "intent": "general_qa",
+            "confidence": 1.0,
+            "should_use_rag": True,
+            "should_use_tools": [],
+            "reason": "incorrect livestock classification",
+            "fallback_required": False,
+        }
+    )
+
+    result = asyncio.run(route_intent_with_model("Tell me a short joke.", settings=_settings(), client=client))
+
+    assert result.intent == "out_of_scope"
+    assert result.should_use_rag is False
+    assert result.fallback_used is True
+    assert result.fallback_reason == "direct_intent_guardrail"

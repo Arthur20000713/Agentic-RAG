@@ -36,6 +36,15 @@ def test_router_detects_out_of_scope() -> None:
     assert result.intent == "out_of_scope"
 
 
+def test_router_treats_poultry_questions_as_livestock_qa() -> None:
+    router = IntentRouter()
+
+    assert router.route("夏季养鸡需要注意什么？").intent == "general_qa"
+    assert router.route("How should poultry be managed in summer?").intent == "general_qa"
+    assert router.route("What should heifer management focus on?").intent == "general_qa"
+    assert router.route("How should sheep and goats be housed?").intent == "general_qa"
+
+
 def test_router_detects_assistant_intro_without_livestock_signal() -> None:
     router = IntentRouter()
 

@@ -228,6 +228,13 @@ def v4_2_quality_summary(*, collection: str, real_configured: bool) -> dict:
 
 
 def _state_sources(state: AgentState | MultiAgentState) -> list[dict]:
+    if isinstance(state, MultiAgentState):
+        response_payload = state.tool_results.get("response_agent")
+        if isinstance(response_payload, dict) and isinstance(response_payload.get("sources"), list):
+            return list(response_payload["sources"])
+        if state.evidence_status != "success":
+            return []
+
     rag_result = state.tool_results.get("livestock_rag_search")
     if isinstance(rag_result, dict) and rag_result.get("status") == "success":
         hits = list(rag_result.get("hits") or [])

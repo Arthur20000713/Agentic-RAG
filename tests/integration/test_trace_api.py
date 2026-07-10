@@ -121,6 +121,7 @@ def test_chat_request_id_can_query_v3_agent_trace() -> None:
     assert data["v3_debug_summary"]["agent_path"] == [
         "supervisor",
         "rag_agent",
+        "grounded_answer_agent",
         "verifier_agent",
         "safety_agent",
         "response_agent",

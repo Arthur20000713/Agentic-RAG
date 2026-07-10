@@ -15,6 +15,7 @@ from backend.app.db.repositories import RagTraceRepository
 from backend.app.integrations.rag_server.mcp_stdio_client import (
     RagServerMcpClient,
     parse_collection_names_from_text,
+    parse_document_summary_from_text,
 )
 from backend.app.services.trace_service import TraceService
 
@@ -162,6 +163,33 @@ def test_parse_collection_names_handles_real_rag_server_markdown() -> None:
     """
 
     assert parse_collection_names_from_text(text) == ["default"]
+
+
+def test_parse_document_summary_handles_real_rag_server_markdown() -> None:
+    text = """
+## Document: Raising dairy heifers from birth to weaning
+
+**Document ID:** `chunk_1`
+**Source:** uga_raising_dairy_heifers
+**Chunks:** 1
+**Tags:** `SUMMARY_ONLY`, `CALF`
+
+### Summary
+
+Weaning guidance emphasizes a stable transition, clean water, and written feeding records.
+
+### Additional Metadata
+
+- **topics:** calf_feeding,weaning
+"""
+
+    payload = parse_document_summary_from_text(text, doc_id="chunk_1")
+
+    assert payload["title"] == "Raising dairy heifers from birth to weaning"
+    assert payload["summary"].startswith("Weaning guidance")
+    assert payload["tags"] == ["SUMMARY_ONLY", "CALF"]
+    assert payload["source"] == "uga_raising_dairy_heifers"
+    assert payload["chunk_count"] == 1
 
 
 def test_tool_result_payload_parses_real_rag_server_references_json() -> None:

@@ -29,7 +29,7 @@ class MissingCitationSourceRagClient(FakeRagServerClient):
         )
 
 
-class FakeReasoningClient:
+class FakePrimaryLLMClient:
     async def generate_json(self, request) -> dict:
         if request.schema_name == "disease_case_understanding":
             return {
@@ -43,16 +43,19 @@ class FakeReasoningClient:
                 "information_gaps": ["feces appearance"],
                 "confidence": 0.9,
             }
-        ref = request.context["evidence_gate"]["evidence_refs"][0]
+        if request.schema_name == "grounded_rag_answer":
+            return {
+                "status": "success",
+                "schema_name": "grounded_rag_answer",
+                "answer_draft": "The retrieved livestock evidence supports this practical answer [1].",
+                "evidence_sufficient": True,
+                "fallback_required": False,
+            }
         return {
             "status": "success",
-            "schema_name": "disease_reasoning",
-            "contributing_factors": [{"text": "Digestive disturbance may be relevant.", "evidence_refs": [ref]}],
-            "uncertainties": ["Remote consultation cannot confirm a cause."],
-            "follow_up_questions": ["What does the feces look like and has feed changed recently?"],
-            "safe_actions": [{"text": "Monitor hydration and isolate if condition worsens.", "evidence_refs": [ref]}],
-            "vet_triggers": [{"text": "Contact a vet if fever or depression appears.", "evidence_refs": [ref]}],
-            "not_diagnosis_notice": "This is not a diagnosis.",
+            "schema_name": request.schema_name,
+            "answer_draft": "Hello, this is a direct LLM reply.",
+            "fallback_required": False,
         }
 
 
@@ -67,11 +70,17 @@ class FakeDirectAnswerClient:
 
 
 def test_general_qa_graph_runs_supervisor_rag_verifier_safety_response() -> None:
+    settings = Settings(
+        v3={"enabled": True},
+        primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock"},
+    )
     state = asyncio.run(
         run_general_qa_graph(
             "How should cattle feeding be managed?",
             rag_client=FakeRagServerClient(),
             session_id="s_general_graph",
+            settings=settings,
+            primary_llm_client=FakePrimaryLLMClient(),
         )
     )
 
@@ -80,7 +89,7 @@ def test_general_qa_graph_runs_supervisor_rag_verifier_safety_response() -> None
     assert state.evidence_status == "success"
     assert state.draft_answer is not None
     assert state.final_answer is not None
-    assert "参考依据" in state.final_answer
+    assert "practical answer [1]" in state.final_answer
     assert state.verification_result is not None
     assert state.verification_result["passed"] is True
     assert state.safety_result is not None
@@ -89,6 +98,7 @@ def test_general_qa_graph_runs_supervisor_rag_verifier_safety_response() -> None
     assert [item["node"] for item in state.agent_trace] == [
         "supervisor",
         "rag_agent",
+        "grounded_answer_agent",
         "verifier_agent",
         "safety_agent",
         "response_agent",
@@ -105,6 +115,7 @@ def test_general_qa_graph_records_query_normalizer_takeover_when_enabled() -> No
             "takeover_task_types": ["query_normalization"],
         },
         local_model={"enabled": True},
+        primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock"},
     )
 
     state = asyncio.run(
@@ -113,6 +124,7 @@ def test_general_qa_graph_records_query_normalizer_takeover_when_enabled() -> No
             rag_client=FakeRagServerClient(),
             session_id="s_general_query_norm",
             settings=settings,
+            primary_llm_client=FakePrimaryLLMClient(),
         )
     )
 
@@ -156,6 +168,32 @@ def test_general_graph_uses_primary_llm_draft_for_assistant_intro_without_rag() 
     ]
 
 
+def test_general_graph_uses_primary_llm_for_ordinary_chat_without_rag() -> None:
+    settings = Settings(
+        v3={"enabled": True},
+        primary_llm={
+            "enabled": True,
+            "provider": "deepseek",
+            "model": "deepseek-v4-flash",
+            "base_url": "https://api.deepseek.com",
+        },
+    )
+
+    state = asyncio.run(
+        run_general_qa_graph(
+            "Tell me a short joke.",
+            rag_client=FakeRagServerClient(),
+            session_id="s_ordinary_chat",
+            settings=settings,
+            primary_llm_client=FakeDirectAnswerClient(),
+        )
+    )
+
+    assert state.intent == "out_of_scope"
+    assert state.tool_results["direct_answer_planner"]["fallback_used"] is False
+    assert "livestock_rag_search" not in state.tool_results
+
+
 def test_general_qa_graph_keeps_low_confidence_no_answer_safe() -> None:
     state = asyncio.run(
         run_general_qa_graph(
@@ -193,11 +231,17 @@ def test_general_qa_graph_policy_no_answer_keeps_rag_observable_without_contexts
 
 
 def test_disease_graph_uses_rag_without_fixed_slot_follow_up() -> None:
+    settings = Settings(
+        v3={"enabled": True},
+        primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock"},
+    )
     state = asyncio.run(
         run_disease_graph(
             "牛拉稀了怎么办？",
             rag_client=FakeRagServerClient(),
             session_id="s_disease_follow",
+            settings=settings,
+            primary_llm_client=FakePrimaryLLMClient(),
         )
     )
 
@@ -214,7 +258,7 @@ def test_disease_graph_uses_rag_without_fixed_slot_follow_up() -> None:
         "supervisor",
         "disease_agent",
         "rag_agent",
-        "disease_evidence_gate",
+        "grounded_answer_agent",
         "verifier_agent",
         "safety_agent",
         "response_agent",
@@ -243,6 +287,7 @@ def test_disease_graph_guardrails_model_route_misclassification(monkeypatch) -> 
             "takeover_task_types": ["intent_routing"],
         },
         local_model={"enabled": True},
+        primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock"},
     )
 
     state = asyncio.run(
@@ -251,6 +296,7 @@ def test_disease_graph_guardrails_model_route_misclassification(monkeypatch) -> 
             rag_client=FakeRagServerClient(),
             session_id="s_disease_route_guard",
             settings=settings,
+            primary_llm_client=FakePrimaryLLMClient(),
         )
     )
 
@@ -260,11 +306,17 @@ def test_disease_graph_guardrails_model_route_misclassification(monkeypatch) -> 
 
 
 def test_disease_graph_high_risk_uses_rag_verifier_safety_response() -> None:
+    settings = Settings(
+        v3={"enabled": True},
+        primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock"},
+    )
     state = asyncio.run(
         run_disease_graph(
             "犊牛腹泻两天，体温40.2度，精神差，不吃草，没有群体发病",
             rag_client=FakeRagServerClient(),
             session_id="s_disease_high",
+            settings=settings,
+            primary_llm_client=FakePrimaryLLMClient(),
         )
     )
 
@@ -278,89 +330,38 @@ def test_disease_graph_high_risk_uses_rag_verifier_safety_response() -> None:
     assert state.safety_result["passed"] is True
     assert state.final_answer is not None
     assert "初步风险等级" not in state.final_answer
-    assert "参考依据" in state.final_answer
+    assert "practical answer [1]" in state.final_answer
     assert "livestock_rag_search" in state.tool_results
     assert [item["node"] for item in state.agent_trace] == [
         "supervisor",
         "disease_agent",
         "rag_agent",
-        "disease_evidence_gate",
+        "grounded_answer_agent",
         "verifier_agent",
         "safety_agent",
         "response_agent",
     ]
 
 
-def test_disease_graph_records_evidence_gate_rejection_for_unmapped_rag_refs() -> None:
+def test_disease_graph_does_not_use_disease_specific_evidence_gate() -> None:
+    settings = Settings(
+        v3={"enabled": True},
+        primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock"},
+    )
     state = asyncio.run(
         run_disease_graph(
             "犊牛腹泻两天，体温40.2度，精神差，不吃草，没有群体发病",
             rag_client=MissingCitationSourceRagClient(),
             session_id="s_disease_gate",
-        )
-    )
-
-    gate = state.tool_results["disease_evidence_gate"]
-
-    assert gate["allowed"] is False
-    assert gate["error_code"] == "RAG_VALID_EVIDENCE_MISSING"
-    assert state.agent_trace[3]["node"] == "disease_evidence_gate"
-    assert state.agent_trace[3]["status"] == "blocked"
-
-
-def test_disease_graph_runs_reasoning_shadow_after_evidence_gate_when_enabled() -> None:
-    settings = Settings(
-        v3={"enabled": True},
-        primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock", "api_key_env": "X"},
-        disease_llm={"enabled": True, "shadow_mode": True, "require_rag_evidence": True},
-    )
-
-    state = asyncio.run(
-        run_disease_graph(
-            "犊牛腹泻两天，体温40.2度，精神差，不吃草，没有群体发病",
-            rag_client=FakeRagServerClient(),
-            session_id="s_disease_reasoning",
             settings=settings,
-            primary_llm_client=FakeReasoningClient(),
+            primary_llm_client=FakePrimaryLLMClient(),
         )
     )
 
-    assert state.tool_results["disease_evidence_gate"]["allowed"] is True
-    assert state.tool_results["disease_reasoning_shadow"]["status"] == "success"
-    assert state.tool_results["disease_reasoning_shadow"]["reasoning"]["safe_actions"][0]["evidence_refs"]
-    nodes = [item["node"] for item in state.agent_trace]
-    gate_index = nodes.index("disease_evidence_gate")
-    assert nodes[gate_index + 1] == "disease_reasoning_agent"
-
-
-def test_disease_graph_reasoning_takeover_replaces_rule_risk_draft_when_enabled() -> None:
-    settings = Settings(
-        v3={"enabled": True},
-        primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock", "api_key_env": "X"},
-        disease_llm={"enabled": True, "shadow_mode": False, "require_rag_evidence": True},
-    )
-
-    state = asyncio.run(
-        run_disease_graph(
-            "犊牛腹泻两天，体温40.2度，精神差，不吃草，没有群体发病",
-            rag_client=FakeRagServerClient(),
-            session_id="s_disease_takeover",
-            settings=settings,
-            primary_llm_client=FakeReasoningClient(),
-        )
-    )
-
-    assert state.tool_results["disease_reasoning"]["status"] == "success"
-    assert state.final_answer is not None
-    assert "Digestive disturbance may be relevant." in state.final_answer
-    assert "Monitor hydration" in state.final_answer
-    assert "feces look like" in state.final_answer
-    assert "rag://" in state.final_answer
-    assert "初步风险等级" not in state.final_answer
-    assert state.verification_result is not None
-    assert state.verification_result["passed"] is True
-    assert state.safety_result is not None
-    assert state.safety_result["passed"] is True
+    assert "disease_evidence_gate" not in state.tool_results
+    assert "disease_reasoning" not in state.tool_results
+    assert state.tool_results["grounded_answer_agent"]["status"] == "success"
+    assert "practical answer [1]" in state.final_answer
 
 
 def test_disease_graph_does_not_use_router_slot_extraction() -> None:
@@ -368,6 +369,7 @@ def test_disease_graph_does_not_use_router_slot_extraction() -> None:
         v3={"enabled": True},
         model_router={"enabled": True, "shadow_mode": False, "allow_low_risk_takeover": True},
         local_model={"enabled": True},
+        primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock"},
     )
 
     state = asyncio.run(
@@ -376,6 +378,7 @@ def test_disease_graph_does_not_use_router_slot_extraction() -> None:
             rag_client=FakeRagServerClient(),
             session_id="s_disease_no_slot_router",
             settings=settings,
+            primary_llm_client=FakePrimaryLLMClient(),
         )
     )
 

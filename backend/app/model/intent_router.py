@@ -145,6 +145,8 @@ def _with_fallback(result: IntentRoutingResult, reason: str) -> IntentRoutingRes
 def _should_guard_direct_intent(rule_result: IntentRoutingResult, payload: IntentRoutingPayload) -> bool:
     if rule_result.intent not in DIRECT_WITHOUT_RAG_INTENTS:
         return False
+    if rule_result.intent == "out_of_scope":
+        return payload.intent != rule_result.intent or payload.should_use_rag
     if rule_result.confidence < DIRECT_INTENT_GUARD_CONFIDENCE:
         return False
     return payload.intent != rule_result.intent or payload.should_use_rag

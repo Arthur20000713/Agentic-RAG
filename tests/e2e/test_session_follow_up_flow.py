@@ -30,16 +30,12 @@ class FakeDiseaseLLM:
                 "observed_signs": ["diarrhea", "reduced appetite"],
                 "context_factors": ["normal temperature"],
             }
-        ref = request.context["evidence_gate"]["evidence_refs"][0]
         return {
             "status": "success",
-            "schema_name": "disease_reasoning",
-            "contributing_factors": [{"text": "Digestive disturbance may be relevant.", "evidence_refs": [ref]}],
-            "uncertainties": ["Need more on feces and feed changes."],
-            "follow_up_questions": ["粪便颜色和饲料最近是否变化？"],
-            "safe_actions": [{"text": "Monitor hydration.", "evidence_refs": [ref]}],
-            "vet_triggers": [{"text": "Contact a vet if condition worsens.", "evidence_refs": [ref]}],
-            "not_diagnosis_notice": "This is not a diagnosis.",
+            "schema_name": "grounded_rag_answer",
+            "answer_draft": "Monitor the calf using the retrieved guidance [1].",
+            "evidence_sufficient": True,
+            "fallback_required": False,
         }
 
 

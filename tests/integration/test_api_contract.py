@@ -144,6 +144,7 @@ def test_chat_api_uses_v3_graph_when_feature_flag_enabled() -> None:
     assert payload["data"]["v3_debug"]["agent_path"] == [
         "supervisor",
         "rag_agent",
+        "grounded_answer_agent",
         "verifier_agent",
         "safety_agent",
         "response_agent",

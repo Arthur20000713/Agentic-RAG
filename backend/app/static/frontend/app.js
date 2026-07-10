@@ -11,7 +11,7 @@ const labels = {
     general_qa: "知识问答",
     disease_consultation: "疾病问诊",
     measurement_analysis: "体尺分析",
-    out_of_scope: "超出范围",
+    out_of_scope: "普通对话",
   },
   risks: {
     low: "低风险",

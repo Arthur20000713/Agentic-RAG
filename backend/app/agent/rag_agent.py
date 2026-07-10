@@ -42,6 +42,7 @@ class RagAgent:
             self._record_exception(state, query=query, exc=exc, latency_ms=latency_ms)
             return state
 
+        await self._enrich_hit_summaries(result)
         state.tool_results[TOOL_NAME] = result.model_dump()
         state.evidence_status = result.status
         self._attach_hits(state, result)
@@ -62,6 +63,20 @@ class RagAgent:
             error_code=result.error_code,
         )
         return state
+
+    async def _enrich_hit_summaries(self, result: RagSearchResult) -> None:
+        if not result.has_usable_hits:
+            return
+        for hit in result.hits:
+            try:
+                summary = await self.rag_client.get_document_summary(
+                    hit.chunk_id,
+                    collection=hit.collection or self.collection,
+                )
+            except Exception:
+                continue
+            if summary.summary.strip():
+                hit.content = summary.summary.strip()
 
     def _resolve_query(self, state: MultiAgentState) -> str:
         return (state.rag_query or state.normalized_query or state.user_query).strip()

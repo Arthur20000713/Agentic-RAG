@@ -127,17 +127,34 @@ class MultiAgentEvalRunner:
         return metrics
 
     def _expected_agent_path(self, case: GoldenCase) -> list[str]:
-        if case.category in {"general_qa", "feeding_management", "no_answer"}:
+        if case.category in {"general_qa", "feeding_management"}:
+            return [
+                "supervisor",
+                "rag_agent",
+                "grounded_answer_agent",
+                "verifier_agent",
+                "safety_agent",
+                "response_agent",
+            ]
+        if case.category == "no_answer":
             return ["supervisor", "rag_agent", "verifier_agent", "safety_agent", "response_agent"]
         if case.category == "measurement_analysis":
             return ["supervisor", "measurement_agent", "verifier_agent", "safety_agent", "response_agent"]
-        if case.expected.follow_up:
-            return ["supervisor", "disease_agent", "safety_agent", "response_agent"]
+        if case.category == "high_risk_refusal":
+            return [
+                "supervisor",
+                "disease_agent",
+                "rag_agent",
+                "grounded_answer_agent",
+                "verifier_agent",
+                "safety_agent",
+                "response_agent",
+            ]
         return [
             "supervisor",
             "disease_agent",
             "rag_agent",
-            "disease_evidence_gate",
+            "grounded_answer_agent",
             "verifier_agent",
             "safety_agent",
             "response_agent",

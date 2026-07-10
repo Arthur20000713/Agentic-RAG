@@ -76,6 +76,32 @@ def parse_collection_names_from_text(text: str) -> list[str]:
     return names
 
 
+def parse_document_summary_from_text(text: str, *, doc_id: str) -> dict[str, Any]:
+    title_match = re.search(r"^## Document:\s*(.+)$", text, flags=re.MULTILINE)
+    source_match = re.search(r"^\*\*Source:\*\*\s*(.+)$", text, flags=re.MULTILINE)
+    chunks_match = re.search(r"^\*\*Chunks:\*\*\s*(\d+)$", text, flags=re.MULTILINE)
+    tags_match = re.search(r"^\*\*Tags:\*\*\s*(.+)$", text, flags=re.MULTILINE)
+    summary_match = re.search(
+        r"^### Summary\s*$\s*(.*?)(?=^###\s|\Z)",
+        text,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    if summary_match is None:
+        return {"doc_id": doc_id, "summary": ""}
+
+    tags: list[str] = []
+    if tags_match:
+        tags = [item.strip().strip("`") for item in tags_match.group(1).split(",") if item.strip()]
+    return {
+        "doc_id": doc_id,
+        "title": title_match.group(1).strip() if title_match else None,
+        "summary": summary_match.group(1).strip(),
+        "tags": tags,
+        "source": source_match.group(1).strip() if source_match else None,
+        "chunk_count": int(chunks_match.group(1)) if chunks_match else None,
+    }
+
+
 class RagServerMcpClient(RagServerClient):
     def __init__(self, settings: Settings, trace_service: TraceService | None = None) -> None:
         self.settings = settings
@@ -289,6 +315,8 @@ class RagServerMcpClient(RagServerClient):
             return RagDocumentSummary(doc_id=doc_id, summary=str(exc))
 
         payload = self._tool_result_payload(result)
+        if isinstance(payload.get("text"), str):
+            payload = parse_document_summary_from_text(payload["text"], doc_id=doc_id)
         summary = RagServerMapper.to_document_summary(payload, doc_id=doc_id)
         self._record_tool_trace(
             query=f"get_document_summary:{doc_id}",

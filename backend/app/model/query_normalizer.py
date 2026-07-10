@@ -4,6 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
+from backend.app.agent.router import IntentRouter
 from backend.app.agent.safety_precheck import SafetyPrecheck
 from backend.app.core.config import Settings
 from backend.app.model.base import BaseModelClient
@@ -72,6 +73,8 @@ async def normalize_query_with_router(
         return _attach_route(result, route_request=route_request, route_decision=decision)
 
     result = await normalize_query(query, client=client or LocalModelClient(app_settings))
+    if _introduces_livestock_domain(query, result.normalized_query):
+        result = fallback_with_warning(_fallback_result(query), "normalization_domain_drift")
     if result.fallback_used and result.warnings:
         result.fallback_reason = result.warnings[-1]
     return _attach_route(result, route_request=route_request, route_decision=decision)
@@ -115,3 +118,13 @@ def _detect_language(text: str) -> QueryLanguage:
     if not text:
         return "unknown"
     return "zh" if any("\u4e00" <= char <= "\u9fff" for char in text) else "en"
+
+
+def _introduces_livestock_domain(original: str, normalized: str) -> bool:
+    router = IntentRouter()
+    original_intent = router.route(original).intent
+    normalized_intent = router.route(normalized).intent
+    return original_intent in {"assistant_intro", "out_of_scope"} and normalized_intent in {
+        "general_qa",
+        "disease_consultation",
+    }

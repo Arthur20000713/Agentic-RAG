@@ -194,3 +194,30 @@ def test_normalize_query_with_router_falls_back_when_local_schema_invalid() -> N
     assert result.fallback_used is True
     assert result.route_mode == "takeover"
     assert result.fallback_reason == "schema_validation_failed"
+
+
+def test_normalize_query_with_router_rejects_domain_drift_for_ordinary_chat() -> None:
+    settings = Settings(
+        v3={"enabled": True},
+        model_router={
+            "enabled": True,
+            "shadow_mode": False,
+            "allow_low_risk_takeover": True,
+            "takeover_task_types": ["query_normalization"],
+        },
+        local_model={"enabled": True},
+    )
+    client = LocalRewriteClient(
+        {
+            "status": "success",
+            "normalized_query": "cattle joke",
+            "language": "en",
+            "fallback_required": False,
+        }
+    )
+
+    result = asyncio.run(normalize_query_with_router("Tell me a short joke.", settings=settings, client=client))
+
+    assert result.normalized_query == "Tell me a short joke."
+    assert result.fallback_used is True
+    assert result.fallback_reason == "normalization_domain_drift"

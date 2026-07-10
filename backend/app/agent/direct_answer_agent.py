@@ -14,9 +14,9 @@ from backend.app.services.feature_flag_service import FeatureFlagService
 ASSISTANT_INTRO_DRAFT = (
     "你好，我是 Livestock Agentic RAG 智能助手，主要面向畜牧业知识问答、疾病初步问诊、"
     "体尺分析和资料检索。你可以问我牛、羊、猪等养殖管理、饲喂、断奶、常见症状处理、"
-    "资料依据和引用来源类问题；非畜牧领域的问题我会明确说明不在服务范围内。"
+    "资料依据和引用来源类问题，也可以和我进行普通交流。"
 )
-OUT_OF_SCOPE_DRAFT = "当前问题超出畜牧业辅助问答范围。你可以继续询问养殖管理、饲喂、疾病初步问诊或资料检索相关问题。"
+OUT_OF_SCOPE_DRAFT = "我可以直接和你交流；如果问题涉及畜牧业，我还会结合知识库资料回答。"
 MEASUREMENT_CHAT_DRAFT = "体尺分析需要结构化体尺数据。请使用 /api/measurement/analyze 提交动物编号、体高、体长、胸围等数据。"
 
 
@@ -80,8 +80,8 @@ class DirectAnswerAgent:
                     "normalized_query": state.normalized_query or state.user_query,
                 },
                 system_prompt=(
-                    "Return exactly one JSON object for a livestock assistant draft answer. "
-                    "Do not include markdown fences. Do not claim citations or diagnosis."
+                    "Return exactly one JSON object for a helpful conversational assistant reply. "
+                    "Do not include markdown fences or claim knowledge-base citations."
                 ),
             )
         )
@@ -120,5 +120,5 @@ def _direct_answer_prompt(state: MultiAgentState) -> str:
     elif state.intent == "measurement_analysis":
         task = "Explain that body-measurement analysis needs structured measurement data through the measurement API."
     else:
-        task = "Politely explain the request is outside the livestock assistant scope and invite a livestock-related question."
+        task = "Respond naturally and helpfully to the user's ordinary conversation without using RAG citations."
     return f"{task}\nUser message: {(state.normalized_query or state.user_query).strip()}"
