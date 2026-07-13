@@ -5,7 +5,8 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
-from backend.app.core.config import Settings
+from backend.app.core.config import Settings, load_settings
+from backend.app.model.router import ModelRouteRequest, ModelRouter
 from scripts import run_local_model_smoke
 
 
@@ -108,3 +109,21 @@ def test_run_smoke_uses_query_normalization_only_for_transformers(monkeypatch) -
     assert report.provider == "transformers"
     assert [case.task_type for case in report.cases] == ["query_normalization"]
     assert calls == [("What feed should I use for a calf after weaning?", "query_normalization")]
+
+
+def test_production_chat_routing_does_not_use_slow_local_model_takeover() -> None:
+    settings = load_settings("config/settings.yaml")
+    router = ModelRouter(settings)
+
+    for task_type in ("query_normalization", "intent_routing"):
+        decision = router.route(
+            ModelRouteRequest(
+                task_type=task_type,
+                safety_level="S0",
+                requires_final_answer=False,
+                user_query="How should calves be managed?",
+            )
+        )
+
+        assert decision.selected_model == "primary"
+        assert decision.route_mode == "primary"

@@ -37,5 +37,13 @@ def test_task_and_log_repositories_write_and_read() -> None:
     )
 
     assert qa_id > 0
-    assert tool_id > 0
 
+    history = QaLogRepository(conn).recent("s1")
+    assert history == [
+        {
+            "user": "q",
+            "assistant": "answer",
+            "intent": "general_qa",
+        }
+    ]
+    assert tool_id > 0

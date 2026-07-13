@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import re
 import time
 from typing import Any
 
 from pydantic import BaseModel
 
-from backend.app.agent.rag_answer_policy import NO_ANSWER_POLICY_WARNING, SAFETY_REFUSAL_POLICY_WARNING
+from backend.app.agent.rag_answer_policy import NO_ANSWER_POLICY_WARNING, NO_ANSWER_TEXT, SAFETY_REFUSAL_POLICY_WARNING
 from backend.app.agent.state import MultiAgentState
 from backend.app.agent.verifier import VerifierLite
 from backend.app.schemas.agent import AgentToolError
@@ -40,14 +41,21 @@ class VerifierAgent:
             measurement_abnormal_items=measurement_report.get("abnormal_items"),
             measurement_evidence=measurement_report.get("evidence"),
         )
+        base_issues = list(base_result.issues)
+        if state.intent != "disease_consultation":
+            base_issues = [
+                issue
+                for issue in base_issues
+                if issue not in {"dosage", "prescription", "definitive_diagnosis"}
+            ]
 
-        citation_issues = self._citation_issues(state, base_result.issues)
+        citation_issues = self._citation_issues(state, answer, base_issues)
         unsupported_claims = self._unsupported_claims(state, answer)
         claim_checks = self._claim_checks(state, answer)
         claim_issues = [check.issue for check in claim_checks if not check.supported and check.issue]
         disease_reasoning_issues = self._disease_reasoning_issues(state)
         issues = self._merge_issues(
-            base_result.issues,
+            base_issues,
             citation_issues,
             unsupported_claims,
             claim_issues,
@@ -65,6 +73,11 @@ class VerifierAgent:
         state.tool_results["verifier_agent"] = result
         for issue in issues:
             state.errors.append(AgentToolError(tool_name="verifier_agent", error_code=issue, message=issue))
+        if self._must_fail_closed(state, issues):
+            state.draft_answer = NO_ANSWER_TEXT
+            state.final_answer = None
+            state.evidence_status = "low_confidence"
+            state.retrieved_contexts.clear()
 
         state.agent_trace.append(
             {
@@ -102,16 +115,25 @@ class VerifierAgent:
             return False
         return policy.get("warning") in {NO_ANSWER_POLICY_WARNING, SAFETY_REFUSAL_POLICY_WARNING}
 
-    def _citation_issues(self, state: MultiAgentState, base_issues: list[str]) -> list[str]:
+    def _citation_issues(self, state: MultiAgentState, answer: str, base_issues: list[str]) -> list[str]:
         issues: list[str] = []
         if "missing_citation" in base_issues:
             issues.append("missing_citation")
+        if self._requires_citations(state) and self._rag_citations(state):
+            indexes = [int(value) for value in re.findall(r"\[(\d+)\]", answer)]
+            citation_count = len(self._rag_citations(state))
+            if not indexes:
+                issues.append("answer_missing_citation_marker")
+            elif any(index < 1 or index > citation_count for index in indexes):
+                issues.append("citation_index_out_of_range")
         mapping_warnings = self._rag_result(state).get("mapping_warnings") or []
         if PARTIAL_SOURCE_URI_WARNING in mapping_warnings:
             issues.append("partial_source_uri")
         return issues
 
     def _unsupported_claims(self, state: MultiAgentState, answer: str) -> list[str]:
+        if state.intent not in {"general_qa", "disease_consultation"}:
+            return []
         if state.evidence_status not in {"empty", "low_confidence", "error"}:
             return []
         if not answer.strip() or self._is_fallback_answer(answer):
@@ -131,8 +153,61 @@ class VerifierAgent:
         source_uris = self._source_uris(state)
         claim = self._claim_text(answer)
         if source_uris:
+            supported = self._claim_supported_by_evidence(claim, state)
+            if supported is False:
+                return [
+                    ClaimCheck(
+                        claim=claim,
+                        source_uri=source_uris[0],
+                        supported=False,
+                        issue="claim_not_supported_by_evidence",
+                    )
+                ]
             return [ClaimCheck(claim=claim, source_uri=source_uris[0], supported=True)]
         return [ClaimCheck(claim=claim, supported=False, issue="claim_missing_source_uri")]
+
+    def _claim_supported_by_evidence(self, claim: str, state: MultiAgentState) -> bool | None:
+        claim_tokens = self._english_claim_tokens(claim)
+        if len(claim_tokens) < 2:
+            return None
+        evidence_tokens: set[str] = set()
+        for hit in self._rag_result(state).get("hits") or []:
+            if isinstance(hit, dict):
+                evidence_tokens.update(self._english_claim_tokens(str(hit.get("content") or "")))
+        if len(evidence_tokens) < 2:
+            for context in state.retrieved_contexts:
+                evidence_tokens.update(self._english_claim_tokens(context.content))
+        if len(evidence_tokens) < 2:
+            return None
+        return bool(claim_tokens & evidence_tokens)
+
+    def _english_claim_tokens(self, text: str) -> set[str]:
+        stopwords = {
+            "a", "an", "and", "are", "as", "at", "be", "by", "can", "for", "from",
+            "in", "is", "it", "of", "on", "or", "that", "the", "this", "to", "with",
+        }
+        return {
+            token
+            for token in re.findall(r"[a-z]{3,}", text.lower())
+            if token not in stopwords
+        }
+
+    def _must_fail_closed(self, state: MultiAgentState, issues: list[str]) -> bool:
+        if state.intent not in {"general_qa", "disease_consultation"} or state.evidence_status != "success":
+            return False
+        safety_violations = set(
+            self.verifier.safety_guard.check(state.final_answer or state.draft_answer or "").violations
+        )
+        if safety_violations.intersection({"dosage", "prescription", "definitive_diagnosis"}):
+            return False
+        blocking = {
+            "missing_citation",
+            "answer_missing_citation_marker",
+            "citation_index_out_of_range",
+            "claim_missing_source_uri",
+            "claim_not_supported_by_evidence",
+        }
+        return bool(blocking.intersection(issues))
 
     def _source_uris(self, state: MultiAgentState) -> list[str]:
         source_uris: list[str] = []

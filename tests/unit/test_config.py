@@ -159,7 +159,7 @@ def test_v3_settings_default_to_disabled_without_changing_v2_behavior() -> None:
     assert isinstance(create_rag_server_client(settings), FakeRagServerClient)
 
 
-def test_product_settings_enable_v3_main_path_with_local_structured_takeover() -> None:
+def test_product_settings_keep_v3_main_path_without_slow_chat_local_takeover() -> None:
     settings = load_settings("config/settings.yaml")
     snapshot = FeatureFlagService(settings).snapshot()
 
@@ -171,7 +171,9 @@ def test_product_settings_enable_v3_main_path_with_local_structured_takeover() -
     assert snapshot.primary_llm_enabled is True
     assert snapshot.disease_llm_enabled is True
     assert settings.model_router.allow_low_risk_takeover is True
-    assert "intent_routing" in settings.model_router.takeover_task_types
+    assert "intent_routing" not in settings.model_router.takeover_task_types
+    assert "query_normalization" not in settings.model_router.takeover_task_types
+    assert "measurement_analysis" in settings.model_router.takeover_task_types
     assert settings.local_model.provider == "transformers"
     assert settings.local_model.model == "Qwen/Qwen2.5-0.5B-Instruct"
     assert settings.local_model.allow_final_answer is False

@@ -17,7 +17,9 @@ def test_frontend_chat_page_static_contract() -> None:
     assert response.status_code == 200
     assert 'id="chat-form"' in response.text
     assert 'id="chat-query"' in response.text
+    assert 'id="new-chat-button"' in response.text
     assert 'data-view="chat"' in response.text
+    assert 'src="./app.js?v=7"' in response.text
 
 
 def test_frontend_chat_js_contract() -> None:
@@ -28,9 +30,13 @@ def test_frontend_chat_js_contract() -> None:
     assert "async function submitChat" in response.text
     assert 'fetch("/api/chat"' in response.text
     assert "chatSessionId" in response.text
-    assert "session_id: state.chatSessionId" in response.text
+    assert "form.dataset.sessionId" in response.text
     assert "risk_level" in response.text
     assert "follow_up_questions" in response.text
+    assert "AbortController" in response.text
+    assert "payload.code !== 0" in response.text
+    assert "请求超时，请稍后重试。" in response.text
+    assert "function startNewChatSession" in response.text
 
 
 def test_frontend_sources_and_tools_contract() -> None:

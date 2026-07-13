@@ -38,6 +38,14 @@ def test_chat_request_requires_query() -> None:
     with pytest.raises(ValidationError):
         ChatRequest(query="")
 
+    with pytest.raises(ValidationError):
+        ChatRequest(query="   ")
+
+    with pytest.raises(ValidationError):
+        ChatRequest(query="x" * 4001)
+
+    assert ChatRequest(query="  hello  ").query == "hello"
+
 
 def test_measurement_input_requires_at_least_one_value() -> None:
     with pytest.raises(ValidationError):
@@ -50,4 +58,3 @@ def test_measurement_input_requires_at_least_one_value() -> None:
     )
 
     assert measurement.current.body_height_cm == 112.4
-

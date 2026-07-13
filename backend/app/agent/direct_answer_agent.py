@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import time
 from typing import Any, Literal
 
@@ -40,7 +41,11 @@ class DirectAnswerAgent:
         payload: dict[str, Any] | None = None
         fallback_reason: str | None = None
 
-        if FeatureFlagService(self.settings).primary_llm_enabled:
+        contextual_answer = _contextual_history_answer(state)
+        if contextual_answer:
+            payload = {"answer_draft": contextual_answer}
+            state.draft_answer = contextual_answer
+        elif FeatureFlagService(self.settings).primary_llm_enabled:
             payload, fallback_reason = await self._generate_with_primary_llm(state)
             if payload is not None:
                 state.draft_answer = payload["answer_draft"]
@@ -78,9 +83,12 @@ class DirectAnswerAgent:
                     "intent": state.intent,
                     "user_query": state.user_query,
                     "normalized_query": state.normalized_query or state.user_query,
+                    "conversation_history": _conversation_history(state),
                 },
                 system_prompt=(
                     "Return exactly one JSON object for a helpful conversational assistant reply. "
+                    "Use the supplied recent conversation history when the current message refers to it. "
+                    "Prioritize the current user message and do not claim to remember anything outside that history. "
                     "Do not include markdown fences or claim knowledge-base citations."
                 ),
             )
@@ -108,10 +116,29 @@ def _normalize_direct_answer_payload(raw: dict[str, Any]) -> dict[str, Any]:
     if not str(payload.get("answer_draft") or "").strip():
         for alias in ("answer_draft", "response", "message", "answer", "draft", "content", "text", "reply", "assistant_response", "introduction"):
             value = payload.get(alias)
-            if isinstance(value, str) and value.strip():
-                payload["answer_draft"] = value.strip()
+            answer_text = _answer_text(value)
+            if answer_text:
+                payload["answer_draft"] = answer_text
                 break
+    if str(payload.get("answer_draft") or "").strip() and payload.get("status") in {None, "", "ok", "completed"}:
+        payload["status"] = "success"
     return payload
+
+
+def _answer_text(value: Any) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    if isinstance(value, dict):
+        for key in ("answer_draft", "response", "message", "answer", "content", "text", "reply"):
+            nested = value.get(key)
+            if isinstance(nested, str) and nested.strip():
+                return nested.strip()
+    if isinstance(value, list):
+        for item in value:
+            nested = _answer_text(item)
+            if nested:
+                return nested
+    return None
 
 
 def _direct_answer_prompt(state: MultiAgentState) -> str:
@@ -121,4 +148,45 @@ def _direct_answer_prompt(state: MultiAgentState) -> str:
         task = "Explain that body-measurement analysis needs structured measurement data through the measurement API."
     else:
         task = "Respond naturally and helpfully to the user's ordinary conversation without using RAG citations."
-    return f"{task}\nUser message: {(state.normalized_query or state.user_query).strip()}"
+    history = _conversation_history(state)
+    history_text = "\n".join(
+        f"User: {item.get('user', '')}\nAssistant: {item.get('assistant', '')}"
+        for item in history
+    )
+    history_section = f"\nRecent conversation:\n{history_text}" if history_text else ""
+    return f"{task}{history_section}\nCurrent user message: {(state.normalized_query or state.user_query).strip()}"
+
+
+def _conversation_history(state: MultiAgentState) -> list[dict[str, Any]]:
+    value = state.session_context.get("conversation_history")
+    if not isinstance(value, list):
+        return []
+    return [item for item in value[-6:] if isinstance(item, dict)]
+
+
+def _contextual_history_answer(state: MultiAgentState) -> str | None:
+    query = state.user_query.strip()
+    lowered = query.lower()
+    asks_name = any(
+        marker in lowered
+        for marker in ("我叫什么", "我的名字是什么", "你记得我的名字", "what is my name", "what's my name", "remember my name")
+    )
+    if not asks_name:
+        return None
+
+    for item in reversed(_conversation_history(state)):
+        user_text = str(item.get("user") or "")
+        chinese_match = re.search(r"我的名字是\s*([^\s，。！？,!?]{1,20})", user_text)
+        if chinese_match is None:
+            chinese_match = re.search(r"我叫(?!什么)\s*([^\s，。！？,!?]{1,20})", user_text)
+        if chinese_match:
+            return f"你的名字是{chinese_match.group(1)}。"
+        english_match = re.search(
+            r"(?:my name is|call me)\s+([A-Za-z][A-Za-z' -]{0,39})",
+            user_text,
+            flags=re.IGNORECASE,
+        )
+        if english_match:
+            name = english_match.group(1).strip().rstrip(".,!?")
+            return f"Your name is {name}."
+    return None

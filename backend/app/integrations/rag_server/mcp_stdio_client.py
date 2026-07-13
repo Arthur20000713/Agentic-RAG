@@ -109,6 +109,7 @@ class RagServerMcpClient(RagServerClient):
         self.process: subprocess.Popen[str] | None = None
         self._request_id = 0
         self._repo_path: Path | None = None
+        self._tool_lock = asyncio.Lock()
 
     async def start(self) -> None:
         if self.process is not None and self.process.returncode is None:
@@ -404,13 +405,17 @@ class RagServerMcpClient(RagServerClient):
         await self._notify("notifications/initialized", {})
 
     async def _call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        result = await self._request(
-            "tools/call",
-            {
-                "name": name,
-                "arguments": self._drop_none(arguments),
-            },
-        )
+        # A single stdio process has one shared stdout stream. Serializing tool
+        # calls prevents concurrent readers from consuming each other's JSON-RPC
+        # responses and then waiting forever for a response that was discarded.
+        async with self._tool_lock:
+            result = await self._request(
+                "tools/call",
+                {
+                    "name": name,
+                    "arguments": self._drop_none(arguments),
+                },
+            )
         if not isinstance(result, dict):
             raise RagServerMcpError("invalid MCP tool result")
         return result
@@ -445,24 +450,24 @@ class RagServerMcpClient(RagServerClient):
     async def _send(self, message: dict[str, Any]) -> None:
         if self.process is None or self.process.stdin is None:
             raise RagServerMcpError("MCP stdio process is not available")
+        stdin = self.process.stdin
         line = json.dumps(message, ensure_ascii=False) + "\n"
 
         def write_line() -> None:
-            assert self.process is not None
-            assert self.process.stdin is not None
-            self.process.stdin.write(line)
-            self.process.stdin.flush()
+            stdin.write(line)
+            stdin.flush()
 
         await asyncio.to_thread(write_line)
 
     async def _read_response(self, request_id: int) -> dict[str, Any]:
         if self.process is None or self.process.stdout is None:
             raise RagServerMcpError("MCP stdio process is not available")
+        stdout = self.process.stdout
 
         timeout_policy = RagServerTimeoutPolicy(self.settings.rag_server.timeout_seconds)
         while True:
             raw_line = await timeout_policy.wait_for(
-                asyncio.to_thread(self.process.stdout.readline),
+                asyncio.to_thread(stdout.readline),
                 operation=f"MCP stdio response for request {request_id}",
             )
             if not raw_line:

@@ -189,6 +189,26 @@ class QaLogRepository:
         self.conn.commit()
         return int(cursor.lastrowid)
 
+    def recent(self, session_id: str, *, limit: int = 6) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT user_query, final_answer, intent
+            FROM qa_log
+            WHERE session_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (session_id, max(1, limit)),
+        ).fetchall()
+        return [
+            {
+                "user": row["user_query"],
+                "assistant": row["final_answer"],
+                "intent": row["intent"],
+            }
+            for row in reversed(rows)
+        ]
+
 
 class ToolCallLogRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:

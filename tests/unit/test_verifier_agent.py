@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from backend.app.agent.rag_answer_policy import NO_ANSWER_TEXT
 from backend.app.agent.state import MultiAgentState
 from backend.app.agent.verifier_agent import VerifierAgent
 from backend.app.schemas.agent import RetrievedContext
@@ -31,6 +32,7 @@ def test_verifier_agent_passes_supported_rag_answer() -> None:
         },
     )
 
+    state.draft_answer = f"{state.draft_answer} [1]"
     updated = VerifierAgent().verify(state)
 
     assert updated is state
@@ -221,3 +223,89 @@ def test_verifier_agent_rejects_disease_reasoning_safety_redlines() -> None:
     assert state.verification_result["passed"] is False
     assert "disease_reasoning_safety_violation" in state.verification_result["disease_reasoning_issues"]
     assert "disease_reasoning_safety_violation" in state.verification_result["issues"]
+
+
+def test_verifier_agent_fails_closed_on_unsupported_english_claim() -> None:
+    state = MultiAgentState(
+        session_id="s1",
+        user_query="How should calves be managed after weaning?",
+        intent="general_qa",
+        evidence_status="success",
+        draft_answer="Calves can fly after weaning [1].",
+        retrieved_contexts=[
+            RetrievedContext(
+                chunk_id="chunk_1",
+                document_id="doc_1",
+                title="Water guide",
+                content="Provide clean water every day.",
+                score=0.8,
+            )
+        ],
+        tool_results={
+            "livestock_rag_search": {
+                "status": "success",
+                "hits": [
+                    {
+                        "chunk_id": "chunk_1",
+                        "content": "Provide clean water every day.",
+                        "source_uri": "rag://default/doc_1/chunk_1",
+                    }
+                ],
+                "citations": [
+                    {
+                        "source_uri": "rag://default/doc_1/chunk_1",
+                        "title": "Water guide",
+                        "chunk_id": "chunk_1",
+                    }
+                ],
+                "mapping_warnings": [],
+            }
+        },
+    )
+
+    VerifierAgent().verify(state)
+
+    assert state.verification_result is not None
+    assert state.verification_result["passed"] is False
+    assert "claim_not_supported_by_evidence" in state.verification_result["issues"]
+    assert state.draft_answer == NO_ANSWER_TEXT
+    assert state.evidence_status == "low_confidence"
+
+
+def test_verifier_agent_fails_closed_on_out_of_range_citation() -> None:
+    state = MultiAgentState(
+        session_id="s1",
+        user_query="calf water",
+        intent="general_qa",
+        evidence_status="success",
+        draft_answer="Provide clean water [99].",
+        tool_results={
+            "livestock_rag_search": {
+                "status": "success",
+                "hits": [{"chunk_id": "chunk_1", "content": "Provide clean water."}],
+                "citations": [{"source_uri": "rag://default/doc/chunk_1", "chunk_id": "chunk_1"}],
+                "mapping_warnings": [],
+            }
+        },
+    )
+
+    VerifierAgent().verify(state)
+
+    assert "citation_index_out_of_range" in state.verification_result["issues"]
+    assert state.draft_answer == NO_ANSWER_TEXT
+
+
+def test_verifier_agent_does_not_apply_livestock_claim_rules_to_ordinary_chat() -> None:
+    state = MultiAgentState(
+        session_id="s1",
+        user_query="How many grams are in 1 kg?",
+        intent="out_of_scope",
+        evidence_status="empty",
+        draft_answer="There are 1000 g in 1 kg, which is a standard unit conversion with no investment risk.",
+    )
+
+    VerifierAgent().verify(state)
+
+    assert state.verification_result is not None
+    assert state.verification_result["passed"] is True
+    assert state.errors == []

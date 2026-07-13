@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 from uuid import uuid4
 
@@ -42,8 +43,11 @@ async def run_general_qa_graph(
     settings: Settings | None = None,
     query_normalizer_client: BaseModelClient | None = None,
     primary_llm_client: Any | None = None,
+    conversation_history: list[dict[str, Any]] | None = None,
 ) -> MultiAgentState:
     state = MultiAgentState(session_id=session_id or _new_session_id(), request_id=request_id, user_query=query)
+    if conversation_history:
+        state.session_context["conversation_history"] = list(conversation_history)
     await _maybe_normalize_query(state, settings=settings, client=query_normalizer_client)
     route_override = await _maybe_route_intent_with_model(state, settings=settings)
     SupervisorAgent().route(state, route_override=route_override)
@@ -77,9 +81,12 @@ async def run_disease_graph(
     settings: Settings | None = None,
     query_normalizer_client: BaseModelClient | None = None,
     primary_llm_client: Any | None = None,
+    conversation_history: list[dict[str, Any]] | None = None,
 ) -> MultiAgentState:
     resolved_session_id = session_id or _new_session_id()
     state = MultiAgentState(session_id=resolved_session_id, request_id=request_id, user_query=query)
+    if conversation_history:
+        state.session_context["conversation_history"] = list(conversation_history)
     await _maybe_normalize_query(state, settings=settings, client=query_normalizer_client)
     if session_context_service is not None:
         previous_context = None
@@ -91,9 +98,14 @@ async def run_disease_graph(
     route_override = await _maybe_route_intent_with_model(state, settings=settings, session_context=state.session_context)
     route_override = _guard_disease_route_override(route_override)
     SupervisorAgent().route(state, route_override=route_override)
+    if state.intent != "disease_consultation":
+        state.intent = "disease_consultation"
     if route_override is None:
         record_shadow_route(state, settings=settings)
-    DiseaseAgent(settings=settings, primary_llm_client=primary_llm_client).run(state)
+    await asyncio.to_thread(
+        DiseaseAgent(settings=settings, primary_llm_client=primary_llm_client).run,
+        state,
+    )
     if session_context_service is not None:
         _save_disease_context(session_context_service, state)
     _maybe_write_user_confirmed_facts(

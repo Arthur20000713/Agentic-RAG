@@ -99,3 +99,18 @@ def test_safety_agent_blocks_fabricated_tool_result_claim() -> None:
     assert state.final_answer is not None
     assert "检索结果显示" not in state.final_answer
     assert state.tool_results["safety_agent"] == state.safety_result
+
+
+def test_safety_agent_does_not_treat_ordinary_unit_conversion_as_drug_dosage() -> None:
+    state = MultiAgentState(
+        session_id="s1",
+        user_query="How many grams are in 1 kg?",
+        intent="out_of_scope",
+        draft_answer="1 kg equals 1000 g.",
+    )
+
+    SafetyAgent().check(state)
+
+    assert state.safety_result is not None
+    assert state.safety_result["passed"] is True
+    assert state.final_answer == "1 kg equals 1000 g."

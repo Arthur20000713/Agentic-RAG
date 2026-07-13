@@ -69,6 +69,13 @@ class FakeDirectAnswerClient:
         }
 
 
+class SlowPrimaryLLMClient(FakePrimaryLLMClient):
+    async def generate_json(self, request) -> dict:
+        if request.schema_name == "disease_case_understanding":
+            await asyncio.sleep(0.2)
+        return await super().generate_json(request)
+
+
 def test_general_qa_graph_runs_supervisor_rag_verifier_safety_response() -> None:
     settings = Settings(
         v3={"enabled": True},
@@ -166,6 +173,33 @@ def test_general_graph_uses_primary_llm_draft_for_assistant_intro_without_rag() 
         "safety_agent",
         "response_agent",
     ]
+
+
+def test_disease_graph_does_not_block_event_loop_during_llm_understanding() -> None:
+    settings = Settings(
+        v3={"enabled": True},
+        disease_llm={"enabled": True, "shadow_mode": False},
+        primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock"},
+    )
+
+    async def scenario() -> None:
+        loop = asyncio.get_running_loop()
+        task = asyncio.create_task(
+            run_disease_graph(
+                "calf diarrhea",
+                rag_client=FakeRagServerClient(),
+                settings=settings,
+                primary_llm_client=SlowPrimaryLLMClient(),
+            )
+        )
+        started = loop.time()
+        await asyncio.sleep(0.02)
+        heartbeat_delay = loop.time() - started
+        await task
+
+        assert heartbeat_delay < 0.1
+
+    asyncio.run(scenario())
 
 
 def test_general_graph_uses_primary_llm_for_ordinary_chat_without_rag() -> None:

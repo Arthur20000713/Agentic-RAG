@@ -262,6 +262,29 @@ def test_chat_api_model_router_keeps_plain_follow_up_in_disease_context() -> Non
     assert "disease_slot_router" not in second["data"]["tools_used"]
 
 
+def test_chat_api_disease_context_does_not_capture_new_ordinary_topic() -> None:
+    settings = Settings(
+        database={"url": "sqlite:///:memory:"},
+        v3={"enabled": True},
+    )
+    app = create_app(settings=settings)
+    app.state.rag_client = FakeRagServerClient()
+    client = TestClient(app)
+
+    first = client.post(
+        "/api/chat",
+        json={"query": "calf diarrhea", "session_id": "s_topic_switch"},
+    ).json()
+    second = client.post(
+        "/api/chat",
+        json={"query": "Tell me a joke", "session_id": "s_topic_switch"},
+    ).json()
+
+    assert first["data"]["intent"] == "disease_consultation"
+    assert second["data"]["intent"] == "out_of_scope"
+    assert "livestock_rag_search" not in second["data"]["tools_used"]
+
+
 def test_chat_api_product_config_uses_v3_local_structured_takeover_path() -> None:
     app = create_app(settings=load_settings("config/settings.yaml"))
     app.state.rag_client = FakeRagServerClient()

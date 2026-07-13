@@ -18,9 +18,11 @@ class SafetyGuard:
         self.rule_path = Path(rule_path) if rule_path else Path(__file__).parents[1] / "rules" / "safety_rules.yaml"
         self.rules = self._load_rules()
 
-    def check(self, text: str) -> SafetyResult:
+    def check(self, text: str, *, categories: set[str] | None = None) -> SafetyResult:
         violations: list[str] = []
         for category, patterns in self.rules.items():
+            if categories is not None and category not in categories:
+                continue
             if any(re.search(pattern, text, flags=re.IGNORECASE | re.DOTALL) for pattern in patterns):
                 violations.append(category)
         if violations:
@@ -42,12 +44,11 @@ class FinalSafetyGuard:
     def __init__(self, safety_guard: SafetyGuard | None = None) -> None:
         self.safety_guard = safety_guard or SafetyGuard()
 
-    def enforce(self, answer: str) -> str:
-        result = self.safety_guard.check(answer)
+    def enforce(self, answer: str, *, categories: set[str] | None = None) -> str:
+        result = self.safety_guard.check(answer, categories=categories)
         if result.passed:
             return answer
         return (
             "安全提示：不能提供具体药物剂量、处方或确定性诊断。"
             "建议尽快联系执业兽医，并补充体温、持续时间、采食状态、粪便状态和是否群体发病等信息。"
         )
-

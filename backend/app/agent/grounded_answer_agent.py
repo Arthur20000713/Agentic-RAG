@@ -200,12 +200,17 @@ class GroundedAnswerAgent:
 
 def _normalize_grounded_payload(raw: dict[str, Any]) -> dict[str, Any]:
     payload = dict(raw)
+    nested = payload.get("grounded_rag_answer")
+    if isinstance(nested, dict):
+        payload.update(nested)
     if not str(payload.get("answer_draft") or "").strip():
         for alias in ("grounded_rag_answer", "answer", "response", "message", "content", "text"):
             value = payload.get(alias)
             if isinstance(value, str) and value.strip():
                 payload["answer_draft"] = value.strip()
                 break
+    if str(payload.get("answer_draft") or "").strip() and not payload.get("status"):
+        payload["status"] = "success"
     return payload
 
 

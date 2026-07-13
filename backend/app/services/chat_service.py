@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from backend.app.agent.graph import run_disease_graph, run_general_qa_graph
@@ -27,10 +28,12 @@ class ChatService:
         rag_client: RagServerClient,
         settings: Settings | None = None,
         session_context_service: SessionContextService | None = None,
+        conversation_history: list[dict[str, Any]] | None = None,
     ) -> None:
         self.rag_client = rag_client
         self.settings = settings or Settings()
         self.session_context_service = session_context_service
+        self.conversation_history = list(conversation_history or [])
         self.router = IntentRouter()
 
     async def ask(self, request: ChatRequest, *, request_id: str | None = None) -> AgentState | MultiAgentState:
@@ -47,6 +50,7 @@ class ChatService:
                     session_id=request.session_id,
                     request_id=request_id,
                     settings=self.settings,
+                    conversation_history=self.conversation_history,
                 )
             if route.intent in {"assistant_intro", "general_qa", "out_of_scope"}:
                 return await run_general_qa_graph(
@@ -55,6 +59,7 @@ class ChatService:
                     session_id=request.session_id,
                     request_id=request_id,
                     settings=self.settings,
+                    conversation_history=self.conversation_history,
                 )
         if route.intent == "disease_consultation":
             return await run_disease_consultation(
@@ -100,13 +105,32 @@ class ChatService:
         if context is None or context.last_intent != "disease_consultation":
             return False
         route = self.router.route(request.query)
-        if route.intent in {"disease_consultation", "general_qa"}:
+        if route.intent == "disease_consultation":
             return True
-        if route.intent == "out_of_scope":
-            if self.router._contains_any(request.query, self.router.out_of_scope_keywords):
-                return False
-            return len(request.query.strip()) <= 40
-        return False
+        if self.router._contains_any(request.query, self.router.disease_keywords):
+            return True
+        if re.search(r"\[[a-z_]+\s*=", request.query, flags=re.IGNORECASE):
+            return True
+        return self._is_explicit_disease_follow_up(request.query)
+
+    def _is_explicit_disease_follow_up(self, query: str) -> bool:
+        normalized = query.strip().lower()
+        markers = {
+            "那怎么办",
+            "接下来",
+            "然后呢",
+            "还是这样",
+            "这种情况",
+            "继续",
+            "体温",
+            "天了",
+            "一只",
+            "what next",
+            "what should i do",
+            "still sick",
+            "and then",
+        }
+        return any(marker in normalized for marker in markers)
 
 
 def state_to_chat_data(state: AgentState | MultiAgentState, *, settings: Settings | None = None) -> dict:

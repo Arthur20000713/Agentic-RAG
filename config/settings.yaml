@@ -21,8 +21,6 @@ model_router:
   shadow_mode: false
   allow_low_risk_takeover: true
   takeover_task_types:
-    - intent_routing
-    - query_normalization
     - measurement_analysis
     - summarization
   blocked_safety_levels:

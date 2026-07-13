@@ -138,23 +138,34 @@ async function submitChat(event) {
   if (!query) return;
 
   appendMessage("user", query, "你");
-  state.pendingAssistantNode = appendMessage("assistant", "正在检索和整理证据...", "处理中", { loading: true });
+  state.pendingAssistantNode = appendMessage("assistant", "正在理解问题并生成回复...", "处理中", { loading: true });
   setFormDisabled(form, true);
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 60000);
 
   try {
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query, session_id: state.chatSessionId }),
+      body: JSON.stringify({
+        query,
+        session_id: form.dataset.sessionId || state.chatSessionId || getOrCreateChatSessionId(),
+      }),
+      signal: controller.signal,
     });
     const payload = await response.json();
+    if (!response.ok || payload.code !== 0) {
+      throw new Error(payload.message || "请求失败，请检查输入后重试。");
+    }
     renderChat(payload.data || {});
     renderDebugPanel(payload);
     form.reset();
   } catch (error) {
-    renderChatError(error);
+    const displayError = error?.name === "AbortError" ? new Error("请求超时，请稍后重试。") : error;
+    renderChatError(displayError);
     renderDebugPanel({ error: String(error) });
   } finally {
+    window.clearTimeout(timeoutId);
     setFormDisabled(form, false);
   }
 }
@@ -326,6 +337,24 @@ function getOrCreateChatSessionId() {
   }
 }
 
+function startNewChatSession() {
+  const key = "livestock_agentic_rag_chat_session_id";
+  const generated = `web_${crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)}`;
+  state.chatSessionId = generated;
+  document.querySelector("#chat-form").dataset.sessionId = generated;
+  state.pendingAssistantNode = null;
+  state.lastResponse = null;
+  try {
+    window.localStorage.setItem(key, generated);
+  } catch {
+    // The in-memory session still works when local storage is unavailable.
+  }
+  document.querySelector("#chat-result").innerHTML = "";
+  appendMessage("assistant", "请描述具体场景、动物种类、症状或管理目标。", "系统待命");
+  renderDebugPanel({});
+  document.querySelector("#chat-query").focus();
+}
+
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => setActiveView(tab.dataset.view));
 });
@@ -338,6 +367,9 @@ document.querySelectorAll("[data-prompt]").forEach((button) => {
   });
 });
 
-document.querySelector("#chat-form").addEventListener("submit", submitChat);
+const chatForm = document.querySelector("#chat-form");
+chatForm.dataset.sessionId = state.chatSessionId || getOrCreateChatSessionId();
+chatForm.addEventListener("submit", submitChat);
+document.querySelector("#new-chat-button").addEventListener("click", startNewChatSession);
 document.querySelector("#measurement-form").addEventListener("submit", submitMeasurement);
 loadRagStatus();

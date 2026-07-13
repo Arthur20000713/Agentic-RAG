@@ -126,3 +126,71 @@ def test_direct_answer_agent_accepts_content_field_as_answer_draft_alias() -> No
 
     assert state.draft_answer == "Hello, I can help with livestock questions."
     assert state.tool_results["direct_answer_planner"]["fallback_used"] is False
+
+
+def test_direct_answer_agent_accepts_answer_without_explicit_status() -> None:
+    settings = Settings(
+        v3={"enabled": True},
+        primary_llm={"enabled": True, "provider": "deepseek", "model": "deepseek-v4-flash", "base_url": "https://api.deepseek.com"},
+    )
+    llm = FakePrimaryLLM({"answer": "A short, friendly joke."})
+    state = MultiAgentState(session_id="s1", user_query="Tell me a joke", intent="out_of_scope")
+
+    asyncio.run(DirectAnswerAgent(settings=settings, primary_llm_client=llm).run(state))
+
+    assert state.draft_answer == "A short, friendly joke."
+
+
+def test_direct_answer_agent_supplies_recent_session_history_to_llm() -> None:
+    settings = Settings(
+        v3={"enabled": True},
+        primary_llm={"enabled": True, "provider": "deepseek", "model": "deepseek-v4-flash", "base_url": "https://api.deepseek.com"},
+    )
+    llm = FakePrimaryLLM(
+        {
+            "status": "success",
+            "answer_draft": "You just told me your name is Xiaolin.",
+            "fallback_required": False,
+        }
+    )
+    state = MultiAgentState(session_id="s1", user_query="What did I just tell you?", intent="out_of_scope")
+    state.session_context["conversation_history"] = [
+        {"user": "My name is Xiaolin.", "assistant": "Nice to meet you, Xiaolin."}
+    ]
+
+    asyncio.run(DirectAnswerAgent(settings=settings, primary_llm_client=llm).run(state))
+
+    assert llm.requests[0].context["conversation_history"][0]["user"] == "My name is Xiaolin."
+    assert "My name is Xiaolin" in llm.requests[0].prompt
+
+
+def test_direct_answer_agent_accepts_nested_response_and_ok_status() -> None:
+    settings = Settings(
+        v3={"enabled": True},
+        primary_llm={"enabled": True, "provider": "deepseek", "model": "deepseek-v4-flash", "base_url": "https://api.deepseek.com"},
+    )
+    llm = FakePrimaryLLM({"status": "ok", "response": {"text": "Your name is Xiaogang."}})
+    state = MultiAgentState(session_id="s1", user_query="What is my name?", intent="out_of_scope")
+
+    asyncio.run(DirectAnswerAgent(settings=settings, primary_llm_client=llm).run(state))
+
+    assert state.draft_answer == "Your name is Xiaogang."
+
+
+def test_direct_answer_agent_recalls_explicit_name_from_session_history_without_llm_variance() -> None:
+    settings = Settings(
+        v3={"enabled": True},
+        primary_llm={"enabled": True, "provider": "deepseek", "model": "deepseek-v4-flash", "base_url": "https://api.deepseek.com"},
+    )
+    llm = FakePrimaryLLM({"status": "error", "fallback_required": True})
+    state = MultiAgentState(session_id="s1", user_query="我叫什么名字？", intent="out_of_scope")
+    state.session_context["conversation_history"] = [
+        {"user": "我的名字是小兰，请记住。", "assistant": "好的，小兰，我记住了。"},
+        {"user": "我叫什么名字？", "assistant": "抱歉，我暂时无法确认。"},
+    ]
+
+    asyncio.run(DirectAnswerAgent(settings=settings, primary_llm_client=llm).run(state))
+
+    assert state.draft_answer == "你的名字是小兰。"
+    assert llm.requests == []
+    assert state.tool_results["direct_answer_planner"]["fallback_used"] is False

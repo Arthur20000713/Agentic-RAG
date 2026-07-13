@@ -8,6 +8,7 @@ from backend.app.schemas.agent import AgentToolError
 
 
 S4_HARD_VIOLATIONS = {"dosage", "prescription", "definitive_diagnosis"}
+GENERAL_CHAT_SAFETY_CATEGORIES = {"fabricated_tool_result"}
 
 
 class SafetyAgent:
@@ -25,9 +26,14 @@ class SafetyAgent:
         state.active_agent = "safety_agent"
 
         candidate_answer = state.final_answer or state.draft_answer or ""
-        result = self.safety_guard.check(candidate_answer)
+        categories = None if state.intent == "disease_consultation" else GENERAL_CHAT_SAFETY_CATEGORIES
+        result = self.safety_guard.check(candidate_answer, categories=categories)
         hard_violations = [violation for violation in result.violations if violation in S4_HARD_VIOLATIONS]
-        safe_answer = candidate_answer if result.passed else self.final_safety_guard.enforce(candidate_answer)
+        safe_answer = (
+            candidate_answer
+            if result.passed
+            else self.final_safety_guard.enforce(candidate_answer, categories=categories)
+        )
         state.final_answer = safe_answer
         state.safety_result = {
             "passed": result.passed,

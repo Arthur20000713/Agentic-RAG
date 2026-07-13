@@ -172,3 +172,20 @@ def test_grounded_answer_agent_does_not_expose_retrieval_dump_on_model_failure()
     assert state.draft_answer == NO_ANSWER_TEXT
     assert "Query Results" not in state.draft_answer
     assert state.tool_results["grounded_answer_agent"]["status"] == "fallback"
+
+
+def test_grounded_answer_agent_accepts_nested_payload_without_explicit_status() -> None:
+    llm = FakePrimaryLLM(
+        {
+            "grounded_rag_answer": {
+                "answer_draft": "Provide clean water during the weaning transition [1].",
+                "evidence_sufficient": True,
+            }
+        }
+    )
+    state = _state()
+
+    asyncio.run(GroundedAnswerAgent(_settings(), primary_llm_client=llm).run(state))
+
+    assert state.draft_answer == "Provide clean water during the weaning transition [1]."
+    assert state.evidence_status == "success"

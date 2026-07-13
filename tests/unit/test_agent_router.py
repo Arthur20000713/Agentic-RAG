@@ -69,3 +69,25 @@ def test_router_detects_english_livestock_intents() -> None:
     assert router.route("How should a farm record calf diarrhea observations?").intent == "general_qa"
     assert router.route("empty knowledge-base question 1").intent == "general_qa"
     assert router.route("Write a stock trading strategy").intent == "out_of_scope"
+
+
+def test_router_avoids_livestock_false_positives_in_ordinary_topics() -> None:
+    router = IntentRouter()
+
+    assert router.route("我今天在牛市买了股票，聊聊投资风险。").intent == "out_of_scope"
+    assert router.route("What is the temperature in Beijing today?").intent == "out_of_scope"
+    assert router.route("I want to lose weight, any tips?").intent == "out_of_scope"
+    assert router.route("我的电脑发烧了，讲个笑话吧").intent == "out_of_scope"
+
+
+def test_router_prioritizes_livestock_part_of_mixed_intro_queries() -> None:
+    router = IntentRouter()
+
+    assert router.route("Who are you, and how should I manage calf weaning?").intent == "general_qa"
+    assert router.route("你是谁？顺便说说犊牛腹泻怎么办").intent == "disease_consultation"
+
+
+def test_router_keeps_environmental_temperature_management_in_general_qa() -> None:
+    result = IntentRouter().route("What should calf care emphasize during cold temperature conditions?")
+
+    assert result.intent == "general_qa"

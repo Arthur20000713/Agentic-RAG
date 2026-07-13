@@ -47,7 +47,12 @@ def classify_rag_answer_policy(query: str) -> RagAnswerPolicyDecision:
             warning=SAFETY_REFUSAL_POLICY_WARNING,
         )
 
-    if _matches_any(normalized, _NO_ANSWER_PATTERNS):
+    no_answer_patterns = (
+        _NO_ANSWER_PATTERNS[1:]
+        if _matches_any(normalized, _SUPPORTED_LIVESTOCK_SPECIES_PATTERNS)
+        else _NO_ANSWER_PATTERNS
+    )
+    if _matches_any(normalized, no_answer_patterns):
         return RagAnswerPolicyDecision(
             force_no_answer=True,
             reason="query is outside the current cattle corpus or asks for unavailable exact/proprietary facts",
@@ -71,6 +76,14 @@ _SAFETY_REFUSAL_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
         r"完整复制.*商业",
         r"绕过.*兽医",
         r"承诺.*一定.*恢复",
+    )
+)
+
+_SUPPORTED_LIVESTOCK_SPECIES_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(pattern, flags=re.IGNORECASE | re.DOTALL)
+    for pattern in (
+        r"broiler|poultry|swine|farrowing|goat",
+        r"养鸡|蛋鸡|生猪|山羊|绵羊|家禽",
     )
 )
 

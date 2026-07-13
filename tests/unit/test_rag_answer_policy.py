@@ -44,3 +44,15 @@ def test_policy_allows_regular_calf_management_question() -> None:
     assert decision.force_no_answer is False
     assert decision.force_safety_refusal is False
     assert decision.should_use_retrieved_contexts is True
+
+
+def test_policy_allows_supported_livestock_species_to_reach_real_rag() -> None:
+    for query in (
+        "How should poultry be managed in summer?",
+        "What should swine farrowing management emphasize?",
+        "How should goats be housed in winter?",
+    ):
+        decision = classify_rag_answer_policy(query)
+
+        assert decision.force_no_answer is False
+        assert decision.should_use_retrieved_contexts is True

@@ -294,6 +294,34 @@ def test_mcp_client_calls_query_and_summary_tools() -> None:
     asyncio.run(scenario())
 
 
+def test_mcp_client_serializes_concurrent_tool_calls(monkeypatch) -> None:
+    client = RagServerMcpClient(Settings())
+    active_calls = 0
+    max_active_calls = 0
+
+    async def fake_request(method: str, params: dict) -> dict:
+        nonlocal active_calls, max_active_calls
+        assert method == "tools/call"
+        active_calls += 1
+        max_active_calls = max(max_active_calls, active_calls)
+        await asyncio.sleep(0.02)
+        active_calls -= 1
+        return {"name": params["name"]}
+
+    monkeypatch.setattr(client, "_request", fake_request)
+
+    async def scenario() -> None:
+        results = await asyncio.gather(
+            client._call_tool("first", {}),
+            client._call_tool("second", {}),
+        )
+
+        assert [result["name"] for result in results] == ["first", "second"]
+        assert max_active_calls == 1
+
+    asyncio.run(scenario())
+
+
 def test_mcp_client_missing_repo_path_returns_error_result(monkeypatch) -> None:
     monkeypatch.delenv("RAG_SERVER_PATH", raising=False)
     client = RagServerMcpClient(Settings(rag_server={"query_mode": "mcp_stdio", "repo_path": None}))
