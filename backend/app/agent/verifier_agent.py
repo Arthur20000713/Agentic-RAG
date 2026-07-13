@@ -134,6 +134,8 @@ class VerifierAgent:
     def _unsupported_claims(self, state: MultiAgentState, answer: str) -> list[str]:
         if state.intent not in {"general_qa", "disease_consultation"}:
             return []
+        if self._is_reference_only_answer(state):
+            return []
         if state.evidence_status not in {"empty", "low_confidence", "error"}:
             return []
         if not answer.strip() or self._is_fallback_answer(answer):
@@ -144,6 +146,8 @@ class VerifierAgent:
 
     def _claim_checks(self, state: MultiAgentState, answer: str) -> list[ClaimCheck]:
         if state.intent not in {"general_qa", "disease_consultation"}:
+            return []
+        if self._is_reference_only_answer(state):
             return []
         if self._rag_answer_policy_blocks_sources(state):
             return []
@@ -165,6 +169,10 @@ class VerifierAgent:
                 ]
             return [ClaimCheck(claim=claim, source_uri=source_uris[0], supported=True)]
         return [ClaimCheck(claim=claim, supported=False, issue="claim_missing_source_uri")]
+
+    def _is_reference_only_answer(self, state: MultiAgentState) -> bool:
+        record = state.tool_results.get("grounded_answer_agent")
+        return isinstance(record, dict) and record.get("reference_only") is True
 
     def _claim_supported_by_evidence(self, claim: str, state: MultiAgentState) -> bool | None:
         claim_tokens = self._english_claim_tokens(claim)

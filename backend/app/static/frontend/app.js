@@ -182,7 +182,7 @@ function renderChat(data) {
         <span>${escapeHtml(labelFor(labels.intents, data.intent || "unknown"))}</span>
         ${data.risk_level ? `<span>${escapeHtml(labelFor(labels.risks, data.risk_level))}</span>` : ""}
       </div>
-      <p class="answer-text">${escapeHtml(data.answer || "暂无回答")}</p>
+      <div class="answer-text markdown-body">${renderMarkdown(data.answer || "暂无回答")}</div>
       ${renderFollowUps(data.follow_up_questions || [])}
       ${renderSources(data.sources || [])}
       ${renderToolSummary(data.tools_used || [])}
@@ -315,6 +315,112 @@ function labelFor(dictionary, value) {
   return dictionary[value] || value;
 }
 
+function renderMarkdown(markdown) {
+  const codeBlocks = [];
+  const source = String(markdown || "")
+    .replaceAll("\r\n", "\n")
+    .replace(/```([^\n`]*)\n([\s\S]*?)```/g, (_, language, code) => {
+      const safeLanguage = String(language || "").trim().replace(/[^a-z0-9_-]/gi, "");
+      const languageClass = safeLanguage ? ` class="language-${safeLanguage}"` : "";
+      const token = `\u0000CODE_BLOCK_${codeBlocks.length}\u0000`;
+      codeBlocks.push(`<pre><code${languageClass}>${escapeHtml(code.replace(/\n$/, ""))}</code></pre>`);
+      return `\n${token}\n`;
+    });
+
+  const output = [];
+  let openList = null;
+  const closeList = () => {
+    if (openList) output.push(`</${openList}>`);
+    openList = null;
+  };
+
+  source.split("\n").forEach((line) => {
+    const codeMatch = line.match(/^\u0000CODE_BLOCK_(\d+)\u0000$/);
+    if (codeMatch) {
+      closeList();
+      output.push(codeBlocks[Number(codeMatch[1])] || "");
+      return;
+    }
+    if (!line.trim()) {
+      closeList();
+      return;
+    }
+
+    const heading = line.match(/^(#{1,4})\s+(.+)$/);
+    if (heading) {
+      closeList();
+      const level = heading[1].length;
+      output.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
+      return;
+    }
+    const quote = line.match(/^>\s?(.*)$/);
+    if (quote) {
+      closeList();
+      output.push(`<blockquote>${renderInlineMarkdown(quote[1])}</blockquote>`);
+      return;
+    }
+    const unordered = line.match(/^\s*[-*+]\s+(.+)$/);
+    if (unordered) {
+      if (openList !== "ul") {
+        closeList();
+        output.push("<ul>");
+        openList = "ul";
+      }
+      output.push(`<li>${renderInlineMarkdown(unordered[1])}</li>`);
+      return;
+    }
+    const ordered = line.match(/^\s*\d+[.)]\s+(.+)$/);
+    if (ordered) {
+      if (openList !== "ol") {
+        closeList();
+        output.push("<ol>");
+        openList = "ol";
+      }
+      output.push(`<li>${renderInlineMarkdown(ordered[1])}</li>`);
+      return;
+    }
+    if (/^\s*---+\s*$/.test(line)) {
+      closeList();
+      output.push("<hr>");
+      return;
+    }
+
+    closeList();
+    output.push(`<p>${renderInlineMarkdown(line)}</p>`);
+  });
+  closeList();
+  return output.join("");
+}
+
+function renderInlineMarkdown(text) {
+  const inlineCode = [];
+  let safe = escapeHtml(text).replace(/`([^`]+)`/g, (_, code) => {
+    const token = `\u0000INLINE_CODE_${inlineCode.length}\u0000`;
+    inlineCode.push(`<code>${code}</code>`);
+    return token;
+  });
+  safe = safe.replace(/\[([^\]]+)]\(([^)\s]+)\)/g, (_, label, url) => {
+    const decodedUrl = url.replaceAll("&amp;", "&");
+    const safeUrl = sanitizeMarkdownUrl(decodedUrl);
+    if (!safeUrl) return `${label} (${escapeHtml(decodedUrl)})`;
+    return `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+  });
+  safe = safe
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/__([^_]+)__/g, "<strong>$1</strong>")
+    .replace(/~~([^~]+)~~/g, "<del>$1</del>")
+    .replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
+  inlineCode.forEach((html, index) => {
+    safe = safe.replace(`\u0000INLINE_CODE_${index}\u0000`, html);
+  });
+  return safe;
+}
+
+function sanitizeMarkdownUrl(url) {
+  const trimmed = String(url || "").trim();
+  return /^(https?:\/\/|mailto:|#|\/(?!\/))/i.test(trimmed) ? trimmed : null;
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -368,8 +474,15 @@ document.querySelectorAll("[data-prompt]").forEach((button) => {
 });
 
 const chatForm = document.querySelector("#chat-form");
+const chatQuery = document.querySelector("#chat-query");
 chatForm.dataset.sessionId = state.chatSessionId || getOrCreateChatSessionId();
 chatForm.addEventListener("submit", submitChat);
+chatQuery.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    chatForm.requestSubmit();
+  }
+});
 document.querySelector("#new-chat-button").addEventListener("click", startNewChatSession);
 document.querySelector("#measurement-form").addEventListener("submit", submitMeasurement);
 loadRagStatus();

@@ -19,7 +19,7 @@ def test_frontend_chat_page_static_contract() -> None:
     assert 'id="chat-query"' in response.text
     assert 'id="new-chat-button"' in response.text
     assert 'data-view="chat"' in response.text
-    assert 'src="./app.js?v=7"' in response.text
+    assert 'src="./app.js?v=8"' in response.text
 
 
 def test_frontend_chat_js_contract() -> None:
@@ -37,6 +37,23 @@ def test_frontend_chat_js_contract() -> None:
     assert "payload.code !== 0" in response.text
     assert "请求超时，请稍后重试。" in response.text
     assert "function startNewChatSession" in response.text
+    assert 'chatQuery.addEventListener("keydown"' in response.text
+    assert 'event.key === "Enter"' in response.text
+    assert "!event.shiftKey" in response.text
+    assert "!event.isComposing" in response.text
+    assert "chatForm.requestSubmit()" in response.text
+    assert "function renderMarkdown" in response.text
+    assert "function sanitizeMarkdownUrl" in response.text
+    assert 'class="answer-text markdown-body"' in response.text
+
+
+def test_frontend_markdown_styles_contract() -> None:
+    response = _client().get("/app/styles.css")
+
+    assert response.status_code == 200
+    assert ".markdown-body" in response.text
+    assert ".markdown-body pre" in response.text
+    assert ".markdown-body blockquote" in response.text
 
 
 def test_frontend_sources_and_tools_contract() -> None:

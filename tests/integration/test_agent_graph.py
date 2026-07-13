@@ -29,6 +29,11 @@ class MissingCitationSourceRagClient(FakeRagServerClient):
         )
 
 
+class EmptyRagClient(FakeRagServerClient):
+    async def query(self, query: str, **kwargs) -> RagSearchResult:
+        return RagSearchResult(query=query, status="empty")
+
+
 class FakePrimaryLLMClient:
     async def generate_json(self, request) -> dict:
         if request.schema_name == "disease_case_understanding":
@@ -50,6 +55,11 @@ class FakePrimaryLLMClient:
                 "answer_draft": "The retrieved livestock evidence supports this practical answer [1].",
                 "evidence_sufficient": True,
                 "fallback_required": False,
+            }
+        if request.schema_name == "reference_only_answer":
+            return {
+                "status": "success",
+                "answer_draft": "- Keep housing dry and monitor feed intake and behavior.",
             }
         return {
             "status": "success",
@@ -173,6 +183,34 @@ def test_general_graph_uses_primary_llm_draft_for_assistant_intro_without_rag() 
         "safety_agent",
         "response_agent",
     ]
+
+
+def test_general_qa_graph_returns_clearly_labeled_reference_answer_when_rag_is_empty() -> None:
+    settings = Settings(
+        v3={"enabled": True},
+        primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock"},
+    )
+
+    state = asyncio.run(
+        run_general_qa_graph(
+            "How should a goat be sheltered during a cold rain?",
+            rag_client=EmptyRagClient(),
+            session_id="s_reference_only",
+            settings=settings,
+            primary_llm_client=FakePrimaryLLMClient(),
+        )
+    )
+
+    assert state.intent == "general_qa"
+    assert state.evidence_status == "low_confidence"
+    assert "did not return enough evidence" in state.final_answer
+    assert "reference only" in state.final_answer.lower()
+    assert "qualified veterinarian or livestock specialist" in state.final_answer
+    assert state.tool_results["grounded_answer_agent"]["reference_only"] is True
+    assert state.tool_results["response_agent"]["sources"] == []
+    assert state.verification_result is not None
+    assert state.verification_result["passed"] is True
+    assert state.errors == []
 
 
 def test_disease_graph_does_not_block_event_loop_during_llm_understanding() -> None:

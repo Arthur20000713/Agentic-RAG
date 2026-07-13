@@ -26,6 +26,13 @@ class GroundedAnswerPayload(BaseModel):
     reason: str | None = None
 
 
+class ReferenceOnlyAnswerPayload(BaseModel):
+    status: Literal["success"]
+    answer_draft: str = Field(min_length=1)
+    fallback_required: bool = False
+    reason: str | None = None
+
+
 class GroundedAnswerAgent:
     def __init__(self, settings: Settings | None = None, primary_llm_client: Any | None = None) -> None:
         self.settings = settings or Settings()
@@ -35,6 +42,15 @@ class GroundedAnswerAgent:
         started_at = time.perf_counter()
         state.active_agent = "grounded_answer_agent"
         rag_result = self._rag_result(state)
+
+        if rag_result is not None and rag_result.status in {"empty", "low_confidence"}:
+            if await self._use_reference_answer(
+                state,
+                rag_status=rag_result.status,
+                fallback_reason=f"rag_status:{rag_result.status}",
+                started_at=started_at,
+            ):
+                return state
 
         if rag_result is None or not rag_result.has_usable_hits:
             self._use_no_answer(
@@ -98,6 +114,13 @@ class GroundedAnswerAgent:
             payload.answer_draft,
             evidence_count=len(rag_result.hits),
         ):
+            if await self._use_reference_answer(
+                state,
+                rag_status="insufficient_evidence",
+                fallback_reason=payload.reason or "insufficient_rag_evidence",
+                started_at=started_at,
+            ):
+                return state
             self._use_no_answer(
                 state,
                 status="no_answer",
@@ -152,6 +175,64 @@ class GroundedAnswerAgent:
             f"User question: {(state.normalized_query or state.user_query).strip()}"
         )
 
+    async def _use_reference_answer(
+        self,
+        state: MultiAgentState,
+        *,
+        rag_status: str,
+        fallback_reason: str,
+        started_at: float,
+    ) -> bool:
+        if not self.settings.primary_llm.enabled:
+            return False
+
+        try:
+            raw = await self.primary_llm_client.generate_json(
+                PrimaryLLMRequest(
+                    prompt=(
+                        "The knowledge base did not provide enough relevant evidence. "
+                        "Give a short, cautious general-knowledge answer to the user's livestock question. "
+                        "Use at most three brief points and answer in the user's language."
+                    ),
+                    schema_name="reference_only_answer",
+                    context={
+                        "user_query": state.user_query,
+                        "normalized_query": state.normalized_query or state.user_query,
+                        "intent": state.intent,
+                        "rag_status": rag_status,
+                    },
+                    system_prompt=(
+                        "Return exactly one JSON object with status=success and answer_draft. "
+                        "This is an ungrounded, general-knowledge fallback because RAG evidence is insufficient. "
+                        "Keep the answer brief and conservative. Do not invent citations, claim that the knowledge "
+                        "base supports the answer, diagnose, prescribe drugs, or provide drug dosages."
+                    ),
+                )
+            )
+            payload = ReferenceOnlyAnswerPayload.model_validate(_normalize_reference_payload(raw))
+        except Exception:
+            return False
+
+        if payload.fallback_required:
+            return False
+
+        answer = _strip_citation_markers(payload.answer_draft).strip()
+        if not answer:
+            return False
+
+        state.draft_answer = _wrap_reference_answer(state.user_query, answer)
+        state.evidence_status = "low_confidence"
+        state.retrieved_contexts.clear()
+        self._record(
+            state,
+            status="reference_only",
+            fallback_used=True,
+            fallback_reason=fallback_reason,
+            reference_only=True,
+            started_at=started_at,
+        )
+        return True
+
     def _use_no_answer(
         self,
         state: MultiAgentState,
@@ -179,12 +260,14 @@ class GroundedAnswerAgent:
         fallback_used: bool,
         fallback_reason: str | None,
         started_at: float,
+        reference_only: bool = False,
     ) -> None:
         result = {
             "status": status,
-            "schema_name": "grounded_rag_answer",
+            "schema_name": "reference_only_answer" if reference_only else "grounded_rag_answer",
             "fallback_used": fallback_used,
             "fallback_reason": fallback_reason,
+            "reference_only": reference_only,
         }
         state.tool_results["grounded_answer_agent"] = result
         state.agent_trace.append(
@@ -193,6 +276,7 @@ class GroundedAnswerAgent:
                 "status": status,
                 "fallback_used": fallback_used,
                 "fallback_reason": fallback_reason,
+                "reference_only": reference_only,
                 "latency_ms": max(0, int((time.perf_counter() - started_at) * 1000)),
             }
         )
@@ -212,6 +296,43 @@ def _normalize_grounded_payload(raw: dict[str, Any]) -> dict[str, Any]:
     if str(payload.get("answer_draft") or "").strip() and not payload.get("status"):
         payload["status"] = "success"
     return payload
+
+
+def _normalize_reference_payload(raw: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(raw)
+    nested = payload.get("reference_only_answer")
+    if isinstance(nested, dict):
+        payload.update(nested)
+    if not str(payload.get("answer_draft") or "").strip():
+        for alias in ("reference_only_answer", "answer", "response", "message", "content", "text"):
+            value = payload.get(alias)
+            if isinstance(value, str) and value.strip():
+                payload["answer_draft"] = value.strip()
+                break
+    if str(payload.get("answer_draft") or "").strip() and payload.get("status") in {None, "", "ok", "completed"}:
+        payload["status"] = "success"
+    return payload
+
+
+def _strip_citation_markers(answer: str) -> str:
+    return re.sub(r"\s*\[(?:\d+|source[^\]]*)\]", "", answer, flags=re.IGNORECASE)
+
+
+def _wrap_reference_answer(query: str, answer: str) -> str:
+    if re.search(r"[\u3400-\u9fff]", query):
+        return (
+            "当前知识库没有检索到足够依据，因此无法给出确定回答。"
+            "以下内容仅基于通用知识，供参考：\n\n"
+            f"{answer}\n\n"
+            "以上内容仅供参考；具体情况请咨询专业兽医或相关技术人员。"
+        )
+    return (
+        "The knowledge base did not return enough evidence, so I cannot give a definitive answer. "
+        "The following is a brief general-knowledge reference only:\n\n"
+        f"{answer}\n\n"
+        "For reference only; please consult a qualified veterinarian or livestock specialist "
+        "for your specific situation."
+    )
 
 
 def _has_valid_evidence_citation(answer: str, *, evidence_count: int) -> bool:
