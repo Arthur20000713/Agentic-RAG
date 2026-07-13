@@ -7,7 +7,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from backend.app.api import chat, documents, health, measurement, rag, tasks, traces
+from backend.app.api import chat, conversations, documents, health, measurement, rag, tasks, traces
 from backend.app.core.config import Settings, load_settings
 from backend.app.core.errors import ErrorCode
 from backend.app.core.response import ApiResponse
@@ -37,6 +37,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.rag_client = create_rag_server_client(app_settings, trace_service=app.state.trace_service)
 
     app.include_router(chat.router)
+    app.include_router(conversations.router)
     app.include_router(documents.router)
     app.include_router(health.router)
     app.include_router(rag.router)

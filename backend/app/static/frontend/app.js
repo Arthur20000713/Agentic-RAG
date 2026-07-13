@@ -1,8 +1,22 @@
+const CHAT_SESSION_STORAGE_KEY = "livestock_agentic_rag_chat_session_id";
+const CLIENT_ID_STORAGE_KEY = "livestock_agentic_rag_client_id";
+
 const state = {
   lastResponse: null,
   ragStatus: null,
   pendingAssistantNode: null,
   chatSessionId: getOrCreateChatSessionId(),
+  conversations: [],
+  conversationTotal: 0,
+  conversationPageSize: 50,
+  conversationSearch: "",
+  openConversationMenu: null,
+  clientId: getOrCreateClientId(),
+  activeChatRequest: null,
+  pendingAssistantSessionId: null,
+  conversationLoadToken: 0,
+  chatRequestToken: 0,
+  conversationListToken: 0,
 };
 
 const labels = {
@@ -137,10 +151,14 @@ async function submitChat(event) {
   const query = new FormData(form).get("query")?.toString().trim();
   if (!query) return;
 
+  const requestSessionId = form.dataset.sessionId || state.chatSessionId || getOrCreateChatSessionId();
   appendMessage("user", query, "你");
   state.pendingAssistantNode = appendMessage("assistant", "正在理解问题并生成回复...", "处理中", { loading: true });
+  state.pendingAssistantSessionId = requestSessionId;
   setFormDisabled(form, true);
   const controller = new AbortController();
+  const requestToken = ++state.chatRequestToken;
+  state.activeChatRequest = { sessionId: requestSessionId, controller, requestToken };
   const timeoutId = window.setTimeout(() => controller.abort(), 60000);
 
   try {
@@ -149,7 +167,8 @@ async function submitChat(event) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         query,
-        session_id: form.dataset.sessionId || state.chatSessionId || getOrCreateChatSessionId(),
+        session_id: requestSessionId,
+        user_id: state.clientId,
       }),
       signal: controller.signal,
     });
@@ -157,16 +176,20 @@ async function submitChat(event) {
     if (!response.ok || payload.code !== 0) {
       throw new Error(payload.message || "请求失败，请检查输入后重试。");
     }
+    if (state.chatRequestToken !== requestToken || state.chatSessionId !== requestSessionId) return;
     renderChat(payload.data || {});
     renderDebugPanel(payload);
     form.reset();
+    await loadConversationList(state.conversationSearch);
   } catch (error) {
+    if (state.chatRequestToken !== requestToken || state.chatSessionId !== requestSessionId) return;
     const displayError = error?.name === "AbortError" ? new Error("请求超时，请稍后重试。") : error;
     renderChatError(displayError);
     renderDebugPanel({ error: String(error) });
   } finally {
     window.clearTimeout(timeoutId);
-    setFormDisabled(form, false);
+    if (state.activeChatRequest?.controller === controller) state.activeChatRequest = null;
+    if (state.chatSessionId === requestSessionId) setFormDisabled(form, false);
   }
 }
 
@@ -292,6 +315,331 @@ function appendMessage(role, text, meta, options = {}) {
   container.appendChild(node);
   scrollChatToEnd();
   return node;
+}
+
+function renderStoredMessage(message) {
+  const role = message.role === "user" ? "user" : "assistant";
+  const node = appendMessage(role, "", role === "user" ? "你" : "助手");
+  const body = node.querySelector(".message-body");
+  const content = String(message.content || "");
+  if (role === "user") {
+    body.innerHTML = `<div class="message-meta">你</div><p>${escapeHtml(content)}</p>`;
+    return;
+  }
+  body.innerHTML = `
+    <div class="message-meta">助手</div>
+    <article class="answer-block">
+      ${(message.intent || message.risk_level) ? `<div class="meta-row">
+        ${message.intent ? `<span>${escapeHtml(labelFor(labels.intents, message.intent))}</span>` : ""}
+        ${message.risk_level ? `<span>${escapeHtml(labelFor(labels.risks, message.risk_level))}</span>` : ""}
+      </div>` : ""}
+      <div class="answer-text markdown-body">${renderMarkdown(content)}</div>
+      ${renderFollowUps(Array.isArray(message.follow_up_questions) ? message.follow_up_questions : [])}
+      ${renderSources(Array.isArray(message.sources) ? message.sources : [])}
+      ${renderToolSummary(Array.isArray(message.tools_used) ? message.tools_used : [])}
+      ${renderMessageErrors(Array.isArray(message.errors) ? message.errors : [])}
+    </article>
+  `;
+}
+
+function renderMessageErrors(errors) {
+  const items = errors.map((error) => `<li>${escapeHtml(typeof error === "string" ? error : error.message || JSON.stringify(error))}</li>`).join("");
+  return items ? `<details class="message-errors"><summary>处理提示</summary><ul>${items}</ul></details>` : "";
+}
+
+function cancelActiveChatRequest() {
+  state.chatRequestToken += 1;
+  if (state.activeChatRequest) state.activeChatRequest.controller.abort();
+  state.activeChatRequest = null;
+  state.pendingAssistantNode = null;
+  state.pendingAssistantSessionId = null;
+  setFormDisabled(document.querySelector("#chat-form"), false);
+}
+
+function persistCurrentSession(sessionId) {
+  try {
+    window.localStorage.setItem(CHAT_SESSION_STORAGE_KEY, sessionId);
+  } catch {
+    // The active session remains available in memory when storage is unavailable.
+  }
+}
+
+function setCurrentSession(sessionId) {
+  state.chatSessionId = sessionId;
+  document.querySelector("#chat-form").dataset.sessionId = sessionId;
+  persistCurrentSession(sessionId);
+  document.querySelectorAll(".conversation-item").forEach((item) => {
+    const isCurrent = item.dataset.sessionId === sessionId;
+    item.classList.toggle("is-current", isCurrent);
+    item.querySelector(".conversation-open")?.setAttribute("aria-current", isCurrent ? "page" : "false");
+  });
+}
+
+function conversationTitle(conversation) {
+  return String(conversation.title || conversation.summary || "新对话").trim() || "新对话";
+}
+
+function conversationTimestamp(conversation) {
+  const value = conversation.updated_at || conversation.created_at;
+  if (!value) return "";
+  const date = parseConversationDate(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const now = new Date();
+  if (date.toDateString() === now.toDateString()) {
+    return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+  }
+  return date.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
+}
+
+function conversationGroup(conversation) {
+  const value = conversation.updated_at || conversation.created_at;
+  const date = value ? parseConversationDate(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return "更早";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const itemDate = new Date(date);
+  itemDate.setHours(0, 0, 0, 0);
+  const days = Math.round((today - itemDate) / 86400000);
+  if (days <= 0) return "今天";
+  if (days < 7) return "最近 7 天";
+  return "更早";
+}
+
+function parseConversationDate(value) {
+  const normalized = String(value || "").trim().replace(" ", "T");
+  if (!normalized) return new Date(Number.NaN);
+  const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized);
+  return new Date(hasTimezone ? normalized : `${normalized}Z`);
+}
+
+function conversationPreview(conversation) {
+  return String(conversation.preview || conversation.last_message || conversation.last_message_preview || "").trim();
+}
+
+function renderConversationItem(conversation) {
+  const sessionId = String(conversation.session_id || conversation.id || "");
+  const title = conversationTitle(conversation);
+  const preview = conversationPreview(conversation);
+  const isCurrent = sessionId === state.chatSessionId;
+  return `
+    <article class="conversation-item${isCurrent ? " is-current" : ""}" role="listitem" data-session-id="${escapeHtml(sessionId)}">
+      <div class="conversation-open" role="button" tabindex="0" aria-label="打开对话：${escapeHtml(title)}" aria-current="${isCurrent ? "page" : "false"}">
+        <span class="conversation-title" title="${escapeHtml(title)}">${escapeHtml(title)}</span>
+        ${preview ? `<span class="conversation-preview" title="${escapeHtml(preview)}">${escapeHtml(preview)}</span>` : ""}
+        <time>${escapeHtml(conversationTimestamp(conversation))}</time>
+      </div>
+      <button class="conversation-menu-button" type="button" aria-label="${escapeHtml(title)}的更多操作" aria-expanded="false">•••</button>
+      <div class="conversation-menu" hidden>
+        <button type="button" data-action="rename">重命名</button>
+        <button type="button" data-action="delete" class="danger-action">删除</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderConversationList(items, total = items.length) {
+  const list = document.querySelector("#conversation-list");
+  const count = document.querySelector("#conversation-count");
+  state.conversations = items;
+  state.conversationTotal = total;
+  count.textContent = total ? String(total) : "";
+  list.setAttribute("aria-busy", "false");
+  if (!items.length) {
+    const message = state.conversationSearch ? "没有匹配的对话" : "还没有历史对话";
+    list.innerHTML = `<div class="history-state"><strong>${message}</strong><span>${state.conversationSearch ? "试试其他关键词" : "发送第一条消息后会显示在这里"}</span></div>`;
+    return;
+  }
+  const groupOrder = ["今天", "最近 7 天", "更早"];
+  const groupedHtml = groupOrder.map((group) => {
+    const groupItems = items.filter((conversation) => conversationGroup(conversation) === group);
+    if (!groupItems.length) return "";
+    return `<section class="conversation-group" aria-labelledby="history-${group.replaceAll(" ", "-")}">
+      <h3 id="history-${group.replaceAll(" ", "-")}">${group}</h3>
+      ${groupItems.map(renderConversationItem).join("")}
+    </section>`;
+  }).join("");
+  const loadMore = items.length < total
+    ? `<button class="history-load-more" type="button">加载更多</button>`
+    : "";
+  list.innerHTML = `${groupedHtml}${loadMore}`;
+}
+
+function toggleSidebar() {
+  const collapsed = document.body.classList.toggle("sidebar-collapsed");
+  const button = document.querySelector("#sidebar-toggle");
+  button.textContent = collapsed ? "›" : "‹";
+  button.setAttribute("aria-expanded", String(!collapsed));
+  button.setAttribute("aria-label", collapsed ? "展开对话历史" : "收起对话历史");
+  try { window.localStorage.setItem("livestock_sidebar_collapsed", String(collapsed)); } catch { /* no-op */ }
+}
+
+async function loadConversationList(search = "", options = {}) {
+  const list = document.querySelector("#conversation-list");
+  const listToken = ++state.conversationListToken;
+  const append = options.append === true;
+  const offset = append ? state.conversations.length : 0;
+  list.setAttribute("aria-busy", "true");
+  try {
+    const response = await fetch(`/api/conversations?search=${encodeURIComponent(search)}&limit=${state.conversationPageSize}&offset=${offset}`, {
+      headers: { "X-Client-ID": state.clientId },
+    });
+    const payload = await response.json();
+    if (!response.ok || payload.code !== 0) throw new Error(payload.message || "加载失败");
+    if (listToken !== state.conversationListToken) return;
+    const data = payload.data || {};
+    const pageItems = Array.isArray(data.items) ? data.items : [];
+    const items = append ? [...state.conversations, ...pageItems] : pageItems;
+    renderConversationList(items, Number(data.total || 0));
+  } catch (error) {
+    if (listToken !== state.conversationListToken) return;
+    list.setAttribute("aria-busy", "false");
+    list.innerHTML = `<button class="history-retry" type="button">历史记录加载失败，点击重试</button>`;
+    console.error("Failed to load conversations", error);
+  }
+}
+
+async function openConversation(sessionId, options = {}) {
+  if (!sessionId) return;
+  cancelActiveChatRequest();
+  const loadToken = ++state.conversationLoadToken;
+  const thread = document.querySelector("#chat-result");
+  const form = document.querySelector("#chat-form");
+  setFormDisabled(form, true);
+  thread.setAttribute("aria-busy", "true");
+  if (!options.silent) thread.innerHTML = `<p class="history-state">正在加载对话…</p>`;
+  try {
+    const response = await fetch(`/api/conversations/${encodeURIComponent(sessionId)}`, {
+      headers: { "X-Client-ID": state.clientId },
+    });
+    const payload = await response.json();
+    if (!response.ok || payload.code !== 0) {
+      const historyError = new Error(payload.message || "对话加载失败");
+      historyError.code = payload.code;
+      throw historyError;
+    }
+    if (loadToken !== state.conversationLoadToken) return;
+    const data = payload.data || {};
+    const messages = Array.isArray(data.messages) ? data.messages : [];
+    setCurrentSession(sessionId);
+    thread.innerHTML = "";
+    if (messages.length) {
+      messages.forEach(renderStoredMessage);
+    } else {
+      appendMessage("assistant", "请描述具体场景、动物种类、症状或管理目标。", "系统待命");
+    }
+    setActiveView("chat");
+    renderDebugPanel({});
+    scrollChatToEnd();
+  } catch (error) {
+    if (loadToken !== state.conversationLoadToken) return;
+    if (!options.silent) {
+      thread.innerHTML = "";
+      appendMessage("assistant", `无法加载该对话：${error.message || error}`, "加载失败");
+    }
+    if (options.clearMissing && error.code === 40004) startNewChatSession({ refresh: false });
+  } finally {
+    if (loadToken === state.conversationLoadToken) {
+      thread.setAttribute("aria-busy", "false");
+      setFormDisabled(form, false);
+    }
+  }
+}
+
+function closeConversationMenus() {
+  state.openConversationMenu = null;
+  document.querySelectorAll(".conversation-menu").forEach((menu) => { menu.hidden = true; });
+  document.querySelectorAll(".conversation-menu-button").forEach((button) => button.setAttribute("aria-expanded", "false"));
+}
+
+function beginConversationRename(item) {
+  closeConversationMenus();
+  const titleNode = item.querySelector(".conversation-title");
+  const originalTitle = titleNode.textContent.trim();
+  titleNode.innerHTML = `<input class="conversation-rename-input" aria-label="新的对话名称" maxlength="80" value="${escapeHtml(originalTitle)}" />`;
+  const input = titleNode.querySelector("input");
+  input.focus();
+  input.select();
+  let finished = false;
+  const finish = async (save) => {
+    if (finished) return;
+    finished = true;
+    const title = input.value.trim();
+    titleNode.textContent = originalTitle;
+    if (!save || !title || title === originalTitle) return;
+    try {
+      const response = await fetch(`/api/conversations/${encodeURIComponent(item.dataset.sessionId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "X-Client-ID": state.clientId },
+        body: JSON.stringify({ title }),
+      });
+      const payload = await response.json();
+      if (!response.ok || payload.code !== 0) throw new Error(payload.message || "重命名失败");
+      await loadConversationList(state.conversationSearch);
+    } catch (error) {
+      window.alert(error.message || "重命名失败");
+    }
+  };
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") { event.preventDefault(); finish(true); }
+    if (event.key === "Escape") { event.preventDefault(); finish(false); }
+  });
+  input.addEventListener("blur", () => finish(true));
+}
+
+async function deleteConversation(item) {
+  closeConversationMenus();
+  const title = item.querySelector(".conversation-title").textContent.trim();
+  if (!window.confirm(`确定删除“${title}”吗？此操作无法撤销。`)) return;
+  const sessionId = item.dataset.sessionId;
+  try {
+    const response = await fetch(`/api/conversations/${encodeURIComponent(sessionId)}`, {
+      method: "DELETE",
+      headers: { "X-Client-ID": state.clientId },
+    });
+    const payload = await response.json();
+    if (!response.ok || payload.code !== 0) throw new Error(payload.message || "删除失败");
+    if (sessionId === state.chatSessionId) startNewChatSession({ refresh: false });
+    await loadConversationList(state.conversationSearch);
+  } catch (error) {
+    window.alert(error.message || "删除失败");
+  }
+}
+
+function handleConversationListClick(event) {
+  const item = event.target.closest(".conversation-item");
+  if (event.target.closest(".history-retry")) { loadConversationList(state.conversationSearch); return; }
+  if (event.target.closest(".history-load-more")) {
+    loadConversationList(state.conversationSearch, { append: true });
+    return;
+  }
+  if (!item) return;
+  if (event.target.closest(".conversation-open") && !event.target.closest(".conversation-rename-input")) {
+    closeConversationMenus();
+    openConversation(item.dataset.sessionId);
+    return;
+  }
+  const menuButton = event.target.closest(".conversation-menu-button");
+  if (menuButton) {
+    const menu = item.querySelector(".conversation-menu");
+    const willOpen = menu.hidden;
+    closeConversationMenus();
+    menu.hidden = !willOpen;
+    menuButton.setAttribute("aria-expanded", String(willOpen));
+    state.openConversationMenu = willOpen ? item.dataset.sessionId : null;
+    return;
+  }
+  const action = event.target.closest("[data-action]")?.dataset.action;
+  if (action === "rename") beginConversationRename(item);
+  if (action === "delete") deleteConversation(item);
+}
+
+function handleConversationListKeydown(event) {
+  if (event.target.closest(".conversation-rename-input")) return;
+  const openButton = event.target.closest(".conversation-open");
+  if (openButton && (event.key === "Enter" || event.key === " ")) {
+    event.preventDefault();
+    openConversation(openButton.closest(".conversation-item").dataset.sessionId);
+  }
 }
 
 function scrollChatToEnd() {
@@ -431,27 +779,38 @@ function escapeHtml(value) {
 }
 
 function getOrCreateChatSessionId() {
-  const key = "livestock_agentic_rag_chat_session_id";
   try {
-    const existing = window.localStorage.getItem(key);
+    const existing = window.localStorage.getItem(CHAT_SESSION_STORAGE_KEY);
     if (existing) return existing;
     const generated = `web_${crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)}`;
-    window.localStorage.setItem(key, generated);
+    window.localStorage.setItem(CHAT_SESSION_STORAGE_KEY, generated);
     return generated;
   } catch {
     return `web_${Date.now().toString(36)}`;
   }
 }
 
-function startNewChatSession() {
-  const key = "livestock_agentic_rag_chat_session_id";
+function getOrCreateClientId() {
+  try {
+    const existing = window.localStorage.getItem(CLIENT_ID_STORAGE_KEY);
+    if (existing) return existing;
+    const generated = `client_${crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)}`;
+    window.localStorage.setItem(CLIENT_ID_STORAGE_KEY, generated);
+    return generated;
+  } catch {
+    return `client_${Date.now().toString(36)}`;
+  }
+}
+
+function startNewChatSession(options = {}) {
+  cancelActiveChatRequest();
+  state.conversationLoadToken += 1;
   const generated = `web_${crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)}`;
-  state.chatSessionId = generated;
-  document.querySelector("#chat-form").dataset.sessionId = generated;
+  setCurrentSession(generated);
   state.pendingAssistantNode = null;
   state.lastResponse = null;
   try {
-    window.localStorage.setItem(key, generated);
+    window.localStorage.setItem(CHAT_SESSION_STORAGE_KEY, generated);
   } catch {
     // The in-memory session still works when local storage is unavailable.
   }
@@ -459,6 +818,7 @@ function startNewChatSession() {
   appendMessage("assistant", "请描述具体场景、动物种类、症状或管理目标。", "系统待命");
   renderDebugPanel({});
   document.querySelector("#chat-query").focus();
+  if (options.refresh !== false) loadConversationList(state.conversationSearch);
 }
 
 document.querySelectorAll(".tab").forEach((tab) => {
@@ -484,5 +844,23 @@ chatQuery.addEventListener("keydown", (event) => {
   }
 });
 document.querySelector("#new-chat-button").addEventListener("click", startNewChatSession);
+document.querySelector("#sidebar-toggle").addEventListener("click", toggleSidebar);
+document.querySelector("#conversation-list").addEventListener("click", handleConversationListClick);
+document.querySelector("#conversation-list").addEventListener("keydown", handleConversationListKeydown);
+document.querySelector("#conversation-search").addEventListener("input", (event) => {
+  state.conversationSearch = event.currentTarget.value.trim();
+  window.clearTimeout(event.currentTarget.searchTimer);
+  event.currentTarget.searchTimer = window.setTimeout(() => loadConversationList(state.conversationSearch), 250);
+});
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".conversation-item")) closeConversationMenus();
+});
 document.querySelector("#measurement-form").addEventListener("submit", submitMeasurement);
 loadRagStatus();
+try {
+  if (window.localStorage.getItem("livestock_sidebar_collapsed") === "true") toggleSidebar();
+} catch {
+  // Use the expanded sidebar when storage is unavailable.
+}
+loadConversationList();
+openConversation(state.chatSessionId, { silent: true, clearMissing: true });

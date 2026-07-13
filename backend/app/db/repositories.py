@@ -166,14 +166,16 @@ class QaLogRepository:
         retrieved_chunks: list[dict[str, Any]] | None = None,
         risk_level: str | None = None,
         latency_ms: int | None = None,
+        response_data: dict[str, Any] | None = None,
+        commit: bool = True,
     ) -> int:
         cursor = self.conn.execute(
             """
             INSERT INTO qa_log (
                 session_id, user_query, intent, tools_used, retrieved_chunks,
-                final_answer, risk_level, latency_ms
+                final_answer, risk_level, latency_ms, response_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 session_id,
@@ -184,9 +186,11 @@ class QaLogRepository:
                 final_answer,
                 risk_level,
                 latency_ms,
+                json.dumps(response_data, ensure_ascii=False) if response_data is not None else None,
             ),
         )
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
         return int(cursor.lastrowid)
 
     def recent(self, session_id: str, *, limit: int = 6) -> list[dict[str, Any]]:
@@ -207,6 +211,221 @@ class QaLogRepository:
                 "intent": row["intent"],
             }
             for row in reversed(rows)
+        ]
+
+
+class ConversationRepository:
+    def __init__(self, conn: sqlite3.Connection) -> None:
+        self.conn = conn
+
+    def record_turn(
+        self,
+        session_id: str,
+        owner_id: str,
+        first_query: str,
+        *,
+        commit: bool = True,
+    ) -> bool:
+        title = self.make_title(first_query)
+        cursor = self.conn.execute(
+            """
+            INSERT INTO conversation (session_id, owner_id, title)
+            VALUES (?, ?, ?)
+            ON CONFLICT(session_id) DO UPDATE SET
+                updated_at = STRFTIME('%Y-%m-%d %H:%M:%f', 'now')
+            WHERE conversation.owner_id = excluded.owner_id
+            """,
+            (session_id, owner_id, title),
+        )
+        if commit:
+            self.conn.commit()
+        return cursor.rowcount > 0
+
+    def list(
+        self,
+        owner_id: str,
+        *,
+        search: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        params: list[Any] = [owner_id]
+        where = "WHERE c.owner_id = ?"
+        if search and search.strip():
+            escaped = self._escape_like(search.strip())
+            pattern = f"%{escaped}%"
+            where += """
+                AND (
+                    c.title LIKE ? ESCAPE '\\' COLLATE NOCASE
+                    OR EXISTS (
+                        SELECT 1 FROM qa_log AS searched
+                        WHERE searched.session_id = c.session_id
+                          AND (searched.user_query LIKE ? ESCAPE '\\' COLLATE NOCASE
+                               OR searched.final_answer LIKE ? ESCAPE '\\' COLLATE NOCASE)
+                    )
+                )
+            """
+            params.extend([pattern, pattern, pattern])
+        total = int(
+            self.conn.execute(
+                f"SELECT COUNT(*) FROM conversation AS c {where}",
+                tuple(params),
+            ).fetchone()[0]
+        )
+        rows = self.conn.execute(
+            f"""
+            SELECT c.session_id, c.title, c.created_at, c.updated_at,
+                   COUNT(q.id) * 2 AS message_count,
+                   SUBSTR((
+                       SELECT COALESCE(NULLIF(TRIM(latest.final_answer), ''), latest.user_query)
+                       FROM qa_log AS latest
+                       WHERE latest.session_id = c.session_id
+                       ORDER BY latest.id DESC
+                       LIMIT 1
+                   ), 1, 120) AS last_message_preview
+            FROM conversation AS c
+            LEFT JOIN qa_log AS q ON q.session_id = c.session_id
+            {where}
+            GROUP BY c.session_id, c.title, c.created_at, c.updated_at
+            ORDER BY c.updated_at DESC, c.session_id DESC
+            LIMIT ? OFFSET ?
+            """,
+            (*params, limit, offset),
+        ).fetchall()
+        return [dict(row) for row in rows], total
+
+    def get(self, session_id: str, owner_id: str | None = None) -> dict[str, Any] | None:
+        owner_filter = "AND c.owner_id = ?" if owner_id is not None else ""
+        params: tuple[Any, ...] = (session_id, owner_id) if owner_id is not None else (session_id,)
+        row = self.conn.execute(
+            f"""
+            SELECT c.session_id, c.title, c.created_at, c.updated_at,
+                   COUNT(q.id) * 2 AS message_count,
+                   SUBSTR((
+                       SELECT COALESCE(NULLIF(TRIM(latest.final_answer), ''), latest.user_query)
+                       FROM qa_log AS latest
+                       WHERE latest.session_id = c.session_id
+                       ORDER BY latest.id DESC
+                       LIMIT 1
+                   ), 1, 120) AS last_message_preview
+            FROM conversation AS c
+            LEFT JOIN qa_log AS q ON q.session_id = c.session_id
+            WHERE c.session_id = ? {owner_filter}
+            GROUP BY c.session_id, c.title, c.created_at, c.updated_at
+            """,
+            params,
+        ).fetchone()
+        return None if row is None else dict(row)
+
+    def messages(self, session_id: str, owner_id: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT q.id, q.user_query, q.final_answer, q.intent, q.risk_level,
+                   q.tools_used, q.retrieved_chunks, q.response_json, q.created_at
+            FROM qa_log AS q
+            JOIN conversation AS c ON c.session_id = q.session_id
+            WHERE q.session_id = ? AND c.owner_id = ?
+            ORDER BY q.created_at ASC, q.id ASC
+            """,
+            (session_id, owner_id),
+        ).fetchall()
+        messages: list[dict[str, Any]] = []
+        for row in rows:
+            messages.extend(
+                [
+                    {
+                        "id": f"{row['id']}:user",
+                        "role": "user",
+                        "content": row["user_query"],
+                        "created_at": row["created_at"],
+                    },
+                    self._assistant_message(row),
+                ]
+            )
+        return messages
+
+    def rename(self, session_id: str, owner_id: str, title: str) -> bool:
+        cursor = self.conn.execute(
+            """
+            UPDATE conversation
+            SET title = ?, updated_at = STRFTIME('%Y-%m-%d %H:%M:%f', 'now')
+            WHERE session_id = ? AND owner_id = ?
+            """,
+            (title.strip(), session_id, owner_id),
+        )
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def delete(self, session_id: str, owner_id: str) -> bool:
+        if self.get(session_id, owner_id) is None:
+            return False
+        related_tables = (
+            "qa_log",
+            "session_context",
+            "tool_call_log",
+            "agent_trace_log",
+            "rag_trace_log",
+            "model_route_log",
+        )
+        with self.conn:
+            for table in related_tables:
+                self.conn.execute(f"DELETE FROM {table} WHERE session_id = ?", (session_id,))
+            self.conn.execute("DELETE FROM conversation WHERE session_id = ?", (session_id,))
+        return True
+
+    @staticmethod
+    def make_title(query: str, *, max_length: int = 40) -> str:
+        normalized = " ".join(query.split()) or "新对话"
+        if len(normalized) <= max_length:
+            return normalized
+        return f"{normalized[: max_length - 1].rstrip()}…"
+
+    @staticmethod
+    def _escape_like(value: str) -> str:
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+    @staticmethod
+    def _assistant_message(row: sqlite3.Row) -> dict[str, Any]:
+        snapshot = ConversationRepository._decode_json(row["response_json"], {})
+        tools_used = snapshot.get("tools_used")
+        if not isinstance(tools_used, list):
+            tools_used = ConversationRepository._decode_json(row["tools_used"], [])
+        sources = snapshot.get("sources")
+        if not isinstance(sources, list):
+            chunks = ConversationRepository._decode_json(row["retrieved_chunks"], [])
+            sources = ConversationRepository._safe_sources(chunks)
+        return {
+            "id": f"{row['id']}:assistant",
+            "role": "assistant",
+            "content": snapshot.get("answer") or row["final_answer"] or "",
+            "created_at": row["created_at"],
+            "intent": snapshot.get("intent") or row["intent"],
+            "risk_level": snapshot.get("risk_level") or row["risk_level"],
+            "sources": sources,
+            "tools_used": tools_used,
+            "need_follow_up": bool(snapshot.get("need_follow_up", False)),
+            "follow_up_questions": snapshot.get("follow_up_questions") or [],
+            "errors": snapshot.get("errors") or [],
+        }
+
+    @staticmethod
+    def _decode_json(value: str | None, fallback: Any) -> Any:
+        if not value:
+            return fallback
+        try:
+            return json.loads(value)
+        except (TypeError, ValueError):
+            return fallback
+
+    @staticmethod
+    def _safe_sources(chunks: Any) -> list[dict[str, Any]]:
+        if not isinstance(chunks, list):
+            return []
+        safe_fields = ("source_uri", "title", "page", "section_title", "chunk_id")
+        return [
+            {field: chunk.get(field) for field in safe_fields if chunk.get(field) is not None}
+            for chunk in chunks
+            if isinstance(chunk, dict)
         ]
 
 

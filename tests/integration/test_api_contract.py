@@ -286,7 +286,9 @@ def test_chat_api_disease_context_does_not_capture_new_ordinary_topic() -> None:
 
 
 def test_chat_api_product_config_uses_v3_local_structured_takeover_path() -> None:
-    app = create_app(settings=load_settings("config/settings.yaml"))
+    settings = load_settings("config/settings.yaml")
+    settings.database.url = "sqlite:///:memory:"
+    app = create_app(settings=settings)
     app.state.rag_client = FakeRagServerClient()
     client = TestClient(app)
 

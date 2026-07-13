@@ -11,11 +11,17 @@
       <aside class="sidebar" aria-label="应用导航">
         <div class="brand">
           <span class="brand-mark" aria-hidden="true">R</span>
-          <div>
+          <div class="brand-copy">
             <strong>Livestock RAG</strong>
             <span>Agentic Assistant</span>
           </div>
+          <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="收起对话历史" aria-expanded="true">‹</button>
         </div>
+
+        <button id="new-chat-button" class="new-chat-button" type="button" aria-label="开始新对话">
+          <span aria-hidden="true">＋</span>
+          <span>新对话</span>
+        </button>
 
         <nav class="tabs nav-stack" aria-label="页面">
           <button class="tab nav-button is-active" type="button" data-view="chat" aria-selected="true">
@@ -28,12 +34,17 @@
           </button>
         </nav>
 
-        <section class="sidebar-section" aria-label="工作区">
-          <h2>工作区</h2>
-          <div class="workspace-list">
-            <span>畜牧知识问答</span>
-            <span>疾病问诊辅助</span>
-            <span>体尺报告</span>
+        <section class="sidebar-section conversation-history" aria-label="对话历史">
+          <div class="history-heading">
+            <h2>对话历史</h2>
+            <span id="conversation-count" aria-live="polite"></span>
+          </div>
+          <label class="history-search-label" for="conversation-search">
+            <span class="sr-only">搜索对话</span>
+            <input id="conversation-search" type="search" placeholder="搜索对话" autocomplete="off" />
+          </label>
+          <div id="conversation-list" class="conversation-list" role="list" aria-live="polite" aria-busy="true">
+            <p class="history-state">正在加载历史记录…</p>
           </div>
         </section>
 
@@ -83,7 +94,6 @@
                   <div class="prompt-chips" aria-label="示例问题">
                     <button type="button" data-prompt="犊牛腹泻的常见原因有哪些？">犊牛腹泻</button>
                     <button type="button" data-prompt="高温天气下肉牛饲喂要注意什么？">高温饲喂</button>
-                    <button id="new-chat-button" type="button">新会话</button>
                   </div>
                   <button class="primary-button" type="submit">发送</button>
                 </div>
@@ -139,6 +149,6 @@
         </details>
       </aside>
     </div>
-    <script src="./app.js?v=8"></script>
+    <script src="./app.js?v=9"></script>
   </body>
 </html>

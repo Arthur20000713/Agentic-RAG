@@ -19,7 +19,11 @@ def test_frontend_chat_page_static_contract() -> None:
     assert 'id="chat-query"' in response.text
     assert 'id="new-chat-button"' in response.text
     assert 'data-view="chat"' in response.text
-    assert 'src="./app.js?v=8"' in response.text
+    assert 'id="conversation-list"' in response.text
+    assert 'id="conversation-search"' in response.text
+    assert 'id="sidebar-toggle"' in response.text
+    assert 'aria-label="对话历史"' in response.text
+    assert 'src="./app.js?v=9"' in response.text
 
 
 def test_frontend_chat_js_contract() -> None:
@@ -37,6 +41,7 @@ def test_frontend_chat_js_contract() -> None:
     assert "payload.code !== 0" in response.text
     assert "请求超时，请稍后重试。" in response.text
     assert "function startNewChatSession" in response.text
+    assert "function parseConversationDate" in response.text
     assert 'chatQuery.addEventListener("keydown"' in response.text
     assert 'event.key === "Enter"' in response.text
     assert "!event.shiftKey" in response.text
@@ -45,6 +50,37 @@ def test_frontend_chat_js_contract() -> None:
     assert "function renderMarkdown" in response.text
     assert "function sanitizeMarkdownUrl" in response.text
     assert 'class="answer-text markdown-body"' in response.text
+    assert "conversationPageSize" in response.text
+    assert "options.append === true" in response.text
+    assert "history-load-more" in response.text
+    assert 'fetch(`/api/conversations/${encodeURIComponent(sessionId)}`' in response.text
+    assert 'method: "PATCH"' in response.text
+    assert 'method: "DELETE"' in response.text
+    assert '"X-Client-ID": state.clientId' in response.text
+    assert "CLIENT_ID_STORAGE_KEY" in response.text
+    assert "livestock_agentic_rag_client_id" in response.text
+    assert "user_id: state.clientId" in response.text
+    assert "function renderConversationList" in response.text
+    assert "function renderStoredMessage" in response.text
+    assert "function renderMessageErrors" in response.text
+    assert "function openConversation" in response.text
+    assert "function beginConversationRename" in response.text
+    assert "function deleteConversation" in response.text
+    assert "function toggleSidebar" in response.text
+    assert 'event.key === "Escape"' in response.text
+    assert "window.confirm" in response.text
+    assert "conversationLoadToken" in response.text
+    assert "conversationListToken" in response.text
+    assert "chatRequestToken" in response.text
+    assert "requestSessionId" in response.text
+    assert "state.chatSessionId !== requestSessionId" in response.text
+    assert "cancelActiveChatRequest" in response.text
+    assert 'setFormDisabled(document.querySelector("#chat-form"), false)' in response.text
+    assert "handleConversationListKeydown" in response.text
+    assert "clearMissing: true" in response.text
+    assert "error.code === 40004" in response.text
+    assert "setFormDisabled(form, true)" in response.text
+    assert "loadToken === state.conversationLoadToken" in response.text
 
 
 def test_frontend_markdown_styles_contract() -> None:
@@ -54,6 +90,11 @@ def test_frontend_markdown_styles_contract() -> None:
     assert ".markdown-body" in response.text
     assert ".markdown-body pre" in response.text
     assert ".markdown-body blockquote" in response.text
+    assert ".conversation-history" in response.text
+    assert ".conversation-item.is-current" in response.text
+    assert ".conversation-menu" in response.text
+    assert ".sidebar-collapsed" in response.text
+    assert ".history-load-more" in response.text
 
 
 def test_frontend_sources_and_tools_contract() -> None:

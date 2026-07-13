@@ -135,6 +135,7 @@ class ChatService:
 
 def state_to_chat_data(state: AgentState | MultiAgentState, *, settings: Settings | None = None) -> dict:
     return {
+        "session_id": state.session_id,
         "answer": state.final_answer,
         "intent": state.intent,
         "risk_level": state.risk_level,

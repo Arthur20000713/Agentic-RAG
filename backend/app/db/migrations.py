@@ -9,6 +9,7 @@ APPLICATION_TABLES = {
     "body_measurement_record",
     "rag_ingestion_task",
     "qa_log",
+    "conversation",
     "tool_call_log",
     "agent_trace_log",
     "rag_trace_log",
@@ -91,8 +92,26 @@ CREATE TABLE IF NOT EXISTS qa_log (
     final_answer TEXT,
     risk_level TEXT,
     latency_ms INTEGER,
+    response_json TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_qa_log_session_id_id
+ON qa_log(session_id, id);
+
+CREATE INDEX IF NOT EXISTS idx_qa_log_session_created_at
+ON qa_log(session_id, created_at, id);
+
+CREATE TABLE IF NOT EXISTS conversation (
+    session_id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_updated_at
+ON conversation(updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS tool_call_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -235,11 +254,18 @@ CREATE TABLE IF NOT EXISTS eval_run_log (
 
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_SQL)
+    _ensure_column(conn, "qa_log", "response_json", "TEXT")
+    _ensure_column(conn, "conversation", "owner_id", "TEXT NOT NULL DEFAULT 'legacy'")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_conversation_owner_updated_at "
+        "ON conversation(owner_id, updated_at DESC)"
+    )
     _ensure_column(conn, "rag_trace_log", "attempt_count", "INTEGER DEFAULT 1")
     _ensure_column(conn, "model_route_log", "fallback_required", "INTEGER DEFAULT 0")
     _ensure_column(conn, "model_route_log", "fallback_reason", "TEXT")
     _ensure_column(conn, "model_route_log", "latency_ms", "INTEGER")
     _ensure_column(conn, "model_route_log", "model_version", "TEXT")
+    _backfill_conversations(conn)
     conn.commit()
 
 
@@ -247,3 +273,59 @@ def _ensure_column(conn: sqlite3.Connection, table: str, column: str, definition
     columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
     if column not in columns:
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
+def _backfill_conversations(conn: sqlite3.Connection) -> None:
+    rows = conn.execute(
+        """
+        SELECT grouped.session_id,
+               (SELECT first.user_query
+                FROM qa_log AS first
+                WHERE first.session_id = grouped.session_id
+                ORDER BY first.id ASC
+                LIMIT 1) AS first_query,
+               grouped.created_at,
+               grouped.updated_at
+        FROM (
+            SELECT session_id, MIN(created_at) AS created_at, MAX(created_at) AS updated_at
+            FROM qa_log
+            WHERE session_id IS NOT NULL AND TRIM(session_id) != ''
+            GROUP BY session_id
+        ) AS grouped
+        """
+    ).fetchall()
+    values = [
+        (
+            row["session_id"],
+            _conversation_title(row["first_query"]),
+            row["created_at"],
+            row["updated_at"],
+        )
+        for row in rows
+    ]
+    conn.executemany(
+        """
+        INSERT OR IGNORE INTO conversation (session_id, owner_id, title, created_at, updated_at)
+        VALUES (?, 'legacy', ?, ?, ?)
+        """,
+        values,
+    )
+    conn.executemany(
+        """
+        UPDATE conversation
+        SET created_at = CASE WHEN created_at IS NULL OR created_at > ? THEN ? ELSE created_at END,
+            updated_at = CASE WHEN updated_at IS NULL OR updated_at < ? THEN ? ELSE updated_at END
+        WHERE session_id = ? AND owner_id = 'legacy'
+        """,
+        [
+            (created_at, created_at, updated_at, updated_at, session_id)
+            for session_id, _title, created_at, updated_at in values
+        ],
+    )
+
+
+def _conversation_title(query: str, *, max_length: int = 40) -> str:
+    normalized = " ".join(query.split()) or "新对话"
+    if len(normalized) <= max_length:
+        return normalized
+    return f"{normalized[: max_length - 1].rstrip()}…"
