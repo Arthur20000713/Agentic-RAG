@@ -43,6 +43,9 @@ SMOKE_TASKS = (
     ("slot_extraction", "Extract low-risk livestock slots from: calf has mild cough"),
 )
 
+TRANSFORMERS_SMOKE_MAX_NEW_TOKENS = 32
+TRANSFORMERS_SMOKE_TIMEOUT_SECONDS = 240.0
+
 
 async def run_smoke(settings: Settings) -> LocalModelSmokeReport:
     provider = settings.local_model.provider
@@ -57,7 +60,7 @@ async def run_smoke(settings: Settings) -> LocalModelSmokeReport:
             reason="real local model is not configured",
         )
 
-    client = LocalModelClient(settings)
+    client = LocalModelClient(_smoke_settings(settings))
     cases: list[LocalModelSmokeCase] = []
     for task_type, prompt in _smoke_tasks(settings):
         try:
@@ -136,6 +139,20 @@ def _smoke_tasks(settings: Settings) -> tuple[tuple[str, str], ...]:
     if settings.local_model.provider == "transformers":
         return (SMOKE_TASKS[0],)
     return SMOKE_TASKS
+
+
+def _smoke_settings(settings: Settings) -> Settings:
+    smoke_settings = settings.model_copy(deep=True)
+    if smoke_settings.local_model.provider == "transformers":
+        smoke_settings.local_model.max_new_tokens = min(
+            smoke_settings.local_model.max_new_tokens,
+            TRANSFORMERS_SMOKE_MAX_NEW_TOKENS,
+        )
+        smoke_settings.local_model.timeout_seconds = max(
+            smoke_settings.local_model.timeout_seconds,
+            TRANSFORMERS_SMOKE_TIMEOUT_SECONDS,
+        )
+    return smoke_settings
 
 
 def _write_report(path: Path, report: LocalModelSmokeReport) -> None:

@@ -80,10 +80,12 @@ def test_run_smoke_uses_configured_real_provider(monkeypatch) -> None:
 
 def test_run_smoke_uses_query_normalization_only_for_transformers(monkeypatch) -> None:
     calls: list[tuple[str, str]] = []
+    client_settings: list[Settings] = []
 
     class FakeClient:
         def __init__(self, settings: Settings) -> None:
             self.settings = settings
+            client_settings.append(settings)
 
         async def generate_json(self, prompt: str, *, schema_name: str, context=None):
             calls.append((prompt, schema_name))
@@ -100,6 +102,7 @@ def test_run_smoke_uses_query_normalization_only_for_transformers(monkeypatch) -
             "enabled": True,
             "provider": "transformers",
             "model": "Qwen/Qwen2.5-0.5B-Instruct",
+            "max_new_tokens": 96,
         }
     )
 
@@ -109,6 +112,10 @@ def test_run_smoke_uses_query_normalization_only_for_transformers(monkeypatch) -
     assert report.provider == "transformers"
     assert [case.task_type for case in report.cases] == ["query_normalization"]
     assert calls == [("What feed should I use for a calf after weaning?", "query_normalization")]
+    assert client_settings[0].local_model.max_new_tokens == 32
+    assert client_settings[0].local_model.timeout_seconds == 240
+    assert settings.local_model.max_new_tokens == 96
+    assert settings.local_model.timeout_seconds == 3
 
 
 def test_production_chat_routing_does_not_use_slow_local_model_takeover() -> None:

@@ -9,6 +9,7 @@ description = "Livestock Agentic RAG application layer integrated with a sibling
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.110",
+    "langgraph>=1.2.9,<2",
     "uvicorn>=0.27",
     "pydantic>=2",
     "python-multipart>=0.0.9",

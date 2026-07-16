@@ -182,6 +182,7 @@ def _check_stage_c() -> list[str]:
             "backend/app/model/router.py",
             "backend/app/model/router_policy.py",
             "backend/app/agent/graph.py",
+            "backend/app/agent/langgraph_workflow.py",
             "backend/app/db/migrations.py",
             "backend/app/db/repositories.py",
             "tests/unit/test_safety_precheck.py",
@@ -193,7 +194,7 @@ def _check_stage_c() -> list[str]:
     precheck = _read_text("backend/app/agent/safety_precheck.py")
     router = _read_text("backend/app/model/router.py")
     router_policy = _read_text("backend/app/model/router_policy.py")
-    graph = _read_text("backend/app/agent/graph.py")
+    graph = _read_text("backend/app/agent/langgraph_workflow.py")
     migrations = _read_text("backend/app/db/migrations.py")
     repositories = _read_text("backend/app/db/repositories.py")
     tests = _read_text("tests/unit/test_safety_precheck.py")
@@ -257,7 +258,7 @@ def _check_stage_c() -> list[str]:
     for required_text in ("ModelRouteLogRepository", "route_mode", "shadow", "list_by_request_id"):
         if required_text not in route_log_tests:
             failures.append(f"test_model_route_log.py is missing required coverage text: {required_text}")
-    for required_text in ("record_shadow_route", "model_router_shadow", "ModelRouter", "SafetyPrecheck"):
+    for required_text in ("_record_model_router_shadow", "model_router_shadow", "ModelRouter", "SafetyPrecheck"):
         if required_text not in graph:
             failures.append(f"graph.py is missing required shadow route text: {required_text}")
     for required_text in ("model_router_shadow", "shadow_model", "local_small"):
@@ -423,6 +424,7 @@ def _check_stage_g() -> list[str]:
             "backend/app/db/repositories.py",
             "backend/app/services/memory_service.py",
             "backend/app/agent/graph.py",
+            "backend/app/agent/langgraph_workflow.py",
             "backend/app/api/measurement.py",
             "tests/integration/test_memory_schema.py",
             "tests/integration/test_memory_repository.py",
@@ -433,7 +435,7 @@ def _check_stage_g() -> list[str]:
     migrations = _read_text("backend/app/db/migrations.py")
     repositories = _read_text("backend/app/db/repositories.py")
     service = _read_text("backend/app/services/memory_service.py")
-    graph = _read_text("backend/app/agent/graph.py")
+    graph = _read_text("backend/app/agent/langgraph_workflow.py")
     measurement_api = _read_text("backend/app/api/measurement.py")
     tests = _read_text("tests/integration/test_memory_schema.py")
     repository_tests = _read_text("tests/integration/test_memory_repository.py")
@@ -457,7 +459,7 @@ def _check_stage_g() -> list[str]:
     for required_text in ("maybe_write_memory", "build_measurement_memory_fact", "user_confirmed_observation"):
         if required_text not in graph:
             failures.append(f"graph.py is missing required memory write text: {required_text}")
-    for required_text in ("MemoryRepository", "memory_write_enabled", "maybe_write_memory"):
+    for required_text in ("MemoryRepository", "memory_write_enabled", "MemoryService", "run_measurement_graph"):
         if required_text not in measurement_api:
             failures.append(f"measurement.py is missing required memory API text: {required_text}")
     for required_text in ("maybe_write_memory", "abnormal_items", "risk_level", "diagnosis"):
