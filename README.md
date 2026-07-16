@@ -204,6 +204,7 @@ V4.2 真实知识库批次检查：
 
 ## 文档入口
 
+- [`docs/LANGGRAPH_MIGRATION.md`](docs/LANGGRAPH_MIGRATION.md)：LangGraph 工作流拓扑、迁移边界、测试与回滚策略。
 - `docs/DEV_SPEC_V6.md`：V6 产品化收口开发规范和进度表。
 - `docs/V6_RELEASE_CHECKLIST.md`：V6 发布验收清单。
 - `docs/V6_LOCAL_MODEL_ACCEPTANCE.md`：本地 Transformers 模型验收说明。

@@ -30,6 +30,8 @@ class MultiAgentState(BaseModel):
     verification_result: dict[str, Any] | None = None
     safety_result: dict[str, Any] | None = None
     final_answer: str | None = None
+    tool_plan: list[dict[str, Any]] = Field(default_factory=list)
+    tool_attempt: int = 0
     tool_results: dict[str, Any] = Field(default_factory=dict)
     errors: list[AgentToolError] = Field(default_factory=list)
     agent_trace: list[dict[str, Any]] = Field(default_factory=list)

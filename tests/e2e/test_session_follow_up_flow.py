@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from backend.app.agent.graph import run_disease_graph
+from backend.app.agent.graph import run_chat_graph, run_disease_graph
 from backend.app.core.config import Settings
 from backend.app.db.connection import get_connection
 from backend.app.db.migrations import init_db
@@ -90,6 +90,43 @@ def test_session_follow_up_flow_merges_dynamic_disease_context() -> None:
     assert "初步风险等级" not in second.final_answer
     assert context is not None
     assert context.pending_slots == []
+
+
+def test_unified_chat_graph_keeps_bare_symptom_follow_up_on_disease_branch() -> None:
+    service = _session_service()
+    settings = Settings(
+        v3={"enabled": True},
+        primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock"},
+        disease_llm={"enabled": True, "shadow_mode": False},
+    )
+    llm = FakeDiseaseLLM()
+
+    first = asyncio.run(
+        run_chat_graph(
+            "A calf has diarrhea and reduced appetite.",
+            rag_client=FakeRagServerClient(),
+            session_context_service=service,
+            session_id="s_bare_symptom_follow_up",
+            settings=settings,
+            primary_llm_client=llm,
+        )
+    )
+    second = asyncio.run(
+        run_chat_graph(
+            "Fever is still present.",
+            rag_client=FakeRagServerClient(),
+            session_context_service=service,
+            session_id="s_bare_symptom_follow_up",
+            settings=settings,
+            primary_llm_client=llm,
+        )
+    )
+
+    assert first.intent == "disease_consultation"
+    assert second.intent == "disease_consultation"
+    assert second.normalized_query is not None
+    assert "Cattle has diarrhea" in second.normalized_query
+    assert "livestock_rag_search" in second.tool_results
 
 
 def test_session_follow_up_flow_reset_clears_conflicted_context() -> None:

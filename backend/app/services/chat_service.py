@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import re
 from typing import Any
 
-from backend.app.agent.graph import run_disease_graph, run_general_qa_graph
+from backend.app.agent.graph import run_chat_graph
 from backend.app.agent.router import IntentRouter
 from backend.app.agent.state import MultiAgentState
 from backend.app.core.config import PROJECT_ROOT, Settings
@@ -37,30 +36,20 @@ class ChatService:
         self.router = IntentRouter()
 
     async def ask(self, request: ChatRequest, *, request_id: str | None = None) -> AgentState | MultiAgentState:
-        route = self.router.route(request.query)
         v3_enabled = FeatureFlagService(self.settings).v3_enabled
-        if route.intent == "assistant_intro" and not v3_enabled:
-            return self._assistant_intro_state(request, confidence=route.confidence)
         if v3_enabled:
-            if route.intent == "disease_consultation" or self._should_continue_disease_context(request):
-                return await run_disease_graph(
-                    request.query,
-                    rag_client=self.rag_client,
-                    session_context_service=self.session_context_service,
-                    session_id=request.session_id,
-                    request_id=request_id,
-                    settings=self.settings,
-                    conversation_history=self.conversation_history,
-                )
-            if route.intent in {"assistant_intro", "general_qa", "out_of_scope"}:
-                return await run_general_qa_graph(
-                    request.query,
-                    rag_client=self.rag_client,
-                    session_id=request.session_id,
-                    request_id=request_id,
-                    settings=self.settings,
-                    conversation_history=self.conversation_history,
-                )
+            return await run_chat_graph(
+                request.query,
+                rag_client=self.rag_client,
+                session_context_service=self.session_context_service,
+                session_id=request.session_id,
+                request_id=request_id,
+                settings=self.settings,
+                conversation_history=self.conversation_history,
+            )
+        route = self.router.route(request.query)
+        if route.intent == "assistant_intro":
+            return self._assistant_intro_state(request, confidence=route.confidence)
         if route.intent == "disease_consultation":
             return await run_disease_consultation(
                 request.query,
@@ -96,43 +85,6 @@ class ChatService:
             final_answer=ASSISTANT_INTRO_ANSWER,
         )
 
-    def _should_continue_disease_context(self, request: ChatRequest) -> bool:
-        if self.session_context_service is None or not request.session_id:
-            return False
-        if self.session_context_service.clear_conflicted_context(request.session_id, request.query):
-            return False
-        context = self.session_context_service.get_context(request.session_id)
-        if context is None or context.last_intent != "disease_consultation":
-            return False
-        route = self.router.route(request.query)
-        if route.intent == "disease_consultation":
-            return True
-        if self.router._contains_any(request.query, self.router.disease_keywords):
-            return True
-        if re.search(r"\[[a-z_]+\s*=", request.query, flags=re.IGNORECASE):
-            return True
-        return self._is_explicit_disease_follow_up(request.query)
-
-    def _is_explicit_disease_follow_up(self, query: str) -> bool:
-        normalized = query.strip().lower()
-        markers = {
-            "那怎么办",
-            "接下来",
-            "然后呢",
-            "还是这样",
-            "这种情况",
-            "继续",
-            "体温",
-            "天了",
-            "一只",
-            "what next",
-            "what should i do",
-            "still sick",
-            "and then",
-        }
-        return any(marker in normalized for marker in markers)
-
-
 def state_to_chat_data(state: AgentState | MultiAgentState, *, settings: Settings | None = None) -> dict:
     return {
         "session_id": state.session_id,
@@ -159,6 +111,7 @@ def build_debug_payload(settings: Settings | None = None, *, state: AgentState |
     if isinstance(state, MultiAgentState):
         payload.update(
             {
+                "orchestration_engine": "langgraph",
                 "agent_path": [item.get("node") for item in state.agent_trace if item.get("node")],
                 "safety": state.safety_result,
                 "verifier": state.verification_result,

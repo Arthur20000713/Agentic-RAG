@@ -102,9 +102,10 @@ def test_conversation_history_items_use_a_single_line() -> None:
 
     html = client.get("/app").text
     css = client.get("/app/styles.css").text
+    normalized_css = css.replace("\r\n", "\n")
 
     assert 'href="./styles.css?v=10"' in html
-    assert ".conversation-preview,\n.conversation-open time {\n  display: none;" in css
+    assert ".conversation-preview,\n.conversation-open time {\n  display: none;" in normalized_css
 
 
 def test_frontend_sources_and_tools_contract() -> None:

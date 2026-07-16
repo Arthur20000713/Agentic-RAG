@@ -45,6 +45,10 @@ def test_measurement_api_writes_user_confirmed_measurement_memory_when_enabled()
     assert projection["measurement"]["confidence"] == 0.82
     assert "abnormal_items" not in projection["measurement"]
     assert "report" not in projection["measurement"]
+    event_count = client.app.state.db_conn.execute(
+        "SELECT COUNT(*) AS count FROM memory_event"
+    ).fetchone()["count"]
+    assert event_count == 1
 
 
 def test_measurement_graph_calls_maybe_write_memory_without_changing_report() -> None:

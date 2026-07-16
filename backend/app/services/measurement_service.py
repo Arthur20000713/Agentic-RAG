@@ -15,6 +15,9 @@ class MeasurementService:
         self.analyzer = BodyMeasurementAnalyzer()
 
     def analyze(self, measurement: MeasurementInput) -> MeasurementAnalysisResult:
+        return self.analyzer.analyze(self.prepare_input(measurement))
+
+    def prepare_input(self, measurement: MeasurementInput) -> MeasurementInput:
         history = list(measurement.history)
         used_demo_history = measurement.use_demo_history
         if not history and self.measurement_repository is not None:
@@ -22,7 +25,7 @@ class MeasurementService:
         if not history and measurement.use_demo_history:
             history = self._demo_history(measurement)
 
-        enriched = MeasurementInput(
+        return MeasurementInput(
             animal_id=measurement.animal_id,
             age_month=measurement.age_month,
             current=measurement.current,
@@ -30,7 +33,6 @@ class MeasurementService:
             confidence=measurement.confidence,
             use_demo_history=used_demo_history and bool(history),
         )
-        return self.analyzer.analyze(enriched)
 
     def _demo_history(self, measurement: MeasurementInput) -> list[dict]:
         current = measurement.current.model_dump()
