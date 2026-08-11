@@ -10,8 +10,8 @@ The local model is configured as a shadow-capable structured-task model and must
 `config/settings.yaml`:
 
 ```yaml
-v3:
-  enabled: true
+agent_runtime:
+  engine: langgraph
 model_router:
   enabled: true
   shadow_mode: true

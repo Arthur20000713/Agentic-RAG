@@ -1,233 +1,157 @@
-# 畜牧业 Agentic RAG 智能助手
+# 畜牧业 Agentic RAG 企业智能助手
 
-这是一个面向畜牧业问答、疾病问诊辅助、体尺报告和真实知识库检索的 FastAPI 应用层项目。项目不重写底层 RAG，而是接入 sibling 项目 `RAG-SERVER` 作为知识检索核心，通过 MCP stdio 调用真实知识库，并在本仓库内提供 API、多 Agent 工作流、运行时诊断、前端演示、评测与发布验收入口。
+这是一个“Java 企业业务层 + Python AI 能力层”的本机可复现项目。Spring Boot 负责用户、权限、会话、任务、审计和业务数据；FastAPI 负责 RAG、LangGraph Agent 编排、问诊、模型调用、安全决策与评测；Java 通过版本化 HTTP 契约调用 Python。MySQL 保存耐久业务事实，Redis 保存认证状态与可重建的 opaque AI context，Docker Compose 负责四服务部署。
+
+项目的个人标签是：既能完成大模型应用，也能把 AI 能力接入有身份、数据、事务和稳定性约束的企业业务系统。
 
 ## 当前状态
 
-V6 产品化收口已完成，本机验收结论为 `usable`。
+V7 P0–P7 本机开发与验收已完成，P7.2 发布门禁为 `PASS`：
 
-当前默认配置：
+- Java `clean verify`：127 tests，0 failures/errors/skipped；
+- Python 全量：611 passed，3 skipped；
+- Compose：Java、Python、MySQL、Redis healthy，只有 Java 发布 `127.0.0.1:8080`；
+- 安全扫描：源码 0 findings；最终 Java/Python 镜像均为 0 个“已有修复版本的 HIGH/CRITICAL”；
+- 业务 stub：50 VU、5 分钟、15,001 请求、0 错误、p95 27.83 ms；
+- AI stub：20 个独立会话、5 分钟、4,932 请求、0 错误、p95 1.684 s；
+- Codex 内置浏览器：登录、服务状态、建会话、中文问诊、引用/工具链和刷新持久化通过。
 
-- 真实 RAG 默认开启：`rag_server.query_mode=real`
-- 默认知识库 collection：`livestock_v4_2`
-- V3 agent graph 默认开启
-- ModelRouter 默认 `shadow_mode=false`，允许低风险结构化任务由本地模型接管
-- 本地模型默认使用 `transformers`
-- 本地模型型号：`Qwen/Qwen2.5-0.5B-Instruct`
-- 本地模型只验收 `query_normalization`，不生成最终答案
-- LoRA adapter 默认不启用
+这些性能数字来自 Windows 本机 deterministic fake RAG/stub，不是生产 SLA，也不是实际模型性能。详细证据见 `docs/reports/P7_SECURITY_PERFORMANCE_RELEASE_REPORT.md`。
 
-最新发布验收命令：
+当前工作位于 `codex/java-enterprise-integration` 工作树；提交/发布状态与“本机已实现并验证”是不同概念，引用简历表述前应确认 Git 交付状态。
 
-```powershell
-.venv\Scripts\python.exe scripts\check_release_v6.py --output-dir .tmp_tests\v6_release
+## 架构
+
+```mermaid
+flowchart LR
+    B["Browser / Client"] -->|"HTTP + JWT"| J["Spring Boot"]
+    J --> M[("MySQL")]
+    J --> R[("Redis")]
+    J -->|"/internal/v1 + service token"| P["FastAPI"]
+    P --> A["RAG / LangGraph / Model / Eval"]
 ```
 
-期望输出包含：
+- Java 是唯一公共入口和业务事实源；
+- Python 不读取用户 JWT、不直连 Java MySQL、不修改 Java Redis 对象；
+- MySQL `contextVersion` 是唯一版本权威，Redis context 可丢失并由有界历史重建；
+- Java 调用 Python 时不持有 MySQL 长事务；响应丢失通过 operation record 对账；
+- 用户 JWT 和内部 service token 完全分离。
 
-```text
-V6 release status: usable
-```
-
-最近一次本机验收结果：
-
-- `runtime_doctor`: passed
-- `v6_full_check`: passed
-- `local_model_smoke`: passed
-- `pytest_not_rag_server`: passed
-- 回归测试：`457 passed, 3 deselected`
+完整 as-built 架构、事务边界与未覆盖范围见 `docs/V7_ARCHITECTURE_AND_BOUNDARIES.md`。
 
 ## 主要能力
 
-- 畜牧业知识问答：基于真实 RAG 检索结果生成自然语言答案，并保留 citation/source_uri。
-- 疾病问诊辅助：抽取物种、症状、持续时间、体温、群体发病等槽位；信息不足时追问；高风险内容走安全拦截。
-- 疾病 LLM 灰度链路：支持病例结构化理解、会话补充合并、RAG 查询构造、证据门、条目级引用推理和 verifier 安全校验；默认关闭，不静默 fake。
-- 体尺报告：分析当前体尺和历史记录，输出结构化摘要、异常项、证据和建议。
-- 真实 RAG 集成：通过 MCP stdio 调用 `RAG-SERVER`，默认走真实 collection `livestock_v4_2`，不静默降级到 fake。
-- 多 Agent 工作流：包含 Supervisor、RAG、Disease、Measurement、Verifier、Safety、Response 等节点，并记录 agent path。
-- 运行时诊断：提供 doctor、health、readiness、RAG status、本地模型验收状态。
-- 本地模型路径：Transformers 模型已通过 RTX 3060 Laptop GPU 的 query normalization smoke。
-- 静态前端：访问 `/app` 可演示 Chat、Measurement 和 Debug JSON Panel。
+### Java 企业业务层
 
-## 快速启动
+- Spring Security JWT、refresh rotation/replay revoke、RBAC 与资源所有权；
+- 用户、角色、会话、消息、任务状态机和脱敏审计；
+- MySQL + Flyway + JPA，唯一约束、索引、乐观锁和事务化业务/审计；
+- Redis refresh family/撤销/TTL 与 opaque AI context CAS；
+- 文档上传、可靠索引任务、体尺业务快照和 SQLite→MySQL 停机迁移；
+- Resilience4j chat timeout/circuit breaker/bulkhead、readiness、结构化日志和 Micrometer 指标。
 
-在项目根目录运行：
+### Python AI 能力层
+
+- LangGraph 条件图编排 Supervisor、RAG、动态疾病理解、Verifier、Safety 和 Response；
+- 真实 RAG-SERVER MCP stdio 的本机可选集成，以及 citation/source URI 映射；
+- 低置信度无答案、证据门、安全拒答和模型 fallback；
+- chat、measurement、document ingestion 的 `/internal/v1` 幂等 execution contract；
+- fake、real RAG、Agent、安全与本地模型分层评测。
+
+## 快速启动：可复现 Compose profile
+
+前置条件：Docker Desktop/Compose。
 
 ```powershell
-.\scripts\start_app.ps1 -Port 8001
+Copy-Item -LiteralPath '.env.example' -Destination '.env'
+```
+
+编辑 `.env`，替换所有 `change-me`，不要提交真实 secret。然后：
+
+```powershell
+docker compose config --quiet
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+docker compose up --build --detach --wait
 ```
 
 打开：
 
 ```text
-http://127.0.0.1:8001/app
-http://127.0.0.1:8001/docs
+http://127.0.0.1:8080/
 ```
 
-启动脚本会先运行 V6 runtime doctor。若 doctor 失败，应先按错误码修复配置或环境。
+使用 `.env` 中的 bootstrap admin 登录。bootstrap 只在空库中创建账号；复用旧 MySQL volume 时不会用新环境变量重置密码。
 
-## 运行时诊断
+停止并保留数据：
 
 ```powershell
-.venv\Scripts\python.exe scripts\doctor_v6.py --json
+docker compose down
 ```
 
-关键检查项：
+不要在日常操作中使用 `down -v`。详细启动、健康、日志、指标和故障恢复见 `docs/V7_OPERATIONS_RUNBOOK.md`。
 
-- `default_real_rag`
-- `rag_server_path`
-- `rag_server_python`
-- `quality_gate`
-- `v3_agent_path`
-- `disease_llm_path`
-- `local_model_acceptance`
+## fake 与真实 RAG 边界
 
-HTTP 诊断接口：
+可复现 Compose profile 固定使用 `config/settings.compose.yaml` 与 `RAG_QUERY_MODE=fake`，用于验证 Java/Python 契约、Agent 输出结构、状态机、安全和性能；它不证明真实知识库质量。
 
-```text
-GET /api/health
-GET /api/ready
-GET /api/rag/status
-GET /api/rag/collections
-```
-
-`/api/health` 只表示应用存活；`/api/ready` 会汇总真实 RAG、质量门禁、V3 agent path 和本地模型验收状态。
-
-## 真实 RAG-SERVER
-
-默认配置指向本机 sibling 项目：
-
-```yaml
-rag_server:
-  query_mode: real
-  repo_path: C:/Users/DELL/PycharmProjects/PythonProject/RAG-SERVER
-  python_executable: C:/Users/DELL/PycharmProjects/PythonProject/RAG-SERVER/.venv/Scripts/python.exe
-  collection: livestock_v4_2
-  timeout_seconds: 30
-  strict_real_mode: true
-```
-
-可用环境变量覆盖 RAG-SERVER 路径：
+本机开发可显式配置 sibling `RAG-SERVER`，通过 MCP stdio 使用真实 collection：
 
 ```powershell
-$env:RAG_SERVER_PATH="C:\Users\DELL\PycharmProjects\PythonProject\RAG-SERVER"
-```
-
-真实 RAG 验证：
-
-```powershell
+$env:RAG_SERVER_PATH = 'C:\path\to\RAG-SERVER'
 .venv\Scripts\python.exe -m pytest -m rag_server
 .venv\Scripts\python.exe scripts\run_eval.py --mode real --optional --output-dir reports\real
 ```
 
-`--optional` 只允许未配置环境时生成 skipped report；不会把 real 静默降级为 fake。
-
-## 本地 Transformers 模型
-
-默认本地模型配置：
-
-```yaml
-local_model:
-  enabled: true
-  provider: transformers
-  model: Qwen/Qwen2.5-0.5B-Instruct
-  timeout_seconds: 60
-  max_retries: 1
-  allow_final_answer: false
-  device: auto
-  torch_dtype: auto
-  max_new_tokens: 96
-  temperature: 0
-```
-
-本地模型验收命令：
-
-```powershell
-.venv\Scripts\python.exe scripts\run_local_model_smoke.py --optional --output reports\local_model_v6_transformers_smoke.json
-```
-
-V6.5 验收要求该命令返回：
-
-```text
-PASSED: local model smoke provider=transformers
-```
-
-`skipped` 不能作为 V6.5 的通过证据。
-
-本地模型安全边界：
-
-- 仅验收 `query_normalization`
-- `model_router.shadow_mode=false`
-- `model_router.allow_low_risk_takeover=true`
-- `local_model.allow_final_answer=false`
-
-## 常用检查命令
-
-```powershell
-.venv\Scripts\python.exe scripts\check_v6.py --stage full
-.venv\Scripts\python.exe scripts\check_release_v6.py --output-dir .tmp_tests\v6_release
-.venv\Scripts\python.exe -m pytest -m "not rag_server" -q
-.venv\Scripts\python.exe scripts\run_local_model_smoke.py --optional --output reports\local_model_v6_transformers_smoke.json
-```
-
-V4.2 真实知识库批次检查：
-
-```powershell
-.venv\Scripts\python.exe scripts\check_v4_2.py --stage full
-.venv\Scripts\python.exe scripts\check_rag_corpus.py --batch docs\rag_corpus\batches\batch_002.yaml --dry-run
-.\scripts\check_real_batch.ps1 -Batch docs\rag_corpus\batches\batch_002.yaml -OutputDir reports\real_v4_2_batch
-```
+当前 Docker 镜像没有打包 RAG-SERVER，真实 RAG Compose 仍是明确缺口。不得把 stub 测试或历史 real 报告描述成当前真实模型性能/质量。
 
 ## API 入口
 
-主要接口：
+客户端只调用 Java `/api/v1`：
 
-- `POST /api/chat`
-- `POST /api/measurement/analyze`
-- `POST /api/documents/upload`
-- `POST /api/tasks/{task_id}/index`
-- `GET /api/tasks/{task_id}`
-- `GET /api/traces/{request_id}`
-- `GET /api/rag/status`
-- `GET /api/rag/collections`
+- `/api/v1/auth/*`、`/users`、`/conversations`、`/tasks`、`/audit-logs`；
+- `/api/v1/documents`、`/measurements/analyze`、`/system/status`；
+- `/actuator/health/liveness`、`/readiness`、受权限保护的 `/prometheus`。
 
-统一响应结构：
+Java 只通过内部 `/internal/v1` 调用 Python。完整字段与状态码以 `contracts/business-api-v1.yaml` 和 `contracts/ai-service-v1.yaml` 为准；导航见 `docs/API_SPEC.md`。
 
-```json
-{
-  "code": 0,
-  "message": "success",
-  "data": {},
-  "request_id": "req_xxx"
-}
+## 测试与发布
+
+```powershell
+# Java clean verify（含隔离 MySQL/Redis 集成测试）
+.\scripts\check_p2_java.ps1 -OutputDir .tmp_tests\java
+
+# Python 全量
+.venv\Scripts\python.exe -m pytest -q
+
+# Compose 构建、健康、登录和端口边界
+.\scripts\check_p2_compose.ps1 -OutputDir .tmp_tests\compose
+
+# 依赖故障演练
+.\scripts\check_p7_resilience.ps1
+
+# secret 与镜像漏洞门禁
+.\scripts\check_p7_security.ps1 -OutputDir .tmp_tests\security
+
+# 完整 V7 门禁；两组性能各运行 5 分钟
+.\scripts\check_release_v7.ps1 -IncludePerformance
 ```
+
+`-Skip*` 仅用于定位问题，带跳过项的结果不能替代完整发布验收。真实 AI benchmark 必须显式使用 `--profile ai-real --confirm-real-ai` 并填写模型、知识库与规模。
 
 ## 文档入口
 
-- [`docs/LANGGRAPH_MIGRATION.md`](docs/LANGGRAPH_MIGRATION.md)：LangGraph 工作流拓扑、迁移边界、测试与回滚策略。
-- `docs/DEV_SPEC_V6.md`：V6 产品化收口开发规范和进度表。
-- `docs/V6_RELEASE_CHECKLIST.md`：V6 发布验收清单。
-- `docs/V6_LOCAL_MODEL_ACCEPTANCE.md`：本地 Transformers 模型验收说明。
-- `docs/V5_LOCAL_MODEL_GUIDE.md`：本地模型接入说明。
-- `docs/V4_2_KNOWLEDGE_BASE_GUIDE.md`：真实知识库批次、入库和质量门禁指南。
-- `docs/API_SPEC.md`：FastAPI contract。
-- `docs/MCP_SPEC.md`：应用层 MCP tool contract。
-- `docs/RAG_SERVER_INTEGRATION.md`：真实 RAG-SERVER 接入规则。
-- `docs/SAFETY_SPEC.md`：安全边界。
-- `docs/EVAL_SPEC.md`：评测集合、指标和输出。
-- `docs/DEMO_SCRIPT.md`：演示脚本。
+- `docs/V7_ARCHITECTURE_AND_BOUNDARIES.md`：as-built 架构、数据所有权与边界；
+- `docs/API_SPEC.md`：Java 公共 API 与 Python 内部 API 导航；
+- `docs/V7_OPERATIONS_RUNBOOK.md`：启动、健康、日志、指标、故障和升级；
+- `docs/V7_MIGRATION_RUNBOOK.md`：P4/P6 SQLite→MySQL 停机迁移；
+- `docs/DEMO_SCRIPT.md`：AI 岗与 Java/银行央企岗演示脚本；
+- `docs/P7_RESUME_EVIDENCE.md`：双版本简历表述与源码/测试/报告证据；
+- `docs/reports/P7_FINAL_DELIVERY_REPORT.md`：P0–P7 最终交付索引；
+- `docs/DEV_SPEC_V7_JAVA_ENTERPRISE_INTEGRATION.md`：历史设计/开发基线，不作为完成报告；
+- `docs/adr/`：服务边界、幂等/对账、RAG 打包决策。
 
-## 安全边界
+## 安全与能力边界
 
-系统只提供畜牧业辅助建议，不替代兽医诊断，不输出具体药物剂量，不给确定性处方，不绕过停药期、食品安全或监管要求。所有最终输出必须经过 Safety Agent 或 Final Safety Guard。
+系统提供畜牧业辅助建议，不替代执业兽医诊断，不输出具体药物剂量或确定性处方。真实引用是资料依据，不等同于诊断结论。
 
-高风险请求会被拦截或引导用户联系执业兽医。真实 RAG 引用只能作为资料依据，不等同于人工诊断结论。
-
-## 当前未覆盖范围
-
-V6 达到本机产品级验收，但仍不是公网生产部署：
-
-- 未实现多用户权限和租户隔离。
-- 未实现生产级备份/恢复和告警。
-- 未启用真实 LoRA adapter 推理。
-- 未提供企业级审计、访问控制和运维面板。
+当前未覆盖 Kubernetes、服务网格、MySQL/Redis 高可用、生产备份自动化、生产告警、公网部署、合规认证、真实 LoRA 默认推理、真实 RAG Compose 和真实模型性能。不要将项目描述为“银行级生产系统”“高可用微服务集群”或“已上线公网”。

@@ -61,8 +61,8 @@ local_model:
 只允许低风险结构化任务接管：
 
 ```yaml
-v3:
-  enabled: true
+agent_runtime:
+  engine: langgraph
 model_router:
   enabled: true
   shadow_mode: false
@@ -80,7 +80,7 @@ local_model:
   allow_final_answer: false
 ```
 
-高风险任务、最终回答、处方、剂量、停药期和确诊类请求必须阻断或回退。回退信息会进入 `model_route_log`、`tool_results.model_fallbacks` 或 `v3_debug.model_fallbacks`。
+高风险任务、最终回答、处方、剂量、停药期和确诊类请求必须阻断或回退。回退信息会进入 `model_route_log`、`tool_results.model_fallbacks` 或 `agent_runtime_debug.model_fallbacks`。
 
 ## 5. LoRA
 
