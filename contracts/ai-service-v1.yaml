@@ -1,0 +1,1669 @@
+openapi: 3.1.0
+info:
+  title: Livestock Agentic RAG Internal AI Service API
+  version: 1.0.0-draft
+  summary: Versioned HTTP contract from the Java business service to the Python AI service.
+  description: |
+    This API is internal-only. The Java service is the business system of record and the
+    only public entry point. Python owns RAG retrieval, Agent orchestration, diagnostic
+    workflow, model calls, measurement analysis, document ingestion execution, and AI
+    traces.
+
+    User JWTs MUST NOT be forwarded to or interpreted by this service. Business endpoints
+    authenticate the Java caller with a service Bearer credential. The `userId` fields are
+    trusted correlation attributes supplied by Java, not authorization inputs.
+
+    `X-Request-ID` is required on every business request and is echoed on every response.
+    For request bodies that also contain `requestId`, the two values MUST match.
+    `Idempotency-Key` is required on every POST and is bound together with `operationId`.
+    Reusing the same bound pair with an identical canonical payload returns the existing
+    operation or result. If either identifier already exists with a different pair or
+    payload, the service returns HTTP 409 and `IDEMPOTENCY_CONFLICT`.
+
+    Chat and measurement domain outcomes (including low confidence, follow-up, and safety
+    refusal) are successful AI decisions and return HTTP 200. They are not transport errors
+    and MUST NOT trigger a circuit breaker or automatic retry. Only document ingestion is an
+    asynchronous operation in v1 and returns HTTP 202.
+
+    Operation records are short-lived Python execution records for reconciliation. They are
+    not conversation, message, document, or task facts; Java/MySQL remains authoritative for
+    those business records.
+  contact:
+    name: Livestock Agentic RAG maintainers
+servers:
+  - url: http://python-ai:8000
+    description: Docker Compose internal network
+tags:
+  - name: Chat
+    description: Synchronous Agent chat execution and response-loss reconciliation.
+  - name: Measurement
+    description: Synchronous AI analysis of Java-authorized animal measurement snapshots.
+  - name: Knowledge
+    description: Reliable asynchronous document indexing from the shared object volume.
+  - name: RAG
+    description: Read-only collection discovery and collection-scoped document summaries.
+  - name: Health
+    description: Container liveness and dependency readiness probes.
+security:
+  - serviceBearer: []
+paths:
+  /internal/v1/ai/chat:
+    post:
+      tags:
+        - Chat
+      operationId: createAiChatRun
+      summary: Execute one synchronous Agent chat turn.
+      description: |
+        Executes a single stateless AI turn using the bounded history and opaque context
+        supplied by Java. Python persists a short-lived execution record before returning.
+        Chat POSTs are not automatically retried by Java; after an ambiguous timeout Java
+        reconciles with `GET /internal/v1/ai/runs/{operationId}`.
+
+        `contextVersion` in a completed response is exactly the request value plus one.
+        Python does not read or write Java's Redis cache.
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+            examples:
+              diseaseFollowUp:
+                summary: High-risk consultation requiring more facts
+                value:
+                  requestId: req_01J2PV6R6G3W1DZ4P0M7N8ABCD
+                  operationId: turn_01J2PV6S1VD5WQ4A1F9P3K7XYZ
+                  conversationId: conv_01J2PV4YR4XEN0P6BPWXGZ3VJH
+                  userId: usr_01J2PV2DJK9PYAB5ZK5ME6BQ8C
+                  query: 牛持续咳嗽并且体温升高怎么办？
+                  animalSnapshot:
+                    animalId: animal_01J2PV1D5DHJH6R4E9X8PR7T3Q
+                    species: cattle
+                  history: []
+                  context:
+                    schemaVersion: 1
+                    slots: {}
+                  contextVersion: 3
+                  deadlineMs: 60000
+      responses:
+        '200':
+          description: |
+            The AI turn completed. `outcome` carries the domain decision, including
+            LOW_CONFIDENCE and SAFETY_REFUSAL.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+              examples:
+                needsFollowUp:
+                  value:
+                    requestId: req_01J2PV6R6G3W1DZ4P0M7N8ABCD
+                    operationId: turn_01J2PV6S1VD5WQ4A1F9P3K7XYZ
+                    runId: run_01J2PV6TC1ST1RZX2K7JBG8D1H
+                    outcome: NEEDS_FOLLOW_UP
+                    answer: 还需要确认体温、持续时间和是否群体发病。
+                    intent: disease_consultation
+                    riskLevel: HIGH
+                    evidenceStatus: LOW_CONFIDENCE
+                    sources: []
+                    followUpQuestions:
+                      - 体温是多少？
+                      - 症状持续多久？
+                    toolsUsed:
+                      - query_knowledge_hub
+                    safety:
+                      decision: ALLOWED
+                      reasonCode: null
+                    nextContext:
+                      schemaVersion: 1
+                      slots: {}
+                    contextVersion: 4
+                    traceId: trace_01J2PV6V1BNXTEH6MNK52JV4Q3
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
+
+  /internal/v1/ai/runs/{operationId}:
+    get:
+      tags:
+        - Chat
+      operationId: getAiChatRun
+      summary: Reconcile a short-lived chat execution record by operation ID.
+      description: |
+        Used only after Java receives an ambiguous chat submission result or loses the
+        response. The record is a technical execution record with a retention deadline;
+        it is not the business task or conversation source of truth.
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/OperationId'
+      responses:
+        '200':
+          description: Chat execution record found.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatRun'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /internal/v1/ai/measurements/analyze:
+    post:
+      tags:
+        - Measurement
+      operationId: analyzeMeasurement
+      summary: Analyze an authorized animal measurement snapshot synchronously.
+      description: |
+        Java supplies the authorized animal snapshot and measurement history. Python does
+        not load animal business data from Java's MySQL. LOW_CONFIDENCE and
+        INSUFFICIENT_DATA are completed domain outcomes returned with HTTP 200.
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MeasurementAnalyzeRequest'
+      responses:
+        '200':
+          description: Measurement analysis completed.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeasurementAnalyzeResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
+
+  /internal/v1/ai/knowledge/ingestions:
+    post:
+      tags:
+        - Knowledge
+      operationId: createKnowledgeIngestion
+      summary: Accept one idempotent asynchronous document-index operation.
+      description: |
+        Java has already validated and persisted the document business record. `objectKey`
+        identifies a file in the shared named volume mounted read-only into Python. Host
+        absolute paths and path traversal are forbidden. Python creates the recoverable
+        execution record before returning HTTP 202.
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KnowledgeIngestionRequest'
+      responses:
+        '202':
+          description: Ingestion operation accepted or an identical existing operation returned.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+            Location:
+              description: Relative URL of the accepted operation.
+              required: true
+              schema:
+                type: string
+                example: /internal/v1/ai/operations/op_01J2PXAEYASDA99B6RB4A2QZ01
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeIngestionAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /internal/v1/ai/operations/{operationId}:
+    get:
+      tags:
+        - Knowledge
+      operationId: getAiOperation
+      summary: Get a short-lived asynchronous AI operation.
+      description: |
+        In v1 this endpoint exposes DOCUMENT_INDEX operations only. Java polls it and maps
+        the result to its authoritative MySQL business task.
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/OperationId'
+      responses:
+        '200':
+          description: Asynchronous operation found.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiOperation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /internal/v1/rag/collections:
+    get:
+      tags:
+        - RAG
+      operationId: listRagCollections
+      summary: List RAG collections visible to the AI service.
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - name: includeStats
+          in: query
+          required: false
+          description: Whether the RAG adapter should request collection statistics.
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: Collections returned successfully.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CollectionListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
+
+  /internal/v1/rag/collections/{collection}/documents/{docId}/summary:
+    get:
+      tags:
+        - RAG
+      operationId: getRagDocumentSummary
+      summary: Get a document summary from one explicitly selected collection.
+      description: |
+        `collection` is mandatory in both the path and successful response. Implementations
+        MUST pass it to RAG-SERVER and MUST NOT silently fall back to a default collection.
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - $ref: '#/components/parameters/Collection'
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: Document summary returned from the selected collection.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentSummaryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
+
+  /internal/v1/health/liveness:
+    get:
+      tags:
+        - Health
+      operationId: getLiveness
+      summary: Report whether the Python process can serve HTTP.
+      description: |
+        This endpoint does not probe RAG, model providers, or other external dependencies
+        and is unauthenticated so the container runtime can call it.
+      security: []
+      responses:
+        '200':
+          description: Process is alive.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LivenessResponse'
+
+  /internal/v1/health/readiness:
+    get:
+      tags:
+        - Health
+      operationId: getReadiness
+      summary: Report whether required AI dependencies are ready.
+      description: |
+        The default production/Compose profile checks configuration, the execution-record
+        store, RAG-SERVER MCP connectivity, the configured collection, and required model
+        configuration. It is unauthenticated so the container runtime can call it.
+      security: []
+      responses:
+        '200':
+          description: All required readiness checks passed.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+        '503':
+          description: One or more required readiness checks failed.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessResponse'
+
+components:
+  securitySchemes:
+    serviceBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-service-token
+      description: |
+        Rotatable service credential identifying the Java application. This is not a user
+        JWT. Tokens and token digests must not be logged or included in error details.
+
+  parameters:
+    RequestId:
+      name: X-Request-ID
+      in: header
+      required: true
+      description: |
+        End-to-end correlation ID generated or accepted by Java. If the request body has
+        `requestId`, both values must match.
+      schema:
+        $ref: '#/components/schemas/RequestId'
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        Stable key for the logical write. The server binds it as a pair with operationId
+        and the canonical request hash. Only the same pair and same hash replays; reuse of
+        either identifier with a different pair or hash returns `IDEMPOTENCY_CONFLICT`.
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+        pattern: '^[A-Za-z0-9._:-]+$'
+    OperationId:
+      name: operationId
+      in: path
+      required: true
+      description: Caller-generated stable operation ID.
+      schema:
+        $ref: '#/components/schemas/OperationId'
+    Collection:
+      name: collection
+      in: path
+      required: true
+      description: Explicit RAG collection; no default collection is used by this operation.
+      schema:
+        $ref: '#/components/schemas/CollectionName'
+    DocumentId:
+      name: docId
+      in: path
+      required: true
+      description: Document identifier inside the selected collection.
+      schema:
+        $ref: '#/components/schemas/DocumentId'
+
+  headers:
+    RequestId:
+      description: Correlation ID for the request.
+      required: true
+      schema:
+        $ref: '#/components/schemas/RequestId'
+
+  responses:
+    BadRequest:
+      description: Request syntax or cross-field invariant is invalid.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            headerBodyMismatch:
+              value:
+                requestId: req_01J2PV6R6G3W1DZ4P0M7N8ABCD
+                error:
+                  code: REQUEST_ID_MISMATCH
+                  message: X-Request-ID does not match body requestId.
+                  retryable: false
+                  details: {}
+    Unauthorized:
+      description: Missing, expired, or invalid service credential.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        WWW-Authenticate:
+          description: Bearer authentication challenge.
+          schema:
+            type: string
+            const: Bearer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Authenticated service identity is not allowed to call this operation.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Requested technical operation, collection, or document was not found.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Idempotency key, operation request hash, or context version conflict.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            idempotencyConflict:
+              value:
+                requestId: req_01J2PV6R6G3W1DZ4P0M7N8ABCD
+                error:
+                  code: IDEMPOTENCY_CONFLICT
+                  message: The operation ID is already bound to a different request.
+                  retryable: false
+                  details: {}
+    UnprocessableEntity:
+      description: JSON is syntactically valid but does not satisfy the request schema.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    TooManyRequests:
+      description: Rate limit or concurrency bulkhead rejected the request.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Retry-After:
+          description: Suggested number of seconds before a retry.
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    BadGateway:
+      description: An AI dependency returned a malformed or contract-invalid response.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: AI service, RAG, model provider, or required execution store is unavailable.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+        Retry-After:
+          description: Suggested number of seconds before retrying a retry-safe operation.
+          schema:
+            type: integer
+            minimum: 1
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    GatewayTimeout:
+      description: The operation did not complete before its deadline.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    RequestId:
+      type: string
+      minLength: 8
+      maxLength: 128
+      pattern: '^[A-Za-z0-9._:-]+$'
+      example: req_01J2PV6R6G3W1DZ4P0M7N8ABCD
+
+    OperationId:
+      type: string
+      minLength: 8
+      maxLength: 128
+      pattern: '^[A-Za-z0-9._:-]+$'
+      example: op_01J2PXAEYASDA99B6RB4A2QZ01
+
+    EntityId:
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: '^[A-Za-z0-9._:-]+$'
+
+    CollectionName:
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*$'
+      example: livestock_v4_2
+
+    DocumentId:
+      type: string
+      minLength: 1
+      maxLength: 256
+      pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$'
+
+    OpaqueContext:
+      type: object
+      description: |
+        Python-owned, versioned context payload. Java stores and returns this JSON without
+        interpreting Python's slots. Unknown fields must be preserved.
+      required:
+        - schemaVersion
+      properties:
+        schemaVersion:
+          type: integer
+          minimum: 1
+        slots:
+          type: object
+          additionalProperties: true
+          default: {}
+      additionalProperties: true
+      example:
+        schemaVersion: 1
+        slots: {}
+
+    ConversationHistoryItem:
+      type: object
+      required:
+        - turnId
+        - role
+        - content
+      properties:
+        turnId:
+          $ref: '#/components/schemas/EntityId'
+        role:
+          type: string
+          enum:
+            - USER
+            - ASSISTANT
+        content:
+          type: string
+          minLength: 1
+          maxLength: 12000
+        createdAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+      additionalProperties: false
+
+    AnimalSnapshot:
+      type: object
+      description: Authorized, request-scoped business data supplied by Java.
+      required:
+        - animalId
+        - species
+      properties:
+        animalId:
+          $ref: '#/components/schemas/EntityId'
+        species:
+          type: string
+          minLength: 1
+          maxLength: 64
+        breed:
+          type:
+            - string
+            - 'null'
+          maxLength: 128
+        sex:
+          type:
+            - string
+            - 'null'
+          maxLength: 32
+        birthDate:
+          type:
+            - string
+            - 'null'
+          format: date
+        attributes:
+          type: object
+          additionalProperties: true
+          default: {}
+      additionalProperties: false
+
+    ChatRequest:
+      type: object
+      required:
+        - requestId
+        - operationId
+        - conversationId
+        - userId
+        - query
+        - history
+        - context
+        - contextVersion
+        - deadlineMs
+      properties:
+        requestId:
+          $ref: '#/components/schemas/RequestId'
+        operationId:
+          $ref: '#/components/schemas/OperationId'
+        conversationId:
+          $ref: '#/components/schemas/EntityId'
+        userId:
+          $ref: '#/components/schemas/EntityId'
+        query:
+          type: string
+          minLength: 1
+          maxLength: 4000
+        animalSnapshot:
+          oneOf:
+            - $ref: '#/components/schemas/AnimalSnapshot'
+            - type: 'null'
+        history:
+          type: array
+          description: Oldest-to-newest bounded durable message history supplied by Java.
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/ConversationHistoryItem'
+        context:
+          $ref: '#/components/schemas/OpaqueContext'
+        contextVersion:
+          type: integer
+          minimum: 0
+        deadlineMs:
+          type: integer
+          minimum: 1000
+          maximum: 60000
+          default: 60000
+      additionalProperties: false
+
+    ChatOutcome:
+      type: string
+      description: Completed business decision; all values are returned with HTTP 200.
+      enum:
+        - ANSWERED
+        - NEEDS_FOLLOW_UP
+        - LOW_CONFIDENCE
+        - SAFETY_REFUSAL
+
+    RiskLevel:
+      type: string
+      enum:
+        - LOW
+        - MEDIUM
+        - HIGH
+        - CRITICAL
+
+    EvidenceStatus:
+      type: string
+      enum:
+        - SUPPORTED
+        - LOW_CONFIDENCE
+        - EMPTY
+        - UNAVAILABLE
+        - NOT_REQUIRED
+
+    SourceCitation:
+      type: object
+      required:
+        - collection
+        - documentId
+        - title
+        - chunkId
+        - score
+      properties:
+        collection:
+          $ref: '#/components/schemas/CollectionName'
+        documentId:
+          oneOf:
+            - $ref: '#/components/schemas/DocumentId'
+            - type: integer
+        title:
+          type: string
+          minLength: 1
+          maxLength: 512
+        sourceUri:
+          type:
+            - string
+            - 'null'
+          format: uri
+        page:
+          type:
+            - integer
+            - 'null'
+          minimum: 1
+        sectionTitle:
+          type:
+            - string
+            - 'null'
+          maxLength: 512
+        chunkId:
+          $ref: '#/components/schemas/EntityId'
+        score:
+          type: number
+          minimum: 0
+          maximum: 1
+      additionalProperties: false
+
+    SafetyDecision:
+      type: object
+      required:
+        - decision
+        - reasonCode
+      properties:
+        decision:
+          type: string
+          enum:
+            - ALLOWED
+            - REFUSED
+        reasonCode:
+          type:
+            - string
+            - 'null'
+          maxLength: 128
+      additionalProperties: false
+
+    ChatResponse:
+      type: object
+      required:
+        - requestId
+        - operationId
+        - runId
+        - outcome
+        - answer
+        - intent
+        - riskLevel
+        - evidenceStatus
+        - sources
+        - followUpQuestions
+        - toolsUsed
+        - safety
+        - nextContext
+        - contextVersion
+        - traceId
+      properties:
+        requestId:
+          $ref: '#/components/schemas/RequestId'
+        operationId:
+          $ref: '#/components/schemas/OperationId'
+        runId:
+          $ref: '#/components/schemas/EntityId'
+        outcome:
+          $ref: '#/components/schemas/ChatOutcome'
+        answer:
+          type: string
+          minLength: 1
+          maxLength: 30000
+        intent:
+          type: string
+          minLength: 1
+          maxLength: 128
+        riskLevel:
+          $ref: '#/components/schemas/RiskLevel'
+        evidenceStatus:
+          $ref: '#/components/schemas/EvidenceStatus'
+        sources:
+          type: array
+          description: |
+            Citations derived from actual RAG results. MUST be empty when evidenceStatus is
+            LOW_CONFIDENCE, EMPTY, or UNAVAILABLE; sources must never be fabricated.
+          items:
+            $ref: '#/components/schemas/SourceCitation'
+        followUpQuestions:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            minLength: 1
+            maxLength: 1000
+        toolsUsed:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+            maxLength: 128
+        safety:
+          $ref: '#/components/schemas/SafetyDecision'
+        nextContext:
+          $ref: '#/components/schemas/OpaqueContext'
+        contextVersion:
+          type: integer
+          minimum: 1
+          description: Exactly the request contextVersion plus one.
+        traceId:
+          $ref: '#/components/schemas/EntityId'
+      additionalProperties: false
+
+    ExecutionStatus:
+      type: string
+      enum:
+        - RUNNING
+        - SUCCEEDED
+        - FAILED
+
+    ChatRun:
+      type: object
+      description: |
+        If status is SUCCEEDED, `result` is present. If status is FAILED, `error` is present.
+        A RUNNING record has neither. Expired records return HTTP 404 OPERATION_NOT_FOUND.
+      required:
+        - requestId
+        - operationId
+        - runId
+        - type
+        - status
+        - createdAt
+        - updatedAt
+        - expiresAt
+      properties:
+        requestId:
+          $ref: '#/components/schemas/RequestId'
+        operationId:
+          $ref: '#/components/schemas/OperationId'
+        runId:
+          $ref: '#/components/schemas/EntityId'
+        type:
+          type: string
+          const: AI_CHAT
+        status:
+          $ref: '#/components/schemas/ExecutionStatus'
+        result:
+          oneOf:
+            - $ref: '#/components/schemas/ChatResponse'
+            - type: 'null'
+        error:
+          oneOf:
+            - $ref: '#/components/schemas/ErrorDetail'
+            - type: 'null'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+
+    BodyMeasurementValues:
+      type: object
+      description: At least one measurement property must be supplied.
+      properties:
+        bodyHeightCm:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+        bodyLengthCm:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+        chestGirthCm:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+        chestDepthCm:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+        chestWidthCm:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+        weightKg:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+      anyOf:
+        - properties:
+            bodyHeightCm:
+              type: number
+          required:
+            - bodyHeightCm
+        - properties:
+            bodyLengthCm:
+              type: number
+          required:
+            - bodyLengthCm
+        - properties:
+            chestGirthCm:
+              type: number
+          required:
+            - chestGirthCm
+        - properties:
+            chestDepthCm:
+              type: number
+          required:
+            - chestDepthCm
+        - properties:
+            chestWidthCm:
+              type: number
+          required:
+            - chestWidthCm
+        - properties:
+            weightKg:
+              type: number
+          required:
+            - weightKg
+      additionalProperties: false
+
+    MeasurementHistoryItem:
+      type: object
+      description: A dated historical measurement with at least one non-null value.
+      required:
+        - measureDate
+      properties:
+        measureDate:
+          type: string
+          format: date
+        bodyHeightCm:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+        bodyLengthCm:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+        chestGirthCm:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+        chestDepthCm:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+        chestWidthCm:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+        weightKg:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+      anyOf:
+        - properties:
+            bodyHeightCm:
+              type: number
+          required:
+            - bodyHeightCm
+        - properties:
+            bodyLengthCm:
+              type: number
+          required:
+            - bodyLengthCm
+        - properties:
+            chestGirthCm:
+              type: number
+          required:
+            - chestGirthCm
+        - properties:
+            chestDepthCm:
+              type: number
+          required:
+            - chestDepthCm
+        - properties:
+            chestWidthCm:
+              type: number
+          required:
+            - chestWidthCm
+        - properties:
+            weightKg:
+              type: number
+          required:
+            - weightKg
+      additionalProperties: false
+
+    MeasurementAnalyzeRequest:
+      type: object
+      required:
+        - requestId
+        - operationId
+        - userId
+        - animalSnapshot
+        - current
+        - history
+        - deadlineMs
+      properties:
+        requestId:
+          $ref: '#/components/schemas/RequestId'
+        operationId:
+          $ref: '#/components/schemas/OperationId'
+        userId:
+          $ref: '#/components/schemas/EntityId'
+        animalSnapshot:
+          $ref: '#/components/schemas/AnimalSnapshot'
+        ageMonth:
+          type:
+            - integer
+            - 'null'
+          minimum: 0
+        current:
+          $ref: '#/components/schemas/BodyMeasurementValues'
+        history:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/MeasurementHistoryItem'
+        confidence:
+          type:
+            - number
+            - 'null'
+          minimum: 0
+          maximum: 1
+        useDemoHistory:
+          type: boolean
+          default: false
+          description: Test/demo-only switch; production Java callers should always send false.
+        deadlineMs:
+          type: integer
+          minimum: 1000
+          maximum: 30000
+          default: 10000
+      additionalProperties: false
+
+    MeasurementOutcome:
+      type: string
+      description: Completed business decision; all values are returned with HTTP 200.
+      enum:
+        - ANALYZED
+        - INSUFFICIENT_DATA
+        - LOW_CONFIDENCE
+
+    MeasurementAnalysis:
+      type: object
+      required:
+        - animalId
+        - summary
+        - abnormalItems
+        - evidence
+        - recommendation
+        - report
+        - usedDemoHistory
+      properties:
+        animalId:
+          $ref: '#/components/schemas/EntityId'
+        summary:
+          type: string
+        abnormalItems:
+          type: array
+          items:
+            type: string
+        evidence:
+          type: array
+          items:
+            type: string
+        recommendation:
+          type: string
+        report:
+          type: string
+        usedDemoHistory:
+          type: boolean
+      additionalProperties: false
+
+    MeasurementAnalyzeResponse:
+      type: object
+      required:
+        - requestId
+        - operationId
+        - runId
+        - outcome
+        - result
+        - traceId
+      properties:
+        requestId:
+          $ref: '#/components/schemas/RequestId'
+        operationId:
+          $ref: '#/components/schemas/OperationId'
+        runId:
+          $ref: '#/components/schemas/EntityId'
+        outcome:
+          $ref: '#/components/schemas/MeasurementOutcome'
+        result:
+          $ref: '#/components/schemas/MeasurementAnalysis'
+        traceId:
+          $ref: '#/components/schemas/EntityId'
+      additionalProperties: false
+
+    KnowledgeIngestionRequest:
+      type: object
+      required:
+        - requestId
+        - operationId
+        - userId
+        - documentId
+        - collection
+        - objectKey
+        - fileName
+        - mediaType
+        - sizeBytes
+        - sha256
+      properties:
+        requestId:
+          $ref: '#/components/schemas/RequestId'
+        operationId:
+          $ref: '#/components/schemas/OperationId'
+        userId:
+          $ref: '#/components/schemas/EntityId'
+        documentId:
+          $ref: '#/components/schemas/DocumentId'
+        collection:
+          $ref: '#/components/schemas/CollectionName'
+        objectKey:
+          type: string
+          minLength: 1
+          maxLength: 512
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)*$'
+          description: |
+            Relative key below the configured shared-volume root. It must use `/` separators,
+            must not start with `/`, contain `..` path segments, a drive prefix, a URI scheme,
+            or a NUL byte. Python resolves the key below its fixed read-only mount and rejects
+            any resolved path outside that root.
+          example: users/usr_123/documents/doc_456/guide.pdf
+        fileName:
+          type: string
+          minLength: 1
+          maxLength: 255
+        mediaType:
+          type: string
+          minLength: 1
+          maxLength: 128
+          example: application/pdf
+        sizeBytes:
+          type: integer
+          minimum: 1
+          maximum: 104857600
+        sha256:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        force:
+          type: boolean
+          const: false
+          default: false
+          description: Forced re-indexing is disabled in v1 because crash recovery must remain idempotent.
+      additionalProperties: false
+
+    AsyncOperationStatus:
+      type: string
+      enum:
+        - ACCEPTED
+        - RUNNING
+        - SUCCEEDED
+        - FAILED
+        - TIMED_OUT
+        - CANCELLED
+
+    KnowledgeIngestionAccepted:
+      type: object
+      required:
+        - requestId
+        - operationId
+        - runId
+        - type
+        - status
+        - submittedAt
+      properties:
+        requestId:
+          $ref: '#/components/schemas/RequestId'
+        operationId:
+          $ref: '#/components/schemas/OperationId'
+        runId:
+          $ref: '#/components/schemas/EntityId'
+        type:
+          type: string
+          const: DOCUMENT_INDEX
+        status:
+          $ref: '#/components/schemas/AsyncOperationStatus'
+        submittedAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+
+    DocumentIndexResult:
+      type: object
+      required:
+        - documentId
+        - ragDocumentId
+        - collection
+        - indexed
+        - skipped
+        - executionMode
+      properties:
+        documentId:
+          $ref: '#/components/schemas/DocumentId'
+        ragDocumentId:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+          description: Stable content identifier used by the current RAG ingestion pipeline.
+        collection:
+          $ref: '#/components/schemas/CollectionName'
+        indexed:
+          type: boolean
+        skipped:
+          type: boolean
+          description: True when RAG-SERVER's content hash idempotency skipped re-indexing.
+        chunkCount:
+          type:
+            - integer
+            - 'null'
+          minimum: 0
+        executionMode:
+          type: string
+          enum: [FAKE, REAL]
+          description: FAKE validates delivery and orchestration but does not claim a real RAG index write.
+      additionalProperties: false
+
+    AiOperation:
+      type: object
+      description: |
+        For SUCCEEDED operations `result` is present. For FAILED or TIMED_OUT operations
+        `error` is present. Terminal states are immutable.
+      required:
+        - requestId
+        - operationId
+        - runId
+        - type
+        - status
+        - progress
+        - createdAt
+        - updatedAt
+        - expiresAt
+      properties:
+        requestId:
+          $ref: '#/components/schemas/RequestId'
+        operationId:
+          $ref: '#/components/schemas/OperationId'
+        runId:
+          $ref: '#/components/schemas/EntityId'
+        type:
+          type: string
+          const: DOCUMENT_INDEX
+        status:
+          $ref: '#/components/schemas/AsyncOperationStatus'
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+        result:
+          oneOf:
+            - $ref: '#/components/schemas/DocumentIndexResult'
+            - type: 'null'
+        error:
+          oneOf:
+            - $ref: '#/components/schemas/ErrorDetail'
+            - type: 'null'
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+
+    CollectionSummary:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          $ref: '#/components/schemas/CollectionName'
+        description:
+          type:
+            - string
+            - 'null'
+        documentCount:
+          type:
+            - integer
+            - 'null'
+          minimum: 0
+        updatedAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+      additionalProperties: false
+
+    CollectionListResponse:
+      type: object
+      required:
+        - requestId
+        - collections
+        - rawResponseId
+      properties:
+        requestId:
+          $ref: '#/components/schemas/RequestId'
+        collections:
+          type: array
+          items:
+            $ref: '#/components/schemas/CollectionSummary'
+        rawResponseId:
+          type:
+            - string
+            - 'null'
+          maxLength: 256
+      additionalProperties: false
+
+    DocumentSummaryResponse:
+      type: object
+      required:
+        - requestId
+        - collection
+        - documentId
+        - summary
+        - tags
+        - sourceUriPrefix
+        - rawResponseId
+      properties:
+        requestId:
+          $ref: '#/components/schemas/RequestId'
+        collection:
+          $ref: '#/components/schemas/CollectionName'
+        documentId:
+          $ref: '#/components/schemas/DocumentId'
+        title:
+          type:
+            - string
+            - 'null'
+        summary:
+          type: string
+          minLength: 1
+        tags:
+          type: array
+          items:
+            type: string
+        source:
+          type:
+            - string
+            - 'null'
+        chunkCount:
+          type:
+            - integer
+            - 'null'
+          minimum: 0
+        sourceUriPrefix:
+          type: string
+          pattern: '^rag://'
+        rawResponseId:
+          type:
+            - string
+            - 'null'
+          maxLength: 256
+      additionalProperties: false
+
+    ErrorCode:
+      type: string
+      description: |
+        Stable machine-readable code. Java maps these codes to public errors and resilience
+        behavior; it must not parse `message`.
+      enum:
+        - INVALID_REQUEST
+        - REQUEST_ID_MISMATCH
+        - SCHEMA_VALIDATION_FAILED
+        - SERVICE_UNAUTHORIZED
+        - SERVICE_FORBIDDEN
+        - IDEMPOTENCY_CONFLICT
+        - CONTEXT_VERSION_CONFLICT
+        - OPERATION_NOT_FOUND
+        - COLLECTION_NOT_FOUND
+        - DOCUMENT_NOT_FOUND
+        - RATE_LIMITED
+        - CONCURRENCY_LIMITED
+        - OBJECT_KEY_INVALID
+        - OBJECT_NOT_FOUND
+        - OBJECT_HASH_MISMATCH
+        - DEPENDENCY_INVALID_RESPONSE
+        - RAG_UNAVAILABLE
+        - MODEL_UNAVAILABLE
+        - EXECUTION_STORE_UNAVAILABLE
+        - AI_SERVICE_UNAVAILABLE
+        - DEADLINE_EXCEEDED
+        - INGESTION_FAILED
+        - INTERNAL_ERROR
+
+    ErrorDetail:
+      type: object
+      required:
+        - code
+        - message
+        - retryable
+        - details
+      properties:
+        code:
+          $ref: '#/components/schemas/ErrorCode'
+        message:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: Safe diagnostic text; clients must branch on code, not this text.
+        retryable:
+          type: boolean
+          description: |
+            Transport guidance only. Java still applies operation-specific retry policy;
+            synchronous chat is not automatically retried.
+        details:
+          type: object
+          description: |
+            Optional safe structured context. It must not include credentials, prompts,
+            full consultation text, model payloads, stack traces, or personal data.
+          additionalProperties: true
+      additionalProperties: false
+
+    ErrorResponse:
+      type: object
+      required:
+        - requestId
+        - error
+      properties:
+        requestId:
+          $ref: '#/components/schemas/RequestId'
+        operationId:
+          oneOf:
+            - $ref: '#/components/schemas/OperationId'
+            - type: 'null'
+        error:
+          $ref: '#/components/schemas/ErrorDetail'
+      additionalProperties: false
+
+    HealthCheck:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - UP
+            - DOWN
+        code:
+          type:
+            - string
+            - 'null'
+          maxLength: 128
+        message:
+          type:
+            - string
+            - 'null'
+          maxLength: 1000
+      additionalProperties: false
+
+    LivenessResponse:
+      type: object
+      required:
+        - requestId
+        - status
+        - service
+        - version
+        - timestamp
+      properties:
+        requestId:
+          $ref: '#/components/schemas/RequestId'
+        status:
+          type: string
+          const: UP
+        service:
+          type: string
+          const: livestock-ai-service
+        version:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+      additionalProperties: false
+
+    ReadinessResponse:
+      type: object
+      required:
+        - requestId
+        - status
+        - checks
+        - timestamp
+      properties:
+        requestId:
+          $ref: '#/components/schemas/RequestId'
+        status:
+          type: string
+          enum:
+            - READY
+            - NOT_READY
+        checks:
+          type: object
+          minProperties: 1
+          additionalProperties:
+            $ref: '#/components/schemas/HealthCheck'
+        timestamp:
+          type: string
+          format: date-time
+      additionalProperties: false

@@ -1,0 +1,1631 @@
+openapi: 3.1.0
+info:
+  title: Livestock Enterprise Business API
+  version: 1.0.0-p6
+  description: Public Java business-layer contract. User JWTs terminate here.
+servers:
+  - url: http://127.0.0.1:8080
+paths:
+  /api/v1/auth/login:
+    post:
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Authenticated and refresh family created.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenPairEnvelope"
+        "401":
+          $ref: "#/components/responses/AuthenticationFailed"
+        "503":
+          $ref: "#/components/responses/AuthStateUnavailable"
+  /api/v1/auth/refresh:
+    post:
+      operationId: refreshTokens
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshTokenRequest"
+      responses:
+        "200":
+          description: Refresh token atomically consumed and rotated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenPairEnvelope"
+        "401":
+          $ref: "#/components/responses/InvalidRefreshToken"
+        "503":
+          $ref: "#/components/responses/AuthStateUnavailable"
+  /api/v1/auth/logout:
+    post:
+      operationId: logout
+      responses:
+        "200":
+          description: Current access-token family revoked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogoutEnvelope"
+        "401":
+          $ref: "#/components/responses/AuthenticationRequired"
+        "503":
+          $ref: "#/components/responses/AuthStateUnavailable"
+  /api/v1/users:
+    get:
+      operationId: listUsers
+      x-required-authority: USER_MANAGE
+      parameters:
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+      responses:
+        "200":
+          description: User page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserListEnvelope"
+        "401":
+          $ref: "#/components/responses/AuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/AccessDenied"
+    post:
+      operationId: createUser
+      x-required-authority: USER_MANAGE
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+      responses:
+        "201":
+          description: User created with an atomically committed audit event.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserEnvelope"
+        "409":
+          description: Username already exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: A referenced role does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/v1/users/{id}:
+    get:
+      operationId: getUser
+      description: A user can read itself; USER_MANAGE can read any user.
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200":
+          description: User view.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserEnvelope"
+        "403":
+          $ref: "#/components/responses/AccessDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/users/{id}/status:
+    patch:
+      operationId: changeUserStatus
+      x-required-authority: USER_MANAGE
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeUserStatusRequest"
+      responses:
+        "200":
+          description: Status and security version changed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserEnvelope"
+        "409":
+          description: Version conflict or last enabled administrator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/v1/users/{id}/roles:
+    put:
+      operationId: replaceUserRoles
+      x-required-authority: USER_MANAGE
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplaceUserRolesRequest"
+      responses:
+        "200":
+          description: Roles and security version changed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserEnvelope"
+        "409":
+          description: Version conflict or last enabled administrator.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /api/v1/conversations:
+    post:
+      operationId: createConversation
+      summary: Create a conversation
+      description: Creates an ACTIVE conversation owned by the authenticated user.
+      x-required-authority: AI_CHAT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateConversationRequest"
+      responses:
+        "201":
+          description: Conversation and its audit event were committed atomically.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationEnvelope"
+        "401":
+          $ref: "#/components/responses/AuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/AccessDenied"
+        "400":
+          $ref: "#/components/responses/RequestValidationFailed"
+        "503":
+          $ref: "#/components/responses/BusinessServiceUnavailable"
+    get:
+      operationId: listConversations
+      summary: List conversations
+      description: >
+        Lists non-deleted conversations. The endpoint requires either read
+        authority; scope=all additionally requires CONVERSATION_READ_ALL.
+      x-required-authority-any:
+        - CONVERSATION_READ_OWN
+        - CONVERSATION_READ_ALL
+      parameters:
+        - $ref: "#/components/parameters/Scope"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+      responses:
+        "200":
+          description: Conversation page ordered by updatedAt and id descending.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationListEnvelope"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/AuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/AccessDenied"
+        "503":
+          $ref: "#/components/responses/BusinessServiceUnavailable"
+  /api/v1/conversations/{id}:
+    get:
+      operationId: getConversation
+      summary: Get conversation detail
+      description: >
+        Returns the conversation and at most its latest 100 messages in stable
+        chronological order. A missing, deleted, or foreign-owned resource is 404
+        unless the caller has CONVERSATION_READ_ALL.
+      x-required-authority-any:
+        - CONVERSATION_READ_OWN
+        - CONVERSATION_READ_ALL
+      parameters:
+        - $ref: "#/components/parameters/ConversationId"
+      responses:
+        "200":
+          description: Conversation detail with bounded message history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationDetailEnvelope"
+        "401":
+          $ref: "#/components/responses/AuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/AccessDenied"
+        "404":
+          $ref: "#/components/responses/ConversationNotFound"
+        "503":
+          $ref: "#/components/responses/BusinessServiceUnavailable"
+    patch:
+      operationId: updateConversation
+      summary: Update a conversation
+      description: >
+        Renames, archives, or reopens an owned conversation using optimistic
+        locking. Exactly one of title or status must be supplied.
+      x-required-authority: AI_CHAT
+      parameters:
+        - $ref: "#/components/parameters/ConversationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateConversationRequest"
+      responses:
+        "200":
+          description: Conversation and its audit event were committed atomically.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversationEnvelope"
+        "401":
+          $ref: "#/components/responses/AuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/AccessDenied"
+        "404":
+          $ref: "#/components/responses/ConversationNotFound"
+        "409":
+          $ref: "#/components/responses/ConversationConflict"
+        "400":
+          $ref: "#/components/responses/RequestValidationFailed"
+        "422":
+          $ref: "#/components/responses/SemanticValidationFailed"
+        "503":
+          $ref: "#/components/responses/BusinessServiceUnavailable"
+    delete:
+      operationId: deleteConversation
+      summary: Soft-delete a conversation
+      description: >
+        Soft-deletes an owned conversation using optimistic locking. Deleted
+        conversations do not appear in subsequent reads.
+      x-required-authority: AI_CHAT
+      parameters:
+        - $ref: "#/components/parameters/ConversationId"
+        - $ref: "#/components/parameters/ExpectedVersion"
+      responses:
+        "204":
+          description: Conversation tombstone and audit event were committed atomically.
+        "401":
+          $ref: "#/components/responses/AuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/AccessDenied"
+        "404":
+          $ref: "#/components/responses/ConversationNotFound"
+        "409":
+          $ref: "#/components/responses/ConversationConflict"
+        "400":
+          $ref: "#/components/responses/RequestValidationFailed"
+        "503":
+          $ref: "#/components/responses/BusinessServiceUnavailable"
+  /api/v1/conversations/{id}/messages:
+    get:
+      operationId: listConversationMessages
+      summary: Get bounded message history
+      description: >
+        Returns the latest bounded history in stable chronological order. limit
+        is capped at 20 so the same bounded history can safely feed the AI service.
+      x-required-authority-any:
+        - CONVERSATION_READ_OWN
+        - CONVERSATION_READ_ALL
+      parameters:
+        - $ref: "#/components/parameters/ConversationId"
+        - $ref: "#/components/parameters/HistoryLimit"
+      responses:
+        "200":
+          description: Bounded message history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageListEnvelope"
+        "401":
+          $ref: "#/components/responses/AuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/AccessDenied"
+        "404":
+          $ref: "#/components/responses/ConversationNotFound"
+        "400":
+          $ref: "#/components/responses/RequestValidationFailed"
+        "503":
+          $ref: "#/components/responses/BusinessServiceUnavailable"
+    post:
+      operationId: submitConversationMessage
+      summary: Submit a user message
+      description: >
+        Atomically persists the USER message, creates one CREATED AI_QUERY task,
+        claims the conversation operation, and appends an audit event before any
+        remote call. Java then invokes the Python AI service without holding a
+        database transaction and commits the assistant result in a second atomic
+        transaction. Reusing a key with the same payload reconciles or returns
+        the same durable operation; clients must inspect data.task.status rather
+        than infer completion from the HTTP status alone.
+      x-required-authority: AI_CHAT
+      parameters:
+        - $ref: "#/components/parameters/ConversationId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitMessageRequest"
+      responses:
+        "200":
+          description: >
+            The AI operation reached a durable terminal state, or this is any
+            same-key replay. A replay can still contain CREATED, RUNNING, or
+            SUBMIT_UNKNOWN and does not guarantee a Location header; inspect
+            data.task.status to determine completion.
+          headers:
+            Idempotent-Replayed:
+              description: Always true for a replayed submission.
+              schema:
+                type: boolean
+                const: true
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageSubmissionEnvelope"
+        "202":
+          description: >
+            A first, non-replayed request is durable but its Python execution
+            result is still running or requires reconciliation.
+          headers:
+            Location:
+              description: URI of the newly created AI_QUERY task.
+              schema:
+                type: string
+                format: uri-reference
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageSubmissionEnvelope"
+        "400":
+          $ref: "#/components/responses/RequestValidationFailed"
+        "401":
+          $ref: "#/components/responses/AuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/AccessDenied"
+        "404":
+          $ref: "#/components/responses/ConversationNotFound"
+        "409":
+          $ref: "#/components/responses/MessageSubmissionConflict"
+        "503":
+          $ref: "#/components/responses/BusinessServiceUnavailable"
+  /api/v1/documents:
+    post:
+      operationId: uploadKnowledgeDocument
+      summary: Upload a document and create one reliable index task.
+      x-required-authority: DOCUMENT_UPLOAD
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: PDF or UTF-8 plain text, at most 100 MiB.
+      responses:
+        "202":
+          description: Document persisted and DOCUMENT_INDEX task created or replayed.
+          headers:
+            Location:
+              schema:
+                type: string
+              description: Java task polling URL.
+            Idempotent-Replayed:
+              schema:
+                type: string
+                enum: ["true", "false"]
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentUploadEnvelope"
+        "400":
+          description: Invalid file name, content, size, extension or media type.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          $ref: "#/components/responses/IdempotencyConflict"
+        "503":
+          $ref: "#/components/responses/BusinessServiceUnavailable"
+  /api/v1/documents/{documentId}:
+    get:
+      operationId: getKnowledgeDocument
+      summary: Get an owned document and its index status.
+      x-required-authority: DOCUMENT_UPLOAD or TASK_MANAGE
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: '^doc_[A-Za-z0-9-]{36}$'
+      responses:
+        "200":
+          description: Document metadata without an absolute storage path.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeDocumentEnvelope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/v1/measurements/analyze:
+    post:
+      operationId: analyzeBodyMeasurements
+      summary: Analyze the current body measurements of an authorized animal.
+      description: >
+        Java authorizes and loads the MySQL animal snapshot plus at most 100
+        historical measurements, then invokes the Python AI service. The current
+        values are analyzed but are not persisted as a measurement record. For a
+        given caller and Idempotency-Key, Java derives stable internal request and
+        operation identifiers so a same-key replay is deterministic.
+      x-required-authority: MEASUREMENT_ANALYZE
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MeasurementAnalyzeRequest"
+      responses:
+        "200":
+          description: Measurement analysis completed with a supported terminal outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeasurementAnalyzeEnvelope"
+        "400":
+          $ref: "#/components/responses/MeasurementRequestInvalid"
+        "401":
+          $ref: "#/components/responses/AuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/AccessDenied"
+        "404":
+          $ref: "#/components/responses/AnimalNotFound"
+        "409":
+          $ref: "#/components/responses/MeasurementAnalysisConflict"
+        "429":
+          $ref: "#/components/responses/MeasurementAiBusy"
+        "502":
+          $ref: "#/components/responses/MeasurementAiProtocolError"
+        "503":
+          $ref: "#/components/responses/MeasurementServiceUnavailable"
+        "504":
+          $ref: "#/components/responses/MeasurementAiTimeout"
+  /api/v1/tasks:
+    get:
+      operationId: listTasks
+      summary: List tasks
+      description: >
+        Lists tasks. The endpoint requires either task authority; scope=all
+        additionally requires TASK_MANAGE. AI_QUERY creation is exclusively
+        coupled to message submission; P4 exposes no generic task-creation
+        endpoint.
+      x-required-authority-any:
+        - TASK_READ_OWN
+        - TASK_MANAGE
+      parameters:
+        - $ref: "#/components/parameters/Scope"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+      responses:
+        "200":
+          description: Task page ordered by createdAt and id descending.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskListEnvelope"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          $ref: "#/components/responses/AuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/AccessDenied"
+        "503":
+          $ref: "#/components/responses/BusinessServiceUnavailable"
+  /api/v1/tasks/{id}:
+    get:
+      operationId: getTask
+      summary: Get a task
+      description: >
+        Returns an owned task to TASK_READ_OWN callers, or any task to
+        TASK_MANAGE callers. A missing or foreign-owned task is 404.
+      x-required-authority-any:
+        - TASK_READ_OWN
+        - TASK_MANAGE
+      parameters:
+        - $ref: "#/components/parameters/TaskId"
+      responses:
+        "200":
+          description: Task view.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskEnvelope"
+        "401":
+          $ref: "#/components/responses/AuthenticationRequired"
+        "403":
+          $ref: "#/components/responses/AccessDenied"
+        "404":
+          $ref: "#/components/responses/TaskNotFound"
+        "503":
+          $ref: "#/components/responses/BusinessServiceUnavailable"
+  /api/v1/audit-logs:
+    get:
+      operationId: listAuditLogs
+      x-required-authority: AUDIT_READ
+      parameters:
+        - name: requestId
+          in: query
+          schema:
+            type: string
+            maxLength: 128
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+      responses:
+        "200":
+          description: Append-only audit page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditListEnvelope"
+        "403":
+          $ref: "#/components/responses/AccessDenied"
+  /api/v1/system/status:
+    get:
+      operationId: systemStatus
+      responses:
+        "200":
+          description: Authenticated dependency status.
+        "401":
+          $ref: "#/components/responses/AuthenticationRequired"
+  /actuator/health/liveness:
+    get:
+      operationId: liveness
+      security: []
+      responses:
+        "200":
+          description: Process is alive.
+  /actuator/health/readiness:
+    get:
+      operationId: readiness
+      security: []
+      responses:
+        "200":
+          description: MySQL, Redis and Python AI are ready.
+        "503":
+          description: At least one readiness dependency is down.
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    UserId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    ConversationId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    TaskId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    Scope:
+      name: scope
+      in: query
+      description: Resource visibility scope.
+      schema:
+        type: string
+        enum: [own, all]
+        default: own
+    ExpectedVersion:
+      name: version
+      in: query
+      required: true
+      description: Current optimistic-lock version observed by the client.
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+    HistoryLimit:
+      name: limit
+      in: query
+      description: Maximum number of latest messages to return.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 20
+        default: 20
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: >
+        Opaque operation identifier unique per owner. The raw value is never
+        written to audit detail; only a bounded digest is recorded there.
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+        pattern: "^[A-Za-z0-9._:-]+$"
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    Size:
+      name: size
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+  schemas:
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          maxLength: 64
+        password:
+          type: string
+          maxLength: 128
+          writeOnly: true
+    RefreshTokenRequest:
+      type: object
+      additionalProperties: false
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+          maxLength: 512
+          writeOnly: true
+    CreateUserRequest:
+      type: object
+      additionalProperties: false
+      required: [username, password, roles]
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 64
+          pattern: "^[A-Za-z0-9._-]+$"
+        password:
+          type: string
+          minLength: 12
+          maxLength: 72
+          writeOnly: true
+        roles:
+          $ref: "#/components/schemas/RoleSet"
+    ChangeUserStatusRequest:
+      type: object
+      additionalProperties: false
+      required: [status, version]
+      properties:
+        status:
+          type: string
+          enum: [ENABLED, DISABLED]
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+    ReplaceUserRolesRequest:
+      type: object
+      additionalProperties: false
+      required: [roles, version]
+      properties:
+        roles:
+          $ref: "#/components/schemas/RoleSet"
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+    RoleSet:
+      type: array
+      minItems: 1
+      maxItems: 4
+      uniqueItems: true
+      items:
+        type: string
+        enum: [ADMIN, VET, AUDITOR, USER]
+    CreateConversationRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          maxLength: 120
+          description: Blank or omitted values use the server default title.
+    UpdateConversationRequest:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 120
+          pattern: "\\S"
+        status:
+          type: string
+          enum: [ACTIVE, ARCHIVED]
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+      oneOf:
+        - required: [title]
+        - required: [status]
+    SubmitMessageRequest:
+      type: object
+      additionalProperties: false
+      required: [content, contextVersion]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          pattern: "\\S"
+        contextVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Must equal the current MySQL conversation context version.
+    MeasurementAnalyzeRequest:
+      type: object
+      additionalProperties: false
+      required: [animalId, current]
+      properties:
+        animalId:
+          type: integer
+          format: int64
+          minimum: 1
+        current:
+          $ref: "#/components/schemas/BodyMeasurementValues"
+        confidence:
+          type: [number, "null"]
+          minimum: 0
+          maximum: 1
+          description: Optional confidence associated with the current measurement set.
+    BodyMeasurementValues:
+      type: object
+      additionalProperties: false
+      description: At least one non-null measurement value is required.
+      properties:
+        bodyHeightCm:
+          type: [number, "null"]
+          minimum: 0
+        bodyLengthCm:
+          type: [number, "null"]
+          minimum: 0
+        chestGirthCm:
+          type: [number, "null"]
+          minimum: 0
+        chestDepthCm:
+          type: [number, "null"]
+          minimum: 0
+        chestWidthCm:
+          type: [number, "null"]
+          minimum: 0
+        weightKg:
+          type: [number, "null"]
+          minimum: 0
+      anyOf:
+        - required: [bodyHeightCm]
+          properties:
+            bodyHeightCm:
+              type: number
+        - required: [bodyLengthCm]
+          properties:
+            bodyLengthCm:
+              type: number
+        - required: [chestGirthCm]
+          properties:
+            chestGirthCm:
+              type: number
+        - required: [chestDepthCm]
+          properties:
+            chestDepthCm:
+              type: number
+        - required: [chestWidthCm]
+          properties:
+            chestWidthCm:
+              type: number
+        - required: [weightKg]
+          properties:
+            weightKg:
+              type: number
+    MeasurementAnalyzeResponse:
+      type: object
+      additionalProperties: false
+      required: [operationId, outcome, animalId, animalCode, result]
+      properties:
+        operationId:
+          type: string
+          pattern: '^op_measure_[a-f0-9]{64}$'
+        outcome:
+          type: string
+          enum: [ANALYZED, INSUFFICIENT_DATA, LOW_CONFIDENCE]
+        animalId:
+          type: integer
+          format: int64
+          minimum: 1
+        animalCode:
+          type: string
+          pattern: '^[A-Za-z0-9._:-]+$'
+        result:
+          $ref: "#/components/schemas/MeasurementAnalysis"
+    MeasurementAnalysis:
+      type: object
+      additionalProperties: false
+      required:
+        - summary
+        - abnormalItems
+        - evidence
+        - recommendation
+        - report
+        - usedDemoHistory
+      properties:
+        summary:
+          type: string
+          minLength: 1
+        abnormalItems:
+          type: array
+          items:
+            type: string
+        evidence:
+          type: array
+          items:
+            type: string
+        recommendation:
+          type: string
+          minLength: 1
+        report:
+          type: string
+          minLength: 1
+        usedDemoHistory:
+          type: boolean
+          const: false
+          description: Java rejects Python responses that report demo history usage.
+    Conversation:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - ownerId
+        - title
+        - status
+        - contextVersion
+        - version
+        - createdAt
+        - updatedAt
+        - lastMessageAt
+      properties:
+        id:
+          type: string
+        ownerId:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, ARCHIVED, DELETED]
+        contextVersion:
+          type: integer
+          format: int64
+          minimum: 0
+          description: MySQL-authoritative version for AI context reconstruction.
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Optimistic-lock version for metadata mutations.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        lastMessageAt:
+          type: [string, "null"]
+          format: date-time
+    Message:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - turnId
+        - role
+        - content
+        - status
+        - intent
+        - riskLevel
+        - evidenceStatus
+        - metadata
+        - createdAt
+      properties:
+        id:
+          type: string
+        turnId:
+          type: string
+          maxLength: 128
+          description: Operation identifier shared by the messages of one turn.
+        role:
+          type: string
+          enum: [USER, ASSISTANT]
+        content:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, COMPLETED, FAILED]
+        intent:
+          type: [string, "null"]
+          maxLength: 128
+        riskLevel:
+          type: [string, "null"]
+          enum: [LOW, MEDIUM, HIGH, CRITICAL, null]
+        evidenceStatus:
+          type: [string, "null"]
+          enum: [SUPPORTED, LOW_CONFIDENCE, EMPTY, UNAVAILABLE, NOT_REQUIRED, null]
+        metadata:
+          type: object
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+    Task:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - ownerId
+        - conversationId
+        - type
+        - operationId
+        - status
+        - progress
+        - resultRef
+        - errorCode
+        - retryCount
+        - version
+        - createdAt
+        - startedAt
+        - finishedAt
+      properties:
+        id:
+          type: string
+        ownerId:
+          type: string
+        conversationId:
+          type: [string, "null"]
+        type:
+          type: string
+          enum: [AI_QUERY, MEASUREMENT_ANALYSIS, DOCUMENT_INDEX]
+        operationId:
+          type: string
+          maxLength: 128
+        status:
+          type: string
+          enum:
+            - CREATED
+            - RUNNING
+            - SUCCEEDED
+            - FAILED
+            - TIMED_OUT
+            - CANCELLED
+            - SUBMIT_UNKNOWN
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+        resultRef:
+          type: [string, "null"]
+          maxLength: 512
+        errorCode:
+          type: [string, "null"]
+          maxLength: 128
+        retryCount:
+          type: integer
+          minimum: 0
+        version:
+          type: integer
+          format: int64
+          minimum: 0
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: [string, "null"]
+          format: date-time
+        finishedAt:
+          type: [string, "null"]
+          format: date-time
+    KnowledgeDocument:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - ownerId
+        - fileName
+        - mediaType
+        - sizeBytes
+        - sha256
+        - collection
+        - status
+        - taskId
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          pattern: '^doc_[A-Za-z0-9-]{36}$'
+        ownerId:
+          type: string
+        fileName:
+          type: string
+          maxLength: 255
+        mediaType:
+          type: string
+          enum: [application/pdf, text/plain]
+        sizeBytes:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 104857600
+        sha256:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        collection:
+          type: string
+        status:
+          type: string
+          enum: [UPLOADED, INDEXING, VALIDATED, INDEXED, FAILED, TIMED_OUT, CANCELLED]
+        taskId:
+          type: string
+        ragDocumentId:
+          type: [string, "null"]
+          pattern: '^[a-f0-9]{64}$'
+        executionMode:
+          type: [string, "null"]
+          enum: [FAKE, REAL, null]
+        chunkCount:
+          type: [integer, "null"]
+          minimum: 0
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        indexedAt:
+          type: [string, "null"]
+          format: date-time
+    User:
+      type: object
+      required: [id, username, status, roles, version, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+        status:
+          type: string
+          enum: [ENABLED, DISABLED]
+        roles:
+          $ref: "#/components/schemas/RoleSet"
+        version:
+          type: integer
+          format: int64
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    TokenPair:
+      type: object
+      required:
+        - tokenType
+        - accessToken
+        - accessExpiresAt
+        - refreshToken
+        - refreshExpiresAt
+        - user
+      properties:
+        tokenType:
+          const: Bearer
+        accessToken:
+          type: string
+          writeOnly: true
+        accessExpiresAt:
+          type: string
+          format: date-time
+        refreshToken:
+          type: string
+          writeOnly: true
+        refreshExpiresAt:
+          type: string
+          format: date-time
+        user:
+          $ref: "#/components/schemas/User"
+    ErrorEnvelope:
+      type: object
+      required: [requestId, error, timestamp]
+      properties:
+        requestId:
+          type: string
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+        timestamp:
+          type: string
+          format: date-time
+    TokenPairEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/TokenPair"
+    UserEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/User"
+    UserListEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/User"
+                page:
+                  type: integer
+                size:
+                  type: integer
+                totalElements:
+                  type: integer
+                totalPages:
+                  type: integer
+    ConversationEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/Conversation"
+    ConversationListEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              additionalProperties: false
+              required: [items, page, size, totalElements, totalPages]
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/Conversation"
+                page:
+                  type: integer
+                  minimum: 0
+                size:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                totalElements:
+                  type: integer
+                  format: int64
+                  minimum: 0
+                totalPages:
+                  type: integer
+                  minimum: 0
+    ConversationDetailEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              additionalProperties: false
+              required: [conversation, messages]
+              properties:
+                conversation:
+                  $ref: "#/components/schemas/Conversation"
+                messages:
+                  type: array
+                  maxItems: 100
+                  description: Latest messages in stable chronological order.
+                  items:
+                    $ref: "#/components/schemas/Message"
+    MessageListEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              type: array
+              maxItems: 20
+              items:
+                $ref: "#/components/schemas/Message"
+    MessageSubmissionEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              additionalProperties: false
+              required: [message, assistantMessage, task, replayed]
+              properties:
+                message:
+                  $ref: "#/components/schemas/Message"
+                assistantMessage:
+                  oneOf:
+                    - $ref: "#/components/schemas/Message"
+                    - type: "null"
+                  description: >
+                    Present exactly when task.status is SUCCEEDED. CREATED,
+                    RUNNING, SUBMIT_UNKNOWN, FAILED, TIMED_OUT, and CANCELLED
+                    responses do not synthesize an assistant message.
+                task:
+                  $ref: "#/components/schemas/Task"
+                replayed:
+                  type: boolean
+                  description: True when this is a same-key, same-payload replay.
+    TaskEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/Task"
+    KnowledgeDocumentEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/KnowledgeDocument"
+    DocumentUploadEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              additionalProperties: false
+              required: [document, task, idempotentReplay]
+              properties:
+                document:
+                  $ref: "#/components/schemas/KnowledgeDocument"
+                task:
+                  $ref: "#/components/schemas/Task"
+                idempotentReplay:
+                  type: boolean
+    MeasurementAnalyzeEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/MeasurementAnalyzeResponse"
+    TaskListEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              additionalProperties: false
+              required: [items, page, size, totalElements, totalPages]
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/Task"
+                page:
+                  type: integer
+                  minimum: 0
+                size:
+                  type: integer
+                  minimum: 1
+                  maximum: 100
+                totalElements:
+                  type: integer
+                  format: int64
+                  minimum: 0
+                totalPages:
+                  type: integer
+                  minimum: 0
+    AuditListEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    additionalProperties: true
+                page:
+                  type: integer
+                size:
+                  type: integer
+                totalElements:
+                  type: integer
+                totalPages:
+                  type: integer
+    LogoutEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                revoked:
+                  type: boolean
+    SuccessEnvelope:
+      type: object
+      required: [requestId, data, timestamp]
+      properties:
+        requestId:
+          type: string
+        data: {}
+        timestamp:
+          type: string
+          format: date-time
+  responses:
+    AuthenticationRequired:
+      description: Bearer authentication is required.
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+          example: Bearer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    AuthenticationFailed:
+      description: Credentials were not accepted.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    InvalidRefreshToken:
+      description: Refresh token is invalid, expired, revoked or replayed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    AccessDenied:
+      description: Authenticated caller lacks the required endpoint authority.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    InvalidRequest:
+      description: Query parameters or request syntax are invalid.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    RequestValidationFailed:
+      description: >
+        Bean validation, a required parameter/header, or body parsing failed.
+        Representative error codes are VALIDATION_FAILED and INVALID_REQUEST.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    MeasurementRequestInvalid:
+      description: >
+        The public request failed parsing or validation, or the Python service
+        rejected the authorized snapshot. Representative error codes are
+        VALIDATION_FAILED, INVALID_REQUEST, and MEASUREMENT_REQUEST_REJECTED.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    SemanticValidationFailed:
+      description: >
+        Cross-field business validation failed after the request was parsed.
+        Representative error codes are CONVERSATION_UPDATE_INVALID and
+        CONVERSATION_STATUS_INVALID.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    ConversationNotFound:
+      description: >
+        Conversation is absent, deleted, or not owned by the caller. The same
+        response deliberately prevents resource-existence disclosure.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    TaskNotFound:
+      description: >
+        Task is absent or not owned by the caller. The same response deliberately
+        prevents resource-existence disclosure.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    AnimalNotFound:
+      description: >
+        Animal is absent or not visible to the caller. The same response deliberately
+        prevents cross-owner resource-existence disclosure. The stable error code is
+        ANIMAL_NOT_FOUND.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    ConversationConflict:
+      description: >
+        Optimistic-lock version conflict, active-operation conflict, or invalid
+        current-state transition. Representative error codes are VERSION_CONFLICT,
+        CONVERSATION_BUSY, and CONVERSATION_STATUS_CONFLICT.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    MessageSubmissionConflict:
+      description: >
+        Idempotency key was reused with another payload, the supplied
+        contextVersion is stale, the conversation is not ACTIVE, or another
+        operation is active. Representative error codes are
+        IDEMPOTENCY_KEY_REUSED, CONTEXT_VERSION_CONFLICT,
+        CONVERSATION_NOT_ACTIVE, and CONVERSATION_BUSY.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    IdempotencyConflict:
+      description: >
+        The idempotency key was already bound to a different document upload
+        payload. The stable error code is IDEMPOTENCY_CONFLICT.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    MeasurementAnalysisConflict:
+      description: >
+        The animal profile is incomplete for analysis, or the deterministic AI
+        operation conflicts with a request already bound to different content.
+        Representative error codes are ANIMAL_PROFILE_INCOMPLETE and AI_CONFLICT.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    MeasurementAiBusy:
+      description: >
+        The Python AI service is rate limited or busy. The stable error code is AI_BUSY.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    MeasurementAiProtocolError:
+      description: >
+        The Python AI response violated the internal measurement contract or its
+        upstream reported a gateway failure. The stable error code is AI_PROTOCOL_ERROR.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    MeasurementServiceUnavailable:
+      description: >
+        Redis-backed authentication state, MySQL business data, or the Python AI
+        service is unavailable or cannot authenticate the Java service. Representative
+        error codes are AUTH_STATE_UNAVAILABLE, DATASTORE_UNAVAILABLE,
+        AI_SERVICE_UNAVAILABLE, and AI_SERVICE_AUTH_FAILED.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    MeasurementAiTimeout:
+      description: >
+        The Python AI measurement call timed out. The stable error code is AI_TIMEOUT.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    AuthStateUnavailable:
+      description: Redis-backed authentication state cannot be verified.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+    BusinessServiceUnavailable:
+      description: >
+        Authentication state or the business datastore is temporarily
+        unavailable. Representative error codes are AUTH_STATE_UNAVAILABLE and
+        DATASTORE_UNAVAILABLE.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+security:
+  - bearerAuth: []
