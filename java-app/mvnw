@@ -1,0 +1,20 @@
+#!/bin/sh
+
+project_base_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+wrapper_jar="$project_base_dir/.mvn/wrapper/maven-wrapper.jar"
+
+if [ ! -f "$wrapper_jar" ]; then
+  echo "Maven wrapper JAR is missing: $wrapper_jar" >&2
+  exit 1
+fi
+
+if [ -n "$JAVA_HOME" ]; then
+  java_executable="$JAVA_HOME/bin/java"
+else
+  java_executable=java
+fi
+
+exec "$java_executable" \
+  -classpath "$wrapper_jar" \
+  "-Dmaven.multiModuleProjectDirectory=$project_base_dir" \
+  org.apache.maven.wrapper.MavenWrapperMain "$@"

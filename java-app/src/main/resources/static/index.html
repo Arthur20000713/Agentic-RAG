@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="畜牧业 Agentic RAG 企业应用工作台" />
+    <title>畜牧业 Agentic RAG 企业工作台</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main id="login-shell" class="login-shell">
+      <section class="login-copy" aria-labelledby="product-title">
+        <p class="eyebrow">Livestock Intelligence Platform</p>
+        <h1 id="product-title">把 AI 能力接入可信的业务系统</h1>
+        <p class="login-summary">
+          Spring Boot 负责身份、权限、会话、任务和审计；Python 负责 RAG、Agent、模型调用与评测。
+        </p>
+        <div class="architecture-strip" aria-label="系统架构">
+          <span>Java 业务层</span><i>→</i><span>Python AI 服务</span><i>→</i><span>RAG / Model</span>
+        </div>
+      </section>
+      <section class="login-card" aria-labelledby="login-title">
+        <div>
+          <p class="eyebrow">Secure Access</p>
+          <h2 id="login-title">登录工作台</h2>
+          <p>使用平台账号进入自己的会话空间。</p>
+        </div>
+        <form id="login-form" class="stack-form">
+          <label for="username">用户名</label>
+          <input id="username" name="username" autocomplete="username" required maxlength="64" />
+          <label for="password">密码</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required />
+          <p id="login-error" class="form-error" role="alert" hidden></p>
+          <button class="primary-button" type="submit">登录</button>
+        </form>
+        <p class="privacy-note">令牌仅保存在当前浏览器标签页，会话关闭后自动清除。</p>
+      </section>
+    </main>
+
+    <div id="app-shell" class="app-shell" hidden>
+      <aside class="sidebar">
+        <header class="brand">
+          <span class="brand-mark" aria-hidden="true">R</span>
+          <div>
+            <strong>Livestock RAG</strong>
+            <small>Enterprise AI</small>
+          </div>
+        </header>
+
+        <button id="new-conversation" class="new-conversation" type="button">
+          <span aria-hidden="true">＋</span> 新建对话
+        </button>
+        <button id="open-upload" class="new-conversation secondary-action" type="button">
+          <span aria-hidden="true">⇧</span> 上传知识文档
+        </button>
+        <button id="open-measurement" class="new-conversation secondary-action" type="button">
+          <span aria-hidden="true">⌁</span> 体尺分析
+        </button>
+
+        <label class="search-box" for="conversation-search">
+          <span aria-hidden="true">⌕</span>
+          <input id="conversation-search" type="search" placeholder="搜索当前会话" autocomplete="off" />
+        </label>
+
+        <section class="conversation-section" aria-labelledby="conversation-title">
+          <div class="section-line">
+            <h2 id="conversation-title">我的会话</h2>
+            <span id="conversation-count">0</span>
+          </div>
+          <div id="conversation-list" class="conversation-list" aria-live="polite"></div>
+        </section>
+
+        <footer class="account-card">
+          <div class="avatar" aria-hidden="true">U</div>
+          <div>
+            <strong id="current-username">-</strong>
+            <small id="current-roles">-</small>
+          </div>
+          <button id="logout-button" class="icon-button" type="button" title="退出登录" aria-label="退出登录">↪</button>
+        </footer>
+      </aside>
+
+      <main class="workspace">
+        <header class="workspace-header">
+          <div>
+            <p class="eyebrow">Conversation Workspace</p>
+            <h1 id="active-title">新对话</h1>
+          </div>
+          <div class="runtime-status" aria-label="运行状态">
+            <span id="java-status" class="status-pill"><i></i>Java 未检查</span>
+            <span id="python-status" class="status-pill"><i></i>AI 未检查</span>
+          </div>
+        </header>
+
+        <section class="chat-panel" aria-label="对话">
+          <div id="message-list" class="message-list" aria-live="polite"></div>
+          <form id="message-form" class="composer">
+            <label class="sr-only" for="message-input">输入问题</label>
+            <textarea
+              id="message-input"
+              name="content"
+              rows="3"
+              maxlength="4000"
+              placeholder="描述动物种类、症状、管理场景或知识问题……"
+              required
+            ></textarea>
+            <div class="composer-footer">
+              <div class="prompt-list" aria-label="示例问题">
+                <button type="button" data-prompt="犊牛腹泻的常见原因有哪些？">犊牛腹泻</button>
+                <button type="button" data-prompt="高温天气下肉牛饲喂需要注意什么？">高温饲喂</button>
+              </div>
+              <button id="send-button" class="primary-button" type="submit">发送</button>
+            </div>
+          </form>
+        </section>
+      </main>
+
+      <aside class="inspector">
+        <header>
+          <p class="eyebrow">Trace &amp; Evidence</p>
+          <h2>运行详情</h2>
+        </header>
+        <div id="detail-summary" class="detail-summary"></div>
+        <details open>
+          <summary>最近一次响应</summary>
+          <pre id="detail-json">{}</pre>
+        </details>
+      </aside>
+    </div>
+
+    <dialog id="upload-dialog" class="upload-dialog">
+      <form id="upload-form" class="stack-form">
+        <div>
+          <p class="eyebrow">Reliable Document Index</p>
+          <h2>上传知识文档</h2>
+          <p>文件先由 Java 校验并写入共享卷，再创建可恢复的 Python 索引任务。</p>
+        </div>
+        <label for="knowledge-file">PDF 或 UTF-8 文本（最大 100 MiB）</label>
+        <input id="knowledge-file" name="file" type="file" accept="application/pdf,text/plain,.pdf,.txt" required />
+        <p id="upload-status" class="upload-status" role="status">尚未选择文件。</p>
+        <div class="dialog-actions">
+          <button id="close-upload" type="button">关闭</button>
+          <button id="submit-upload" class="primary-button" type="submit">上传并创建索引任务</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="measurement-dialog" class="upload-dialog measurement-dialog">
+      <form id="measurement-form" class="stack-form">
+        <div>
+          <p class="eyebrow">Authorized Livestock Analysis</p>
+          <h2>体尺分析</h2>
+          <p>Java 校验动物归属并从 MySQL 加载最近历史，再调用 Python AI 服务完成分析。本次输入不会自动保存为测量记录。</p>
+        </div>
+        <label for="measurement-animal-id">动物数据库 ID</label>
+        <input id="measurement-animal-id" name="animalId" type="number" min="1" step="1" required />
+        <fieldset class="measurement-grid">
+          <legend>本次测量（至少填写一项）</legend>
+          <label for="body-height-cm">体高（cm）</label>
+          <input id="body-height-cm" name="bodyHeightCm" type="number" min="0" step="any" />
+          <label for="body-length-cm">体长（cm）</label>
+          <input id="body-length-cm" name="bodyLengthCm" type="number" min="0" step="any" />
+          <label for="chest-girth-cm">胸围（cm）</label>
+          <input id="chest-girth-cm" name="chestGirthCm" type="number" min="0" step="any" />
+          <label for="chest-depth-cm">胸深（cm）</label>
+          <input id="chest-depth-cm" name="chestDepthCm" type="number" min="0" step="any" />
+          <label for="chest-width-cm">胸宽（cm）</label>
+          <input id="chest-width-cm" name="chestWidthCm" type="number" min="0" step="any" />
+          <label for="weight-kg">体重（kg）</label>
+          <input id="weight-kg" name="weightKg" type="number" min="0" step="any" />
+        </fieldset>
+        <label for="measurement-confidence">采集置信度（0–1，可选）</label>
+        <input id="measurement-confidence" name="confidence" type="number" min="0" max="1" step="0.01" />
+        <p id="measurement-status" class="upload-status" role="status">填写动物 ID 和至少一项体尺后开始分析。</p>
+        <section id="measurement-result" class="measurement-result" aria-live="polite" hidden>
+          <div><strong>Outcome</strong><span id="measurement-outcome">-</span></div>
+          <div><strong>动物</strong><span id="measurement-animal">-</span></div>
+          <div><strong>Operation ID</strong><span id="measurement-operation-id">-</span></div>
+          <div><strong>摘要</strong><p id="measurement-summary">-</p></div>
+          <div><strong>异常项</strong><p id="measurement-abnormal-items">-</p></div>
+          <div><strong>证据</strong><ul id="measurement-evidence"></ul></div>
+          <div><strong>建议</strong><p id="measurement-recommendation">-</p></div>
+          <div><strong>报告</strong><p id="measurement-report" class="measurement-report">-</p></div>
+        </section>
+        <div class="dialog-actions">
+          <button id="close-measurement" type="button">关闭</button>
+          <button id="submit-measurement" class="primary-button" type="submit">调用 AI 分析</button>
+        </div>
+      </form>
+    </dialog>
+
+    <template id="welcome-template">
+      <article class="welcome-card">
+        <span class="brand-mark" aria-hidden="true">R</span>
+        <h2>畜牧业 Agentic RAG 智能助手</h2>
+        <p>我会调用检索、问诊和安全工具，并明确展示来源、证据状态与低置信度处理。</p>
+      </article>
+    </template>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>
