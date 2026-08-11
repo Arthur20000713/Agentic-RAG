@@ -9,7 +9,6 @@ from backend.app.agent.state import MultiAgentState
 from backend.app.core.errors import ErrorCode
 from backend.app.core.response import ApiResponse, new_request_id
 from backend.app.db.repositories import ConversationRepository, QaLogRepository
-from backend.app.schemas.agent import AgentState
 from backend.app.schemas.api import ChatRequest
 from backend.app.services.chat_service import ChatService, state_to_chat_data
 from backend.app.services.session_context_service import SessionContextService
@@ -75,18 +74,11 @@ async def chat(payload: ChatRequest, request: Request) -> dict:
     return ApiResponse.ok(chat_data, request_id=request_id).model_dump()
 
 
-def _record_chat_trace(request: Request, state: AgentState | MultiAgentState, request_id: str) -> None:
-    trace = state.agent_trace if isinstance(state, MultiAgentState) else _v2_trace(state)
+def _record_chat_trace(request: Request, state: MultiAgentState, request_id: str) -> None:
+    trace = state.agent_trace
     request.app.state.trace_service.record_agent_trace(
         session_id=state.session_id,
         request_id=request_id,
         trace=trace,
         status="failed" if state.errors else "success",
     )
-
-
-def _v2_trace(state: AgentState) -> list[dict]:
-    trace = [{"node": "v2_workflow", "status": "failed" if state.errors else "success"}]
-    for tool_name in state.tool_results:
-        trace.append({"node": tool_name, "status": "success"})
-    return trace

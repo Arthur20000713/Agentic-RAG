@@ -8,7 +8,9 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
+from collections import deque
 from pathlib import Path
 from typing import Any, Awaitable
 
@@ -110,10 +112,14 @@ class RagServerMcpClient(RagServerClient):
         self._request_id = 0
         self._repo_path: Path | None = None
         self._tool_lock = asyncio.Lock()
+        self._stderr_lines: deque[str] = deque(maxlen=100)
+        self._stderr_thread: threading.Thread | None = None
 
     async def start(self) -> None:
-        if self.process is not None and self.process.returncode is None:
-            return
+        if self.process is not None:
+            if self.process.poll() is None:
+                return
+            await self.close()
 
         repo_path = resolve_rag_server_path(self.settings)
         if repo_path is None:
@@ -122,10 +128,9 @@ class RagServerMcpClient(RagServerClient):
             raise RagServerMcpError(f"RAG-SERVER path does not exist: {repo_path}")
 
         python_executable = self.settings.rag_server.python_executable or sys.executable
-        run_repo_path = self._runtime_repo_copy_path(repo_path)
-        if not (run_repo_path / "src").exists():
-            run_repo_path = repo_path
+        run_repo_path = repo_path
         self._repo_path = run_repo_path
+        self._stderr_lines.clear()
         self.process = subprocess.Popen(
             [
                 python_executable,
@@ -141,20 +146,30 @@ class RagServerMcpClient(RagServerClient):
             bufsize=1,
             env=self._build_process_env(run_repo_path, source_repo_path=repo_path),
         )
-        await self._initialize()
+        self._start_stderr_drain(self.process)
+        try:
+            await self._initialize()
+        except Exception:
+            await self.close()
+            raise
 
     async def close(self) -> None:
         process = self.process
+        stderr_thread = self._stderr_thread
         self.process = None
-        if process is None or process.returncode is not None:
+        self._stderr_thread = None
+        if process is None:
             return
 
-        process.terminate()
-        try:
-            await asyncio.to_thread(process.wait, timeout=2)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            await asyncio.to_thread(process.wait)
+        if process.poll() is None:
+            process.terminate()
+            try:
+                await asyncio.to_thread(process.wait, timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                await asyncio.to_thread(process.wait)
+        if stderr_thread is not None and stderr_thread.is_alive():
+            await asyncio.to_thread(stderr_thread.join, 1)
 
     async def query(
         self,
@@ -424,12 +439,11 @@ class RagServerMcpClient(RagServerClient):
         await self._ensure_started()
         self._request_id += 1
         request_id = self._request_id
-        await self._send({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params})
         try:
+            await self._send({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params})
             response = await self._read_response(request_id)
-        except RagServerMcpError as exc:
-            if RagServerTimeoutPolicy.is_timeout_error(exc):
-                await self.close()
+        except RagServerMcpError:
+            await self.close()
             raise
         if "error" in response:
             error = response["error"]
@@ -439,10 +453,16 @@ class RagServerMcpClient(RagServerClient):
 
     async def _notify(self, method: str, params: dict[str, Any]) -> None:
         await self._ensure_started()
-        await self._send({"jsonrpc": "2.0", "method": method, "params": params})
+        try:
+            await self._send({"jsonrpc": "2.0", "method": method, "params": params})
+        except RagServerMcpError:
+            await self.close()
+            raise
 
     async def _ensure_started(self) -> None:
-        if self.process is None or self.process.returncode is not None:
+        if self.process is not None and self.process.poll() is not None:
+            await self.close()
+        if self.process is None:
             await self.start()
         if self.process is None or self.process.stdin is None or self.process.stdout is None:
             raise RagServerMcpError("MCP stdio process is not available")
@@ -457,7 +477,10 @@ class RagServerMcpClient(RagServerClient):
             stdin.write(line)
             stdin.flush()
 
-        await asyncio.to_thread(write_line)
+        try:
+            await asyncio.to_thread(write_line)
+        except (BrokenPipeError, OSError, ValueError) as exc:
+            raise RagServerMcpError("MCP stdio process write failed") from exc
 
     async def _read_response(self, request_id: int) -> dict[str, Any]:
         if self.process is None or self.process.stdout is None:
@@ -481,18 +504,25 @@ class RagServerMcpClient(RagServerClient):
                 return response
 
     async def _read_stderr_tail(self) -> str:
-        if self.process is None or self.process.stderr is None:
-            return ""
-        try:
-            raw = await asyncio.wait_for(
-                asyncio.to_thread(self.process.stderr.read, 4000),
-                timeout=0.1,
-            )
-        except asyncio.TimeoutError:
-            return ""
+        raw = "".join(self._stderr_lines)[-4000:].strip()
         if not raw:
             return ""
-        return f": {raw.strip()}"
+        return f": {raw}"
+
+    def _start_stderr_drain(self, process: subprocess.Popen[str]) -> None:
+        if process.stderr is None:
+            return
+
+        def drain() -> None:
+            for line in iter(process.stderr.readline, ""):
+                self._stderr_lines.append(line)
+
+        self._stderr_thread = threading.Thread(
+            target=drain,
+            name="rag-server-stderr-drain",
+            daemon=True,
+        )
+        self._stderr_thread.start()
 
     def _tool_result_payload(self, result: dict[str, Any]) -> dict[str, Any]:
         payload = dict(result)
@@ -610,8 +640,15 @@ class RagServerMcpClient(RagServerClient):
         if repo_path is None or not repo_path.exists():
             raise RagServerMcpError("RAG_SERVER_PATH or rag_server.repo_path is required")
         python_executable = self.settings.rag_server.python_executable or sys.executable
-        runtime_repo_path = self._runtime_repo_copy_path(repo_path)
-        if (runtime_repo_path / "src").exists():
+        completed = self._run_direct_tool_process(
+            python_executable=python_executable,
+            run_repo_path=repo_path,
+            source_repo_path=repo_path,
+            name=name,
+            arguments=arguments,
+        )
+        if self._should_retry_in_runtime_copy(completed):
+            runtime_repo_path = self._prepare_runtime_repo_copy(repo_path)
             completed = self._run_direct_tool_process(
                 python_executable=python_executable,
                 run_repo_path=runtime_repo_path,
@@ -619,23 +656,6 @@ class RagServerMcpClient(RagServerClient):
                 name=name,
                 arguments=arguments,
             )
-        else:
-            completed = self._run_direct_tool_process(
-                python_executable=python_executable,
-                run_repo_path=repo_path,
-                source_repo_path=repo_path,
-                name=name,
-                arguments=arguments,
-            )
-            if self._should_retry_in_runtime_copy(completed):
-                runtime_repo_path = self._prepare_runtime_repo_copy(repo_path)
-                completed = self._run_direct_tool_process(
-                    python_executable=python_executable,
-                    run_repo_path=runtime_repo_path,
-                    source_repo_path=repo_path,
-                    name=name,
-                    arguments=arguments,
-                )
         if completed.returncode != 0:
             stderr_tail = (completed.stderr or "").strip()[-1000:]
             raise RagServerMcpError(f"direct RAG-SERVER tool call failed: {stderr_tail}")

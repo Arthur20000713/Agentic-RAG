@@ -25,7 +25,6 @@ class FakeIntentClient:
 
 def _settings() -> Settings:
     return Settings(
-        v3={"enabled": True},
         model_router={
             "enabled": True,
             "shadow_mode": False,

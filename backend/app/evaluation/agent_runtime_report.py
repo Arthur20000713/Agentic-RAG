@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import BaseModel
 
 
-class V3Report(BaseModel):
+class AgentRuntimeReport(BaseModel):
     summary: dict[str, Any]
     route: dict[str, Any]
     safety: dict[str, Any]
@@ -15,7 +15,7 @@ class V3Report(BaseModel):
 
     def to_markdown(self) -> str:
         lines = [
-            "# V3 Report",
+            "# Agent Runtime Report",
             "",
             "## Summary",
             "",
@@ -56,7 +56,7 @@ class V3Report(BaseModel):
         return "\n".join(lines) + "\n"
 
 
-def build_v3_report(evaluation_report: Any) -> V3Report:
+def build_agent_runtime_report(evaluation_report: Any) -> AgentRuntimeReport:
     cases = list(evaluation_report.cases)
     total = len(cases)
     passed = sum(1 for item in cases if item.passed)
@@ -70,9 +70,9 @@ def build_v3_report(evaluation_report: Any) -> V3Report:
         if item.route_mode == "primary" or (item.route_mode is None and item.selected_model == "primary")
     ]
 
-    return V3Report(
+    return AgentRuntimeReport(
         summary={
-            "mode": getattr(evaluation_report, "mode", "v3"),
+            "mode": getattr(evaluation_report, "mode", "agent_runtime"),
             "scenarios": list(getattr(evaluation_report, "scenarios", [])),
             "total_cases": total,
             "passed_cases": passed,

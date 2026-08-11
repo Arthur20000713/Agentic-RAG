@@ -26,6 +26,9 @@ transformers = [
     "transformers>=4.51",
     "accelerate>=0.30",
 ]
+migration = [
+    "mysql-connector-python>=9,<10",
+]
 
 [tool.setuptools.packages.find]
 include = ["backend*"]

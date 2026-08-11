@@ -98,7 +98,6 @@ class V5EvalRunner:
     @staticmethod
     def default_settings() -> Settings:
         return Settings(
-            v3={"enabled": True},
             model_router={"enabled": True, "shadow_mode": False, "allow_low_risk_takeover": True},
             local_model={"enabled": True},
         )

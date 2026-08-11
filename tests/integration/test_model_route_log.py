@@ -11,7 +11,6 @@ def test_model_route_log_repository_persists_shadow_decision() -> None:
     conn = get_connection("sqlite:///:memory:")
     init_db(conn)
     settings = Settings(
-        v3={"enabled": True},
         model_router={"enabled": True, "shadow_mode": True, "allow_low_risk_takeover": True},
         local_model={"enabled": True},
     )

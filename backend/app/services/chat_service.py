@@ -3,23 +3,12 @@ from __future__ import annotations
 from typing import Any
 
 from backend.app.agent.graph import run_chat_graph
-from backend.app.agent.router import IntentRouter
 from backend.app.agent.state import MultiAgentState
 from backend.app.core.config import PROJECT_ROOT, Settings
-from backend.app.agent.workflow import run_disease_consultation, run_general_qa
 from backend.app.integrations.rag_server.base import RagServerClient
-from backend.app.schemas.agent import AgentState
 from backend.app.schemas.api import ChatRequest
-from backend.app.services.feature_flag_service import FeatureFlagService, FeatureFlagSnapshot
+from backend.app.services.feature_flag_service import FeatureFlagService
 from backend.app.services.session_context_service import SessionContextService
-
-
-ASSISTANT_INTRO_ANSWER = (
-    "你好，我是 Livestock Agentic RAG 智能助手，主要面向畜牧业知识问答、疾病初步问诊、"
-    "体尺分析和资料检索。你可以问我牛、羊、猪等养殖管理、饲喂、断奶、常见症状处理、"
-    "资料依据和引用来源类问题；非畜牧领域的问题我会明确说明不在服务范围内。"
-)
-
 
 class ChatService:
     def __init__(
@@ -28,64 +17,29 @@ class ChatService:
         settings: Settings | None = None,
         session_context_service: SessionContextService | None = None,
         conversation_history: list[dict[str, Any]] | None = None,
+        initial_session_context: dict[str, Any] | None = None,
     ) -> None:
         self.rag_client = rag_client
         self.settings = settings or Settings()
         self.session_context_service = session_context_service
         self.conversation_history = list(conversation_history or [])
-        self.router = IntentRouter()
+        self.initial_session_context = dict(initial_session_context or {})
 
-    async def ask(self, request: ChatRequest, *, request_id: str | None = None) -> AgentState | MultiAgentState:
-        v3_enabled = FeatureFlagService(self.settings).v3_enabled
-        if v3_enabled:
-            return await run_chat_graph(
-                request.query,
-                rag_client=self.rag_client,
-                session_context_service=self.session_context_service,
-                session_id=request.session_id,
-                request_id=request_id,
-                settings=self.settings,
-                conversation_history=self.conversation_history,
-            )
-        route = self.router.route(request.query)
-        if route.intent == "assistant_intro":
-            return self._assistant_intro_state(request, confidence=route.confidence)
-        if route.intent == "disease_consultation":
-            return await run_disease_consultation(
-                request.query,
-                rag_client=self.rag_client,
-                session_id=request.session_id,
-                request_id=request_id,
-            )
-        if route.intent == "general_qa":
-            return await run_general_qa(
-                request.query,
-                rag_client=self.rag_client,
-                session_id=request.session_id,
-                request_id=request_id,
-            )
-        state = AgentState(
-            session_id=request.session_id or "s_api",
-            user_query=request.query,
-            intent=route.intent,
-            intent_confidence=route.confidence,
-        )
-        if route.intent == "measurement_analysis":
-            state.final_answer = "请使用 /api/measurement/analyze 提交结构化体尺数据。"
-        else:
-            state.final_answer = "当前问题超出畜牧业辅助问答范围。"
-        return state
-
-    def _assistant_intro_state(self, request: ChatRequest, *, confidence: float) -> AgentState:
-        return AgentState(
-            session_id=request.session_id or "s_api",
-            user_query=request.query,
-            intent="assistant_intro",
-            intent_confidence=confidence,
-            final_answer=ASSISTANT_INTRO_ANSWER,
+    async def ask(self, request: ChatRequest, *, request_id: str | None = None) -> MultiAgentState:
+        return await run_chat_graph(
+            request.query,
+            rag_client=self.rag_client,
+            session_context_service=self.session_context_service,
+            session_id=request.session_id,
+            request_id=request_id,
+            animal_id=request.animal_id,
+            settings=self.settings,
+            conversation_history=self.conversation_history,
+            initial_session_context=self.initial_session_context,
         )
 
-def state_to_chat_data(state: AgentState | MultiAgentState, *, settings: Settings | None = None) -> dict:
+
+def state_to_chat_data(state: MultiAgentState, *, settings: Settings | None = None) -> dict:
     return {
         "session_id": state.session_id,
         "answer": state.final_answer,
@@ -96,14 +50,18 @@ def state_to_chat_data(state: AgentState | MultiAgentState, *, settings: Setting
         "need_follow_up": getattr(state, "need_follow_up", False),
         "follow_up_questions": getattr(state, "follow_up_questions", []),
         "errors": [error.model_dump() for error in state.errors],
-        "v3_debug": build_debug_payload(settings, state=state),
+        "agent_runtime_debug": build_agent_runtime_debug_payload(settings, state=state),
     }
 
 
-def build_debug_payload(settings: Settings | None = None, *, state: AgentState | MultiAgentState | None = None) -> dict:
+def build_agent_runtime_debug_payload(
+    settings: Settings | None = None,
+    *,
+    state: MultiAgentState | None = None,
+) -> dict:
     snapshot = FeatureFlagService(settings or Settings()).snapshot()
     payload: dict[str, Any] = {
-        "v3_enabled": snapshot.v3_enabled,
+        "engine": snapshot.agent_runtime_engine,
         "flags": snapshot.model_dump(),
         "rag_status": build_rag_status_payload(settings or Settings()),
         "disease_llm": _disease_llm_debug_summary(settings or Settings(), state),
@@ -122,9 +80,9 @@ def build_debug_payload(settings: Settings | None = None, *, state: AgentState |
     return payload
 
 
-def _disease_llm_debug_summary(settings: Settings, state: AgentState | MultiAgentState | None) -> dict:
+def _disease_llm_debug_summary(settings: Settings, state: MultiAgentState | None) -> dict:
     summary: dict[str, Any] = {
-        "enabled": bool(settings.v3.enabled and settings.disease_llm.enabled),
+        "enabled": FeatureFlagService(settings).disease_llm_enabled,
         "shadow_mode": bool(settings.disease_llm.shadow_mode),
         "understanding": {"status": "not_available"},
         "evidence_gate": {"status": "not_available"},
@@ -205,14 +163,12 @@ def v4_2_quality_summary(*, collection: str, real_configured: bool) -> dict:
     return {"batch_id": batch_id, "quality_gate_status": "unknown"}
 
 
-def _state_sources(state: AgentState | MultiAgentState) -> list[dict]:
-    if isinstance(state, MultiAgentState):
-        response_payload = state.tool_results.get("response_agent")
-        if isinstance(response_payload, dict) and isinstance(response_payload.get("sources"), list):
-            return list(response_payload["sources"])
-        if state.evidence_status != "success":
-            return []
-
+def _state_sources(state: MultiAgentState) -> list[dict]:
+    response_payload = state.tool_results.get("response_agent")
+    if isinstance(response_payload, dict) and isinstance(response_payload.get("sources"), list):
+        return list(response_payload["sources"])
+    if state.evidence_status != "success":
+        return []
     rag_result = state.tool_results.get("livestock_rag_search")
     if isinstance(rag_result, dict) and rag_result.get("status") == "success":
         hits = list(rag_result.get("hits") or [])

@@ -14,6 +14,7 @@ from backend.app.db.migrations import init_db
 from backend.app.db.repositories import RagTraceRepository
 from backend.app.integrations.rag_server.mcp_stdio_client import (
     RagServerMcpClient,
+    RagServerMcpError,
     parse_collection_names_from_text,
     parse_document_summary_from_text,
 )
@@ -260,10 +261,12 @@ def test_mcp_client_lifecycle_starts_with_repo_cwd_and_closes() -> None:
     asyncio.run(scenario())
 
 
-def test_mcp_client_starts_from_runtime_copy_when_available() -> None:
+def test_mcp_client_ignores_stale_runtime_copy_during_normal_start() -> None:
     repo_path = _make_mock_rag_server()
     client = RagServerMcpClient(_settings(repo_path))
     runtime_path = client._prepare_runtime_repo_copy(repo_path)
+    runtime_marker = runtime_path / "cwd_marker.txt"
+    runtime_marker.unlink(missing_ok=True)
 
     async def scenario() -> None:
         await client.start()
@@ -271,7 +274,8 @@ def test_mcp_client_starts_from_runtime_copy_when_available() -> None:
         await client.close()
 
         assert collections == ["default", "mock"]
-        assert (runtime_path / "cwd_marker.txt").read_text(encoding="utf-8") == str(runtime_path)
+        assert (repo_path / "cwd_marker.txt").read_text(encoding="utf-8") == str(repo_path)
+        assert not runtime_marker.exists()
 
     asyncio.run(scenario())
 
@@ -320,6 +324,66 @@ def test_mcp_client_serializes_concurrent_tool_calls(monkeypatch) -> None:
         assert max_active_calls == 1
 
     asyncio.run(scenario())
+
+
+def test_mcp_client_restarts_process_that_exited_without_cached_returncode(monkeypatch) -> None:
+    client = RagServerMcpClient(Settings())
+
+    class ExitedProcess:
+        stdin = object()
+        stdout = object()
+        returncode = None
+
+        @staticmethod
+        def poll() -> int:
+            return 7
+
+    exited_process = ExitedProcess()
+    client.process = exited_process  # type: ignore[assignment]
+    closed = False
+    started = False
+
+    async def fake_close() -> None:
+        nonlocal closed
+        closed = True
+        client.process = None
+
+    async def fake_start() -> None:
+        nonlocal started
+        started = True
+        client.process = ExitedProcess()  # type: ignore[assignment]
+
+    monkeypatch.setattr(client, "close", fake_close)
+    monkeypatch.setattr(client, "start", fake_start)
+
+    asyncio.run(client._ensure_started())
+
+    assert closed is True
+    assert started is True
+
+
+def test_mcp_client_maps_broken_pipe_and_closes_transport(monkeypatch) -> None:
+    client = RagServerMcpClient(Settings())
+    closed = False
+
+    async def fake_ensure_started() -> None:
+        return None
+
+    async def broken_send(message: dict) -> None:  # noqa: ARG001
+        raise RagServerMcpError("MCP stdio process write failed")
+
+    async def fake_close() -> None:
+        nonlocal closed
+        closed = True
+
+    monkeypatch.setattr(client, "_ensure_started", fake_ensure_started)
+    monkeypatch.setattr(client, "_send", broken_send)
+    monkeypatch.setattr(client, "close", fake_close)
+
+    with pytest.raises(RagServerMcpError, match="write failed"):
+        asyncio.run(client._request("tools/list", {}))
+
+    assert closed is True
 
 
 def test_mcp_client_missing_repo_path_returns_error_result(monkeypatch) -> None:

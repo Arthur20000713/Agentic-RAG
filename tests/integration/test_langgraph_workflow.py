@@ -9,7 +9,7 @@ from backend.app.core.config import Settings
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
 from backend.app.schemas.api import ChatRequest
 from backend.app.schemas.rag_server import RagSearchResult
-from backend.app.services.chat_service import ChatService, build_debug_payload
+from backend.app.services.chat_service import ChatService, build_agent_runtime_debug_payload
 
 
 class FakePrimaryLLMClient:
@@ -90,7 +90,6 @@ class TransientErrorRagClient(CountingRagClient):
 
 def _settings() -> Settings:
     return Settings(
-        v3={"enabled": True},
         primary_llm={
             "enabled": True,
             "provider": "mock",
@@ -262,7 +261,7 @@ def test_tool_node_executes_the_query_and_top_k_selected_by_planner() -> None:
     assert state.rag_query == "planner rewritten cattle feeding query"
 
 
-def test_v3_chat_service_delegates_every_query_to_the_unified_graph(monkeypatch) -> None:
+def test_chat_service_delegates_every_query_to_the_unified_graph(monkeypatch) -> None:
     calls: list[str] = []
 
     async def fake_run_chat_graph(query: str, **kwargs: Any) -> MultiAgentState:
@@ -277,10 +276,7 @@ def test_v3_chat_service_delegates_every_query_to_the_unified_graph(monkeypatch)
     monkeypatch.setattr("backend.app.services.chat_service.run_chat_graph", fake_run_chat_graph)
     service = ChatService(FakeRagServerClient(), settings=_settings())
 
-    def fail_if_legacy_router_runs(query: str) -> None:
-        raise AssertionError(f"legacy router ran before LangGraph for: {query}")
 
-    service.router.route = fail_if_legacy_router_runs
     queries = [
         "Tell me a short joke.",
         "How should cattle feeding be managed?",
@@ -304,6 +300,6 @@ def test_langgraph_state_is_identified_in_debug_payload() -> None:
         final_answer="hello",
     )
 
-    payload = build_debug_payload(_settings(), state=state)
+    payload = build_agent_runtime_debug_payload(_settings(), state=state)
 
     assert payload["orchestration_engine"] == "langgraph"

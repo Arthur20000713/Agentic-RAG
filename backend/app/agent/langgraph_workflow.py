@@ -211,8 +211,10 @@ async def _disease_prepare_node(
         ).run,
         state,
     )
-    if context.session_context_service is not None:
-        _save_disease_context(context.session_context_service, state)
+    assessment = state.disease_assessment if isinstance(state.disease_assessment, dict) else {}
+    gaps = [str(item) for item in assessment.get("information_gaps") or [] if str(item).strip()]
+    assessment["follow_up_questions"] = [_gap_to_question(item, state.user_query) for item in gaps][:3]
+    state.disease_assessment = assessment
     _maybe_write_disease_memory(state, context)
     return _dump(state)
 
@@ -321,7 +323,16 @@ def _final_node(
     runtime: Runtime[AgentGraphRuntime],
 ) -> dict[str, Any]:
     state = _state(raw_state)
+    context = _context(runtime)
     ResponseAgent().render(state)
+    if state.intent == "disease_consultation":
+        next_context = _build_disease_context(state)
+        state.session_context = {
+            **state.session_context,
+            **next_context.model_dump(mode="json"),
+        }
+        if context.session_context_service is not None:
+            context.session_context_service.save_context(next_context)
     return _dump(state)
 
 
@@ -651,7 +662,7 @@ def _record_memory_write(state: MultiAgentState, event: MemoryEvent | None) -> N
     )
 
 
-def _save_disease_context(service: SessionContextService, state: MultiAgentState) -> None:
+def _build_disease_context(state: MultiAgentState) -> SessionContextData:
     understanding = _last_disease_understanding(state)
     confirmed: dict[str, object] = {}
     if understanding is not None:
@@ -659,26 +670,69 @@ def _save_disease_context(service: SessionContextService, state: MultiAgentState
             value = understanding.get(key)
             if value not in (None, "", [], {}):
                 confirmed[key] = value
-    service.save_context(
-        SessionContextData(
-            session_id=state.session_id,
-            last_intent="disease_consultation",
-            last_species=str(understanding.get("species")) if understanding and understanding.get("species") else None,
-            last_symptoms=[
-                str(item)
-                for item in ((understanding or {}).get("observed_signs") or [])
-                if str(item).strip()
-            ],
-            pending_slots=[],
-            confirmed_case_fields=confirmed,
-            pending_questions=[],
-            answered_questions=list(confirmed),
-            last_understanding=understanding,
-            evidence_refs=[],
-            slot_sources={},
-            risk_context_status=str((state.disease_assessment or {}).get("status") or "active"),
-        )
+    return SessionContextData(
+        session_id=state.session_id,
+        last_intent="disease_consultation",
+        last_species=str(understanding.get("species")) if understanding and understanding.get("species") else None,
+        last_symptoms=[
+            str(item)
+            for item in ((understanding or {}).get("observed_signs") or [])
+            if str(item).strip()
+        ],
+        pending_slots=[],
+        confirmed_case_fields=confirmed,
+        pending_questions=_disease_follow_up_questions(state),
+        answered_questions=list(confirmed),
+        last_understanding=understanding,
+        last_reasoning_result=_last_disease_reasoning(state),
+        evidence_refs=_disease_evidence_refs(state),
+        slot_sources={},
+        risk_context_status=str((state.disease_assessment or {}).get("status") or "active"),
     )
+
+
+def _disease_follow_up_questions(state: MultiAgentState) -> list[str]:
+    reasoning = _last_disease_reasoning(state)
+    raw: list[Any] = []
+    if isinstance(reasoning, dict):
+        raw = list(reasoning.get("follow_up_questions") or [])
+    if not raw and isinstance(state.disease_assessment, dict):
+        raw = list(state.disease_assessment.get("follow_up_questions") or [])
+    if not raw:
+        raw = list(state.session_context.get("pending_questions") or [])
+    return list(dict.fromkeys(str(item).strip() for item in raw if str(item).strip()))[:3]
+
+
+def _last_disease_reasoning(state: MultiAgentState) -> dict[str, Any] | None:
+    for key in ("disease_reasoning", "disease_reasoning_shadow"):
+        record = state.tool_results.get(key)
+        if isinstance(record, dict) and isinstance(record.get("reasoning"), dict):
+            return record["reasoning"]
+    return None
+
+
+def _disease_evidence_refs(state: MultiAgentState) -> list[dict[str, Any]]:
+    rag_result = state.tool_results.get(RAG_TOOL_NAME)
+    if not isinstance(rag_result, dict):
+        return []
+    refs: list[dict[str, Any]] = []
+    for citation in rag_result.get("citations") or []:
+        if not isinstance(citation, dict):
+            continue
+        source_uri = citation.get("source_uri")
+        chunk_id = citation.get("chunk_id")
+        if source_uri and chunk_id:
+            refs.append({"source_uri": source_uri, "chunk_id": chunk_id})
+    return refs
+
+
+def _gap_to_question(gap: str, query: str) -> str:
+    normalized = gap.strip()
+    if normalized.endswith(("?", "？")):
+        return normalized
+    if re.search(r"[\u3400-\u9fff]", query):
+        return f"请补充：{normalized}？"
+    return f"Please provide: {normalized}?"
 
 
 def _last_disease_understanding(state: MultiAgentState) -> dict[str, Any] | None:

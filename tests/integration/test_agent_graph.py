@@ -88,7 +88,6 @@ class SlowPrimaryLLMClient(FakePrimaryLLMClient):
 
 def test_general_qa_graph_runs_supervisor_rag_verifier_safety_response() -> None:
     settings = Settings(
-        v3={"enabled": True},
         primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock"},
     )
     state = asyncio.run(
@@ -124,7 +123,6 @@ def test_general_qa_graph_runs_supervisor_rag_verifier_safety_response() -> None
 
 def test_general_qa_graph_records_query_normalizer_takeover_when_enabled() -> None:
     settings = Settings(
-        v3={"enabled": True},
         model_router={
             "enabled": True,
             "shadow_mode": False,
@@ -153,7 +151,6 @@ def test_general_qa_graph_records_query_normalizer_takeover_when_enabled() -> No
 
 def test_general_graph_uses_primary_llm_draft_for_assistant_intro_without_rag() -> None:
     settings = Settings(
-        v3={"enabled": True},
         primary_llm={
             "enabled": True,
             "provider": "deepseek",
@@ -187,7 +184,6 @@ def test_general_graph_uses_primary_llm_draft_for_assistant_intro_without_rag() 
 
 def test_general_qa_graph_returns_clearly_labeled_reference_answer_when_rag_is_empty() -> None:
     settings = Settings(
-        v3={"enabled": True},
         primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock"},
     )
 
@@ -215,7 +211,6 @@ def test_general_qa_graph_returns_clearly_labeled_reference_answer_when_rag_is_e
 
 def test_disease_graph_does_not_block_event_loop_during_llm_understanding() -> None:
     settings = Settings(
-        v3={"enabled": True},
         disease_llm={"enabled": True, "shadow_mode": False},
         primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock"},
     )
@@ -242,7 +237,6 @@ def test_disease_graph_does_not_block_event_loop_during_llm_understanding() -> N
 
 def test_general_graph_uses_primary_llm_for_ordinary_chat_without_rag() -> None:
     settings = Settings(
-        v3={"enabled": True},
         primary_llm={
             "enabled": True,
             "provider": "deepseek",
@@ -304,7 +298,6 @@ def test_general_qa_graph_policy_no_answer_keeps_rag_observable_without_contexts
 
 def test_disease_graph_uses_rag_without_fixed_slot_follow_up() -> None:
     settings = Settings(
-        v3={"enabled": True},
         primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock"},
     )
     state = asyncio.run(
@@ -351,7 +344,6 @@ def test_disease_graph_guardrails_model_route_misclassification(monkeypatch) -> 
 
     monkeypatch.setattr("backend.app.agent.graph.route_intent_with_model", fake_route_intent)
     settings = Settings(
-        v3={"enabled": True},
         model_router={
             "enabled": True,
             "shadow_mode": False,
@@ -379,7 +371,6 @@ def test_disease_graph_guardrails_model_route_misclassification(monkeypatch) -> 
 
 def test_disease_graph_high_risk_uses_rag_verifier_safety_response() -> None:
     settings = Settings(
-        v3={"enabled": True},
         primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock"},
     )
     state = asyncio.run(
@@ -417,7 +408,6 @@ def test_disease_graph_high_risk_uses_rag_verifier_safety_response() -> None:
 
 def test_disease_graph_does_not_use_disease_specific_evidence_gate() -> None:
     settings = Settings(
-        v3={"enabled": True},
         primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock"},
     )
     state = asyncio.run(
@@ -438,7 +428,6 @@ def test_disease_graph_does_not_use_disease_specific_evidence_gate() -> None:
 
 def test_disease_graph_does_not_use_router_slot_extraction() -> None:
     settings = Settings(
-        v3={"enabled": True},
         model_router={"enabled": True, "shadow_mode": False, "allow_low_risk_takeover": True},
         local_model={"enabled": True},
         primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock"},
@@ -528,7 +517,6 @@ def test_measurement_graph_records_shadow_route_without_changing_answer() -> Non
         confidence=0.82,
     )
     settings = Settings(
-        v3={"enabled": True},
         model_router={"enabled": True, "shadow_mode": True, "allow_low_risk_takeover": True},
         local_model={"enabled": True},
     )

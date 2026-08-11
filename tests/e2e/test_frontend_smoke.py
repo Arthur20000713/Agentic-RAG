@@ -7,7 +7,10 @@ from backend.app.main import create_app
 
 
 def _client() -> TestClient:
-    settings = Settings(database={"url": "sqlite:///:memory:"})
+    settings = Settings(
+        database={"url": "sqlite:///:memory:"},
+        legacy_api={"measurement_enabled": True},
+    )
     return TestClient(create_app(settings=settings))
 
 

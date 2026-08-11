@@ -19,7 +19,10 @@ from backend.app.schemas.measurement import MeasurementInput
 def test_measurement_api_prepares_repository_history_before_running_graph(
     monkeypatch,
 ) -> None:
-    settings = Settings(database={"url": "sqlite:///:memory:"})
+    settings = Settings(
+        database={"url": "sqlite:///:memory:"},
+        legacy_api={"measurement_enabled": True},
+    )
     app = create_app(settings=settings)
     AnimalRepository(app.state.db_conn).upsert(AnimalRecord(animal_id="yak_032"))
     MeasurementRepository(app.state.db_conn).add(

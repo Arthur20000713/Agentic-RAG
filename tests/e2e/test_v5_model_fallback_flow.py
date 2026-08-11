@@ -23,7 +23,6 @@ class InvalidQueryNormalizerClient(BaseModelClient):
 
 def test_local_query_normalizer_schema_failure_falls_back_and_is_observable() -> None:
     settings = Settings(
-        v3={"enabled": True},
         model_router={
             "enabled": True,
             "shadow_mode": False,
@@ -58,4 +57,4 @@ def test_local_query_normalizer_schema_failure_falls_back_and_is_observable() ->
     ]
 
     data = state_to_chat_data(state, settings=settings)
-    assert data["v3_debug"]["model_fallbacks"] == state.tool_results["model_fallbacks"]
+    assert data["agent_runtime_debug"]["model_fallbacks"] == state.tool_results["model_fallbacks"]

@@ -20,8 +20,8 @@ rag_server:
 database:
   url: sqlite:///data/app.db
 
-v3:
-  enabled: true
+agent_runtime:
+  engine: langgraph
 
 model_router:
   enabled: true
@@ -65,7 +65,7 @@ disease_llm:
 lora:
   dataset_enabled: true
   inference_enabled: false
-  registry_path: data/v3/model_registry.json
+  registry_path: data/model_registry/model_registry.json
 
 long_term_memory:
   write_enabled: false

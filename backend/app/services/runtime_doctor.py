@@ -22,7 +22,7 @@ class RuntimeDoctor:
             "rag_server_path": self._check_rag_server_path(),
             "rag_server_python": self._check_rag_server_python(),
             "quality_gate": self._check_quality_gate(),
-            "v3_agent_path": self._check_v3_agent_path(),
+            "agent_runtime": self._check_agent_runtime(),
             "disease_llm_path": self._check_disease_llm_path(),
             "local_model_acceptance": self._check_local_model_acceptance(),
         }
@@ -92,11 +92,11 @@ class RuntimeDoctor:
             "error_code": None if passed else "QUALITY_GATE_NOT_PASSED",
         }
 
-    def _check_v3_agent_path(self) -> dict[str, Any]:
+    def _check_agent_runtime(self) -> dict[str, Any]:
         flags = FeatureFlagService(self.settings).snapshot()
         local_takeover_enabled = flags.model_router_low_risk_takeover_enabled
         passed = (
-            flags.v3_enabled
+            flags.agent_runtime_engine == "langgraph"
             and flags.model_router_enabled
             and not flags.model_router_shadow_mode
             and local_takeover_enabled
@@ -104,13 +104,13 @@ class RuntimeDoctor:
         )
         return {
             "status": "passed" if passed else "failed",
-            "v3_enabled": flags.v3_enabled,
+            "engine": flags.agent_runtime_engine,
             "model_router_enabled": flags.model_router_enabled,
             "model_router_shadow_mode": flags.model_router_shadow_mode,
             "local_model_enabled": flags.local_model_enabled,
             "local_model_takeover_enabled": local_takeover_enabled,
             "local_model_allow_final_answer": self.settings.local_model.allow_final_answer,
-            "error_code": None if passed else "V3_AGENT_PATH_NOT_CONFIGURED",
+            "error_code": None if passed else "AGENT_RUNTIME_NOT_CONFIGURED",
         }
 
     def _check_disease_llm_path(self) -> dict[str, Any]:

@@ -37,7 +37,6 @@ class SequentialFakePrimaryLLM:
 
 def _settings() -> Settings:
     return Settings(
-        v3={"enabled": True},
         primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock"},
     )
 

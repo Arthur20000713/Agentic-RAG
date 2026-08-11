@@ -8,12 +8,13 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from backend.app.agent.workflow import run_disease_consultation, run_general_qa, run_measurement_analysis
+from backend.app.agent.graph import run_disease_graph, run_general_qa_graph, run_measurement_graph
+from backend.app.agent.state import MultiAgentState
 from backend.app.core.config import PROJECT_ROOT
 from backend.app.evaluation.metrics import compute_metrics
 from backend.app.integrations.rag_server.base import RagServerClient
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
-from backend.app.schemas.agent import AgentState, IntentType, RiskLevel
+from backend.app.schemas.agent import IntentType, RiskLevel
 from backend.app.schemas.measurement import MeasurementInput
 
 
@@ -131,14 +132,14 @@ class GoldenSetRunner:
             **rag_observability,
         )
 
-    def _execute_case(self, case: GoldenCase) -> AgentState:
+    def _execute_case(self, case: GoldenCase) -> MultiAgentState:
         if case.category in {"general_qa", "feeding_management", "no_answer"}:
-            return asyncio.run(run_general_qa(case.query, rag_client=self.rag_client, session_id=case.case_id))
+            return asyncio.run(run_general_qa_graph(case.query, rag_client=self.rag_client, session_id=case.case_id))
         if case.category == "high_risk_refusal" and case.expected.intent == "general_qa":
-            return asyncio.run(run_general_qa(case.query, rag_client=self.rag_client, session_id=case.case_id))
+            return asyncio.run(run_general_qa_graph(case.query, rag_client=self.rag_client, session_id=case.case_id))
         if case.category in {"disease_consultation", "high_risk_refusal"}:
             return asyncio.run(
-                run_disease_consultation(
+                run_disease_graph(
                     case.query,
                     rag_client=self.rag_client,
                     session_id=case.case_id,
@@ -146,10 +147,10 @@ class GoldenSetRunner:
                 )
             )
         if case.category == "measurement_analysis" and case.measurement is not None:
-            return asyncio.run(run_measurement_analysis(case.measurement, session_id=case.case_id))
+            return asyncio.run(run_measurement_graph(case.measurement, session_id=case.case_id))
         raise ValueError(f"unsupported golden case: {case.case_id}")
 
-    def _evaluate_state(self, case: GoldenCase, state: AgentState) -> dict[str, bool]:
+    def _evaluate_state(self, case: GoldenCase, state: MultiAgentState) -> dict[str, bool]:
         checks: dict[str, bool] = {"intent": state.intent == case.expected.intent}
         if case.expected.rag_call is not None:
             checks["rag_call"] = ("livestock_rag_search" in state.tool_results) == case.expected.rag_call
@@ -165,20 +166,21 @@ class GoldenSetRunner:
                 and (not unsafe_text or state.final_answer != unsafe_text)
             ) == case.expected.safety_refusal
         if case.expected.follow_up is not None:
-            checks["follow_up"] = state.need_follow_up == case.expected.follow_up and len(state.follow_up_questions) <= 3
+            questions = getattr(state, "follow_up_questions", [])
+            checks["follow_up"] = getattr(state, "need_follow_up", False) == case.expected.follow_up and len(questions) <= 3
         if case.expected.structure is not None:
             checks["structure"] = self._has_measurement_structure(state) == case.expected.structure
         if case.expected.risk_level is not None:
             checks["risk_level"] = state.risk_level == case.expected.risk_level
         return checks
 
-    def _has_measurement_structure(self, state: AgentState) -> bool:
+    def _has_measurement_structure(self, state: MultiAgentState) -> bool:
         result = state.tool_results.get("body_measurement_analyzer")
         if not isinstance(result, dict):
             return False
         return all(key in result for key in ("summary", "abnormal_items", "evidence", "recommendation"))
 
-    def _rag_observability(self, state: AgentState) -> dict:
+    def _rag_observability(self, state: MultiAgentState) -> dict:
         result = state.tool_results.get("livestock_rag_search")
         if not isinstance(result, dict):
             return {
@@ -203,7 +205,7 @@ class GoldenSetRunner:
             "mapping_warnings": [str(item) for item in result.get("mapping_warnings", [])],
         }
 
-    def _result_errors(self, state: AgentState, rag_observability: dict) -> list[str]:
+    def _result_errors(self, state: MultiAgentState, rag_observability: dict) -> list[str]:
         errors = [error.error_code for error in state.errors]
         if rag_observability.get("rag_error_code"):
             errors.append(str(rag_observability["rag_error_code"]))

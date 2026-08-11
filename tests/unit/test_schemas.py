@@ -3,19 +3,19 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from backend.app.schemas.agent import AgentState
+from backend.app.agent.state import MultiAgentState
 from backend.app.schemas.api import ChatRequest
 from backend.app.schemas.measurement import BodyMeasurementValues, MeasurementInput
 from backend.app.schemas.rag_server import RagSearchHit, RagSearchResult
 
 
-def test_agent_state_defaults_are_empty_collections() -> None:
-    state = AgentState(session_id="s1", user_query="犊牛腹泻怎么办")
+def test_multi_agent_state_defaults_are_empty_collections() -> None:
+    state = MultiAgentState(session_id="s1", user_query="犊牛腹泻怎么办")
 
     assert state.retrieved_contexts == []
     assert state.tool_results == {}
     assert state.errors == []
-    assert state.need_follow_up is False
+    assert state.agent_trace == []
 
 
 def test_rag_result_schema_supports_hits_and_citations() -> None:

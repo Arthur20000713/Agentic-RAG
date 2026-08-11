@@ -53,6 +53,7 @@ async def run_chat_graph(
     intent_router_client: BaseModelClient | None = None,
     primary_llm_client: Any | None = None,
     conversation_history: list[dict[str, Any]] | None = None,
+    initial_session_context: dict[str, Any] | None = None,
     forced_intent: IntentType | None = None,
     unsafe_draft_for_test: str | None = None,
 ) -> MultiAgentState:
@@ -63,6 +64,7 @@ async def run_chat_graph(
         session_id=session_id or _new_session_id(),
         request_id=request_id,
         user_query=query,
+        session_context=dict(initial_session_context or {}),
     )
     runtime = AgentGraphRuntime(
         settings=app_settings,

@@ -7,7 +7,10 @@ from backend.app.main import create_app
 
 
 def _client() -> TestClient:
-    settings = Settings(database={"url": "sqlite:///:memory:"})
+    settings = Settings(
+        database={"url": "sqlite:///:memory:"},
+        legacy_api={"measurement_enabled": True},
+    )
     return TestClient(create_app(settings=settings))
 
 
@@ -168,7 +171,7 @@ def test_frontend_debug_panel_contract() -> None:
         "agent_path",
         "safety",
         "verifier",
-        "v3_debug_summary",
+        "agent_runtime_debug_summary",
         "rag_status",
         "collection",
         "batch_id",
@@ -177,18 +180,18 @@ def test_frontend_debug_panel_contract() -> None:
         assert field in js
     assert trace["data"]["request_id"] == "req_debug"
     assert "agent_trace" in trace["data"]
-    assert "v3_debug_summary" in trace["data"]
+    assert "agent_runtime_debug_summary" in trace["data"]
     assert rag_status["data"]["rag_mode"] == "fake"
 
 
-def test_frontend_debug_panel_can_show_v3_debug_payload() -> None:
+def test_frontend_debug_panel_can_show_agent_runtime_debug_payload() -> None:
     client = _client()
 
     js = client.get("/app/app.js").text
     chat = client.post("/api/chat", json={"query": "How should cattle feeding be managed?"}).json()
 
-    assert "v3_debug" in chat["data"]
-    assert chat["data"]["v3_debug"]["v3_enabled"] is False
+    assert "agent_runtime_debug" in chat["data"]
+    assert chat["data"]["agent_runtime_debug"]["engine"] == "langgraph"
     assert "flags" in js
     assert "route" in js
     assert "memory" in js

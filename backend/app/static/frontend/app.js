@@ -55,8 +55,8 @@ function renderDebugPanel(payload) {
 
 function buildDebugSummary(payload) {
   const data = payload.data || {};
-  const v3DebugSummary = data.v3_debug_summary || buildV3DebugSummary(data);
-  const ragStatus = data.v3_debug?.rag_status || v3DebugSummary.rag_status || state.ragStatus || {};
+  const agentRuntimeDebugSummary = data.agent_runtime_debug_summary || buildAgentRuntimeDebugSummary(data);
+  const ragStatus = data.agent_runtime_debug?.rag_status || agentRuntimeDebugSummary.rag_status || state.ragStatus || {};
   return {
     request_id: payload.request_id || data.request_id || null,
     rag_mode: data.rag_mode_effective || data.rag_mode || ragStatus.rag_mode_effective || ragStatus.rag_mode || null,
@@ -64,13 +64,14 @@ function buildDebugSummary(payload) {
     agent_path: data.agent_path || nodesFromTrace(data.agent_trace) || data.tools_used || [],
     safety: data.safety_result || data.safety || "not_available",
     verifier: data.verification_result || data.verifier_result || "not_available",
-    v3_debug_summary: v3DebugSummary,
+    agent_runtime_debug_summary: agentRuntimeDebugSummary,
   };
 }
 
-function buildV3DebugSummary(data) {
-  const flags = data.v3_debug?.flags || {};
+function buildAgentRuntimeDebugSummary(data) {
+  const flags = data.agent_runtime_debug?.flags || {};
   return {
+    engine: data.agent_runtime_debug?.engine || flags.agent_runtime_engine || "langgraph",
     flags,
     route: data.route || { status: "not_available" },
     safety: data.safety_result || data.safety || { status: "not_available" },
@@ -78,20 +79,21 @@ function buildV3DebugSummary(data) {
       write_enabled: Boolean(flags.memory_write_enabled),
       read_enabled: Boolean(flags.memory_read_enabled),
     },
-    rag_status: data.v3_debug?.rag_status || {},
+    rag_status: data.agent_runtime_debug?.rag_status || {},
   };
 }
 
 function renderDebugSummary(summary) {
   const container = document.querySelector("#debug-summary");
   if (!container) return;
-  const v3 = summary.v3_debug_summary || {};
-  const flags = v3.flags || {};
-  const route = v3.route || {};
-  const safety = v3.safety || {};
-  const memory = v3.memory || {};
+  const runtime = summary.agent_runtime_debug_summary || {};
+  const flags = runtime.flags || {};
+  const route = runtime.route || {};
+  const safety = runtime.safety || {};
+  const memory = runtime.memory || {};
+  const engine = runtime.engine || flags.agent_runtime_engine || "langgraph";
   container.innerHTML = `
-    <div><strong>Flags</strong><span>${escapeHtml(flags.v3_enabled ? "v3:on" : "v3:off")}</span></div>
+    <div><strong>Runtime</strong><span>${escapeHtml(engine)}</span></div>
     <div><strong>Route</strong><span>${escapeHtml(route.route_mode || route.status || "not_available")}</span></div>
     <div><strong>Safety</strong><span>${escapeHtml(String(safety.passed ?? safety.status ?? "not_available"))}</span></div>
     <div><strong>Memory</strong><span>${escapeHtml(memory.write_enabled ? "write:on" : "write:off")}</span></div>

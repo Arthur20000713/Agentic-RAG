@@ -45,7 +45,6 @@ def test_model_router_disabled_keeps_primary_model() -> None:
 
 def test_model_router_shadow_records_local_small_without_takeover() -> None:
     settings = Settings(
-        v3={"enabled": True},
         model_router={"enabled": True, "shadow_mode": True, "allow_low_risk_takeover": True},
         local_model={"enabled": True},
     )
@@ -62,7 +61,6 @@ def test_model_router_shadow_records_local_small_without_takeover() -> None:
 
 def test_model_router_takeover_allows_only_low_risk_structured_tasks() -> None:
     settings = Settings(
-        v3={"enabled": True},
         model_router={"enabled": True, "shadow_mode": False, "allow_low_risk_takeover": True},
         local_model={"enabled": True},
     )
@@ -78,7 +76,6 @@ def test_model_router_takeover_allows_only_low_risk_structured_tasks() -> None:
 
 def test_model_router_allows_s2_measurement_analysis_but_not_final_answer() -> None:
     settings = Settings(
-        v3={"enabled": True},
         model_router={"enabled": True, "shadow_mode": False, "allow_low_risk_takeover": True},
         local_model={"enabled": True},
     )
@@ -98,7 +95,6 @@ def test_model_router_allows_s2_measurement_analysis_but_not_final_answer() -> N
 
 def test_model_router_never_routes_high_risk_to_local_small() -> None:
     settings = Settings(
-        v3={"enabled": True},
         model_router={"enabled": True, "shadow_mode": False, "allow_low_risk_takeover": True},
         local_model={"enabled": True},
     )
@@ -116,7 +112,6 @@ def test_model_router_never_routes_high_risk_to_local_small() -> None:
 
 def test_model_router_keeps_disease_final_answer_on_primary() -> None:
     settings = Settings(
-        v3={"enabled": True},
         model_router={"enabled": True, "shadow_mode": False, "allow_low_risk_takeover": True},
         local_model={"enabled": True},
     )
@@ -151,7 +146,6 @@ def test_router_policy_blocks_final_answer_even_for_low_risk() -> None:
 
 def test_model_router_takeover_uses_configured_task_types() -> None:
     settings = Settings(
-        v3={"enabled": True},
         model_router={
             "enabled": True,
             "shadow_mode": False,
@@ -173,7 +167,6 @@ def test_model_router_takeover_uses_configured_task_types() -> None:
 
 def test_model_router_allows_intent_routing_as_low_risk_structured_task() -> None:
     settings = Settings(
-        v3={"enabled": True},
         model_router={
             "enabled": True,
             "shadow_mode": False,

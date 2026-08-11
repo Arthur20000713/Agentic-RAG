@@ -11,7 +11,7 @@ from backend.app.core.errors import AppError, ErrorCode
 def new_request_id() -> str:
     return f"req_{uuid4().hex}"
 
-
+#统一响应体格式
 class ApiResponse(BaseModel):
     code: int = ErrorCode.SUCCESS
     message: str = "success"

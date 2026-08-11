@@ -21,7 +21,6 @@ class FakePrimaryLLM:
 
 def test_direct_answer_agent_uses_primary_llm_for_draft_only() -> None:
     settings = Settings(
-        v3={"enabled": True},
         primary_llm={"enabled": True, "provider": "deepseek", "model": "deepseek-v4-flash", "base_url": "https://api.deepseek.com"},
     )
     llm = FakePrimaryLLM(
@@ -46,7 +45,6 @@ def test_direct_answer_agent_uses_primary_llm_for_draft_only() -> None:
 
 def test_direct_answer_agent_accepts_llm_schema_name_alias_when_answer_draft_is_valid() -> None:
     settings = Settings(
-        v3={"enabled": True},
         primary_llm={"enabled": True, "provider": "deepseek", "model": "deepseek-v4-flash", "base_url": "https://api.deepseek.com"},
     )
     llm = FakePrimaryLLM(
@@ -67,7 +65,6 @@ def test_direct_answer_agent_accepts_llm_schema_name_alias_when_answer_draft_is_
 
 def test_direct_answer_agent_accepts_response_field_as_answer_draft_alias() -> None:
     settings = Settings(
-        v3={"enabled": True},
         primary_llm={"enabled": True, "provider": "deepseek", "model": "deepseek-v4-flash", "base_url": "https://api.deepseek.com"},
     )
     llm = FakePrimaryLLM(
@@ -88,7 +85,6 @@ def test_direct_answer_agent_accepts_response_field_as_answer_draft_alias() -> N
 
 def test_direct_answer_agent_accepts_message_field_as_answer_draft_alias() -> None:
     settings = Settings(
-        v3={"enabled": True},
         primary_llm={"enabled": True, "provider": "deepseek", "model": "deepseek-v4-flash", "base_url": "https://api.deepseek.com"},
     )
     llm = FakePrimaryLLM(
@@ -109,7 +105,6 @@ def test_direct_answer_agent_accepts_message_field_as_answer_draft_alias() -> No
 
 def test_direct_answer_agent_accepts_content_field_as_answer_draft_alias() -> None:
     settings = Settings(
-        v3={"enabled": True},
         primary_llm={"enabled": True, "provider": "deepseek", "model": "deepseek-v4-flash", "base_url": "https://api.deepseek.com"},
     )
     llm = FakePrimaryLLM(
@@ -130,7 +125,6 @@ def test_direct_answer_agent_accepts_content_field_as_answer_draft_alias() -> No
 
 def test_direct_answer_agent_accepts_answer_without_explicit_status() -> None:
     settings = Settings(
-        v3={"enabled": True},
         primary_llm={"enabled": True, "provider": "deepseek", "model": "deepseek-v4-flash", "base_url": "https://api.deepseek.com"},
     )
     llm = FakePrimaryLLM({"answer": "A short, friendly joke."})
@@ -143,7 +137,6 @@ def test_direct_answer_agent_accepts_answer_without_explicit_status() -> None:
 
 def test_direct_answer_agent_supplies_recent_session_history_to_llm() -> None:
     settings = Settings(
-        v3={"enabled": True},
         primary_llm={"enabled": True, "provider": "deepseek", "model": "deepseek-v4-flash", "base_url": "https://api.deepseek.com"},
     )
     llm = FakePrimaryLLM(
@@ -166,7 +159,6 @@ def test_direct_answer_agent_supplies_recent_session_history_to_llm() -> None:
 
 def test_direct_answer_agent_accepts_nested_response_and_ok_status() -> None:
     settings = Settings(
-        v3={"enabled": True},
         primary_llm={"enabled": True, "provider": "deepseek", "model": "deepseek-v4-flash", "base_url": "https://api.deepseek.com"},
     )
     llm = FakePrimaryLLM({"status": "ok", "response": {"text": "Your name is Xiaogang."}})
@@ -179,7 +171,6 @@ def test_direct_answer_agent_accepts_nested_response_and_ok_status() -> None:
 
 def test_direct_answer_agent_recalls_explicit_name_from_session_history_without_llm_variance() -> None:
     settings = Settings(
-        v3={"enabled": True},
         primary_llm={"enabled": True, "provider": "deepseek", "model": "deepseek-v4-flash", "base_url": "https://api.deepseek.com"},
     )
     llm = FakePrimaryLLM({"status": "error", "fallback_required": True})

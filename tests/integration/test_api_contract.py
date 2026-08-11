@@ -10,11 +10,14 @@ from backend.app.core.config import Settings, load_settings
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
 from backend.app.main import create_app
 from backend.app.agent.state import MultiAgentState
-from backend.app.services.chat_service import build_debug_payload
+from backend.app.services.chat_service import build_agent_runtime_debug_payload
 
 
 def _client() -> TestClient:
-    settings = Settings(database={"url": "sqlite:///:memory:"})
+    settings = Settings(
+        database={"url": "sqlite:///:memory:"},
+        legacy_api={"measurement_enabled": True},
+    )
     return TestClient(create_app(settings=settings))
 
 
@@ -41,20 +44,19 @@ def test_chat_api_contract_general_qa() -> None:
     assert payload["data"]["intent"] == "disease_consultation"
     assert "answer" in payload["data"]
     assert "tools_used" in payload["data"]
-    assert payload["data"]["v3_debug"]["v3_enabled"] is False
-    assert payload["data"]["v3_debug"]["flags"]["final_guard_required"] is True
+    assert payload["data"]["agent_runtime_debug"]["engine"] == "langgraph"
+    assert payload["data"]["agent_runtime_debug"]["flags"]["final_guard_required"] is True
 
 
-def test_chat_api_reports_v3_debug_flags_without_changing_v2_fields() -> None:
+def test_chat_api_reports_agent_runtime_debug_flags() -> None:
     settings = Settings(
         database={"url": "sqlite:///:memory:"},
-        v3={"enabled": True},
         model_router={"enabled": True, "shadow_mode": True},
         long_term_memory={"write_enabled": True, "read_enabled": False},
     )
     client = TestClient(create_app(settings=settings))
 
-    response = client.post("/api/chat", json={"query": "How should cattle feeding be managed?", "session_id": "s_v3"})
+    response = client.post("/api/chat", json={"query": "How should cattle feeding be managed?", "session_id": "s_runtime"})
 
     payload = response.json()
     assert response.status_code == 200
@@ -62,11 +64,11 @@ def test_chat_api_reports_v3_debug_flags_without_changing_v2_fields() -> None:
     assert payload["code"] == 0
     assert "answer" in payload["data"]
     assert "tools_used" in payload["data"]
-    assert payload["data"]["v3_debug"]["v3_enabled"] is True
-    assert payload["data"]["v3_debug"]["flags"]["model_router_enabled"] is True
-    assert payload["data"]["v3_debug"]["flags"]["model_router_shadow_mode"] is True
-    assert payload["data"]["v3_debug"]["flags"]["memory_write_enabled"] is True
-    assert payload["data"]["v3_debug"]["rag_status"]["quality_gate_status"] == "not_configured"
+    assert payload["data"]["agent_runtime_debug"]["engine"] == "langgraph"
+    assert payload["data"]["agent_runtime_debug"]["flags"]["model_router_enabled"] is True
+    assert payload["data"]["agent_runtime_debug"]["flags"]["model_router_shadow_mode"] is True
+    assert payload["data"]["agent_runtime_debug"]["flags"]["memory_write_enabled"] is True
+    assert payload["data"]["agent_runtime_debug"]["rag_status"]["quality_gate_status"] == "not_configured"
 
 
 def test_chat_api_debug_includes_v4_2_rag_status_fields() -> None:
@@ -79,7 +81,7 @@ def test_chat_api_debug_includes_v4_2_rag_status_fields() -> None:
     response = client.post("/api/chat", json={"query": "How should cattle feeding be managed?", "session_id": "s_v4_2"})
 
     payload = response.json()
-    rag_status = payload["data"]["v3_debug"]["rag_status"]
+    rag_status = payload["data"]["agent_runtime_debug"]["rag_status"]
     assert response.status_code == 200
     assert rag_status["rag_mode"] == "real"
     assert rag_status["collection"] == "livestock_v4_2"
@@ -89,7 +91,6 @@ def test_chat_api_debug_includes_v4_2_rag_status_fields() -> None:
 
 def test_chat_debug_payload_summarizes_disease_llm_without_raw_payload() -> None:
     settings = Settings(
-        v3={"enabled": True},
         disease_llm={"enabled": True, "shadow_mode": False},
     )
     state = MultiAgentState(session_id="s_debug_disease", user_query="disease case", intent="disease_consultation")
@@ -111,7 +112,7 @@ def test_chat_debug_payload_summarizes_disease_llm_without_raw_payload() -> None
     }
     state.tool_results["disease_reasoning_takeover"] = {"applied": True}
 
-    payload = build_debug_payload(settings, state=state)
+    payload = build_agent_runtime_debug_payload(settings, state=state)
 
     disease_debug = payload["disease_llm"]
     assert disease_debug["enabled"] is True
@@ -126,22 +127,21 @@ def test_chat_debug_payload_summarizes_disease_llm_without_raw_payload() -> None
     assert "raw user text" not in str(disease_debug)
 
 
-def test_chat_api_uses_v3_graph_when_feature_flag_enabled() -> None:
+def test_chat_api_uses_langgraph_runtime() -> None:
     settings = Settings(
         database={"url": "sqlite:///:memory:"},
-        v3={"enabled": True},
     )
     client = TestClient(create_app(settings=settings))
 
-    response = client.post("/api/chat", json={"query": "How should cattle feeding be managed?", "session_id": "s_v3_graph"})
+    response = client.post("/api/chat", json={"query": "How should cattle feeding be managed?", "session_id": "s_langgraph"})
 
     payload = response.json()
     assert response.status_code == 200
     _assert_response_contract(payload)
     assert payload["code"] == 0
     assert payload["data"]["intent"] == "general_qa"
-    assert payload["data"]["v3_debug"]["v3_enabled"] is True
-    assert payload["data"]["v3_debug"]["agent_path"] == [
+    assert payload["data"]["agent_runtime_debug"]["engine"] == "langgraph"
+    assert payload["data"]["agent_runtime_debug"]["agent_path"] == [
         "supervisor",
         "rag_agent",
         "grounded_answer_agent",
@@ -149,14 +149,13 @@ def test_chat_api_uses_v3_graph_when_feature_flag_enabled() -> None:
         "safety_agent",
         "response_agent",
     ]
-    assert payload["data"]["v3_debug"]["verifier"]["passed"] is True
-    assert payload["data"]["v3_debug"]["safety"]["passed"] is True
+    assert payload["data"]["agent_runtime_debug"]["verifier"]["passed"] is True
+    assert payload["data"]["agent_runtime_debug"]["safety"]["passed"] is True
 
 
 def test_chat_api_answers_assistant_intro_without_rag_or_domain_refusal() -> None:
     settings = Settings(
         database={"url": "sqlite:///:memory:"},
-        v3={"enabled": True},
     )
     client = TestClient(create_app(settings=settings))
 
@@ -172,10 +171,9 @@ def test_chat_api_answers_assistant_intro_without_rag_or_domain_refusal() -> Non
     assert "livestock_rag_search" not in payload["data"]["tools_used"]
 
 
-def test_chat_api_v3_intro_uses_model_intent_router_instead_of_precomputed_template() -> None:
+def test_chat_api_intro_uses_model_intent_router() -> None:
     settings = Settings(
         database={"url": "sqlite:///:memory:"},
-        v3={"enabled": True},
         model_router={
             "enabled": True,
             "shadow_mode": False,
@@ -194,7 +192,7 @@ def test_chat_api_v3_intro_uses_model_intent_router_instead_of_precomputed_templ
     assert payload["data"]["intent"] == "assistant_intro"
     assert "intent_router_model" in payload["data"]["tools_used"]
     assert "livestock_rag_search" not in payload["data"]["tools_used"]
-    assert payload["data"]["v3_debug"]["agent_path"] == [
+    assert payload["data"]["agent_runtime_debug"]["agent_path"] == [
         "supervisor",
         "verifier_agent",
         "safety_agent",
@@ -205,7 +203,6 @@ def test_chat_api_v3_intro_uses_model_intent_router_instead_of_precomputed_templ
 def test_chat_api_disease_follow_up_uses_session_context_and_plain_answers() -> None:
     settings = Settings(
         database={"url": "sqlite:///:memory:"},
-        v3={"enabled": True},
     )
     app = create_app(settings=settings)
     app.state.rag_client = FakeRagServerClient()
@@ -231,7 +228,6 @@ def test_chat_api_disease_follow_up_uses_session_context_and_plain_answers() -> 
 def test_chat_api_model_router_keeps_plain_follow_up_in_disease_context() -> None:
     settings = Settings(
         database={"url": "sqlite:///:memory:"},
-        v3={"enabled": True},
         model_router={
             "enabled": True,
             "shadow_mode": False,
@@ -265,7 +261,6 @@ def test_chat_api_model_router_keeps_plain_follow_up_in_disease_context() -> Non
 def test_chat_api_disease_context_does_not_capture_new_ordinary_topic() -> None:
     settings = Settings(
         database={"url": "sqlite:///:memory:"},
-        v3={"enabled": True},
     )
     app = create_app(settings=settings)
     app.state.rag_client = FakeRagServerClient()
@@ -285,7 +280,7 @@ def test_chat_api_disease_context_does_not_capture_new_ordinary_topic() -> None:
     assert "livestock_rag_search" not in second["data"]["tools_used"]
 
 
-def test_chat_api_product_config_uses_v3_local_structured_takeover_path() -> None:
+def test_chat_api_product_config_uses_local_structured_takeover_path() -> None:
     settings = load_settings("config/settings.yaml")
     settings.database.url = "sqlite:///:memory:"
     app = create_app(settings=settings)
@@ -298,12 +293,12 @@ def test_chat_api_product_config_uses_v3_local_structured_takeover_path() -> Non
     assert response.status_code == 200
     _assert_response_contract(payload)
     assert payload["code"] == 0
-    assert payload["data"]["v3_debug"]["v3_enabled"] is True
-    assert payload["data"]["v3_debug"]["flags"]["model_router_enabled"] is True
-    assert payload["data"]["v3_debug"]["flags"]["model_router_shadow_mode"] is False
-    assert payload["data"]["v3_debug"]["flags"]["model_router_low_risk_takeover_enabled"] is True
-    assert payload["data"]["v3_debug"]["flags"]["disease_llm_enabled"] is True
-    assert payload["data"]["v3_debug"]["flags"]["disease_llm_shadow_mode"] is False
+    assert payload["data"]["agent_runtime_debug"]["engine"] == "langgraph"
+    assert payload["data"]["agent_runtime_debug"]["flags"]["model_router_enabled"] is True
+    assert payload["data"]["agent_runtime_debug"]["flags"]["model_router_shadow_mode"] is False
+    assert payload["data"]["agent_runtime_debug"]["flags"]["model_router_low_risk_takeover_enabled"] is True
+    assert payload["data"]["agent_runtime_debug"]["flags"]["disease_llm_enabled"] is True
+    assert payload["data"]["agent_runtime_debug"]["flags"]["disease_llm_shadow_mode"] is False
 
 
 def test_measurement_api_contract() -> None:

@@ -25,16 +25,17 @@ async def get_trace_bundle(request: Request, request_id: str) -> dict:
             "rag_trace": rag_trace,
             "safety_result": None if safety_summary["status"] == "not_available" else safety_summary,
             "verifier_result": None if verifier_summary["status"] == "not_available" else verifier_summary,
-            "v3_debug_summary": v3_debug_summary(request, request_id, agent_trace),
+            "agent_runtime_debug_summary": agent_runtime_debug_summary(request, request_id, agent_trace),
         }
     ).model_dump()
 
 
-def v3_debug_summary(request: Request, request_id: str, agent_trace: list[dict]) -> dict:
+def agent_runtime_debug_summary(request: Request, request_id: str, agent_trace: list[dict]) -> dict:
     flags = FeatureFlagService(request.app.state.settings).snapshot().model_dump()
     trace_items = _flatten_agent_trace(agent_trace)
     return {
         "request_id": request_id,
+        "engine": flags["agent_runtime_engine"],
         "flags": flags,
         "route": _route_summary(trace_items),
         "safety": _safety_summary(trace_items),

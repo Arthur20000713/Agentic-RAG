@@ -6,7 +6,7 @@ param(
     [switch]$IncludeLocalModel,
     [switch]$IncludeLora,
     [string]$LoraDatasetPath = "data\v5\lora_dataset_splits.json",
-    [string]$LoraRegistryPath = "data\v3\model_registry.json",
+    [string]$LoraRegistryPath = "data\model_registry\model_registry.json",
     [string]$LoraModelId = ""
 )
 

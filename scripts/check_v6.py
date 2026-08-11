@@ -71,7 +71,7 @@ def check_baseline(root: Path) -> list[str]:
     failures.extend(_missing_paths(root, REQUIRED_BASELINE_FILES))
     failures.extend(_check_dev_spec(root / "docs" / "DEV_SPEC_V6.md"))
     failures.extend(_check_default_real_rag(root / "config" / "settings.yaml"))
-    failures.extend(_check_default_v3_agent_path(root / "config" / "settings.yaml"))
+    failures.extend(_check_default_agent_runtime(root / "config" / "settings.yaml"))
     failures.extend(_check_disease_llm_takeover_config(root / "config" / "settings.yaml"))
     failures.extend(_check_batch_quality_report(root / "docs" / "rag_corpus" / "reports" / "batch_002_quality.md"))
     failures.extend(_check_run_eval_settings_arg(root / "scripts" / "run_eval.py"))
@@ -122,14 +122,15 @@ def check_runtime(root: Path) -> list[str]:
 def check_answer_quality(root: Path) -> list[str]:
     failures: list[str] = []
     answer_generator = root / "backend" / "app" / "model" / "answer_generator.py"
-    workflow_test = root / "tests" / "integration" / "test_agent_workflow.py"
+    answer_test = root / "tests" / "unit" / "test_answer_generator.py"
+    workflow_test = root / "tests" / "integration" / "test_langgraph_workflow.py"
     failures.extend(
         _missing_paths(
             root,
             (
                 "backend/app/model/answer_generator.py",
                 "tests/unit/test_answer_generator.py",
-                "tests/integration/test_agent_workflow.py",
+                "tests/integration/test_langgraph_workflow.py",
             ),
         )
     )
@@ -140,9 +141,14 @@ def check_answer_quality(root: Path) -> list[str]:
             if marker not in lower_text:
                 display = "Query Results" if marker == "query results" else marker
                 failures.append(f"{answer_generator}: missing answer quality marker: {display}")
+    if answer_test.exists():
+        text = answer_test.read_text(encoding="utf-8")
+        for marker in ("does_not_invent_citations", "Query Results", "source_uri"):
+            if marker not in text:
+                failures.append(f"{answer_test}: missing answer quality test marker: {marker}")
     if workflow_test.exists():
         text = workflow_test.read_text(encoding="utf-8")
-        for marker in ("ResultDumpRagClient", "Query Results", "source_uri"):
+        for marker in ("CountingRagClient", "Query Results", "evidence_status"):
             if marker not in text:
                 failures.append(f"{workflow_test}: missing workflow answer quality test marker: {marker}")
     return failures
@@ -242,7 +248,7 @@ def _check_default_real_rag(path: Path) -> list[str]:
     return failures
 
 
-def _check_default_v3_agent_path(path: Path) -> list[str]:
+def _check_default_agent_runtime(path: Path) -> list[str]:
     if not path.exists():
         return []
     try:
@@ -253,11 +259,11 @@ def _check_default_v3_agent_path(path: Path) -> list[str]:
         return [f"{path}: settings must be a mapping"]
 
     failures: list[str] = []
-    v3 = raw.get("v3") if isinstance(raw.get("v3"), dict) else {}
+    agent_runtime = raw.get("agent_runtime") if isinstance(raw.get("agent_runtime"), dict) else {}
     model_router = raw.get("model_router") if isinstance(raw.get("model_router"), dict) else {}
     local_model = raw.get("local_model") if isinstance(raw.get("local_model"), dict) else {}
-    if v3.get("enabled") is not True:
-        failures.append(f"{path}: v3.enabled must be true for the V6 default agent graph")
+    if agent_runtime.get("engine") != "langgraph":
+        failures.append(f"{path}: agent_runtime.engine must be langgraph")
     if model_router.get("enabled") is not True:
         failures.append(f"{path}: model_router.enabled must be true for the V6 default agent path")
     if model_router.get("shadow_mode") is not False:

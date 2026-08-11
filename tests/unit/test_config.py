@@ -3,6 +3,9 @@ from __future__ import annotations
 from uuid import uuid4
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from backend.app.core.config import load_settings
 from backend.app.integrations.rag_server import FakeRagServerClient, RagServerMcpClient, create_rag_server_client
 from backend.app.integrations.rag_server.health import resolve_rag_server_path
@@ -38,6 +41,68 @@ def test_rag_server_path_prefers_environment(monkeypatch) -> None:
     assert resolved == env_path.resolve()
 
 
+def test_settings_path_can_be_selected_by_environment(monkeypatch) -> None:
+    root = _test_dir()
+    config_path = root / "settings.yaml"
+    config_path.write_text("app:\n  environment: browser-test\n", encoding="utf-8")
+    monkeypatch.setenv("APP_SETTINGS_PATH", str(config_path))
+
+    settings = load_settings()
+
+    assert settings.app.environment == "browser-test"
+
+
+def test_runtime_paths_and_database_can_be_overridden_for_containers(monkeypatch) -> None:
+    root = _test_dir()
+    config_path = root / "settings.yaml"
+    config_path.write_text(
+        "\n".join(
+            [
+                "rag_server:",
+                "  query_mode: real",
+                "  repo_path: from-config",
+                "  python_executable: from-config-python",
+                "  collection: from-config-collection",
+                "database:",
+                "  url: sqlite:///from-config.db",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("RAG_SERVER_PATH", "/opt/rag-server")
+    monkeypatch.setenv("RAG_QUERY_MODE", "fake")
+    monkeypatch.setenv("RAG_SERVER_PYTHON", "/opt/rag-server/.venv/bin/python")
+    monkeypatch.setenv("RAG_COLLECTION", "livestock_container")
+    monkeypatch.setenv("DATABASE_URL", "sqlite:////var/lib/livestock-ai/operations.db")
+
+    settings = load_settings(config_path)
+
+    assert settings.rag_server.repo_path == "/opt/rag-server"
+    assert settings.rag_server.query_mode == "fake"
+    assert settings.rag_server.python_executable == "/opt/rag-server/.venv/bin/python"
+    assert settings.rag_server.collection == "livestock_container"
+    assert settings.database.url == "sqlite:////var/lib/livestock-ai/operations.db"
+
+
+def test_internal_service_settings_use_secret_and_environment_overrides(monkeypatch) -> None:
+    root = _test_dir()
+    config_path = root / "settings.yaml"
+    config_path.write_text("{}\n", encoding="utf-8")
+    monkeypatch.setenv("AI_SERVICE_TOKEN", "service-token-that-must-not-be-printed")
+    monkeypatch.setenv("AI_EXECUTION_TTL_HOURS", "48")
+    monkeypatch.setenv("AI_EXECUTION_DATABASE_URL", "sqlite:////data/ai_execution.db")
+    monkeypatch.setenv("SHARED_UPLOAD_ROOT", "/data/uploads")
+
+    settings = load_settings(config_path)
+
+    assert settings.internal_api.service_token is not None
+    assert settings.internal_api.service_token.get_secret_value() == "service-token-that-must-not-be-printed"
+    assert str(settings.internal_api.service_token) == "**********"
+    assert settings.internal_api.execution_ttl_hours == 48
+    assert settings.internal_api.execution_database_url == "sqlite:////data/ai_execution.db"
+    assert settings.internal_api.shared_upload_root == "/data/uploads"
+
+
 def test_relative_rag_server_path_resolves_from_project_root(monkeypatch) -> None:
     root = _test_dir()
     monkeypatch.delenv("RAG_SERVER_PATH", raising=False)
@@ -51,15 +116,13 @@ def test_relative_rag_server_path_resolves_from_project_root(monkeypatch) -> Non
     assert resolve_rag_server_path(settings, project_root=root) == (root / "sibling-rag").resolve()
 
 
-def test_v2_rag_query_modes_load_without_parallel_rag_config(monkeypatch) -> None:
+def test_rag_query_modes_load_without_parallel_rag_config(monkeypatch) -> None:
     root = _test_dir()
     monkeypatch.delenv("RAG_SERVER_PATH", raising=False)
     config_path = root / "settings.yaml"
     config_path.write_text(
         "\n".join(
             [
-                "rag:",
-                "  rag_server_path: ignored",
                 "rag_server:",
                 "  query_mode: smoke",
                 "  repo_path: sibling-rag",
@@ -128,10 +191,10 @@ def test_real_query_mode_uses_mcp_client() -> None:
     assert isinstance(create_rag_server_client(settings), RagServerMcpClient)
 
 
-def test_v3_settings_default_to_disabled_without_changing_v2_behavior() -> None:
+def test_agent_runtime_defaults_to_langgraph() -> None:
     settings = load_settings("config/settings.test.yaml")
 
-    assert settings.v3.enabled is False
+    assert settings.agent_runtime.engine == "langgraph"
     assert settings.model_router.enabled is False
     assert settings.model_router.shadow_mode is True
     assert settings.model_router.allow_low_risk_takeover is False
@@ -159,11 +222,11 @@ def test_v3_settings_default_to_disabled_without_changing_v2_behavior() -> None:
     assert isinstance(create_rag_server_client(settings), FakeRagServerClient)
 
 
-def test_product_settings_keep_v3_main_path_without_slow_chat_local_takeover() -> None:
+def test_product_settings_keep_langgraph_runtime_without_slow_chat_local_takeover() -> None:
     settings = load_settings("config/settings.yaml")
     snapshot = FeatureFlagService(settings).snapshot()
 
-    assert snapshot.v3_enabled is True
+    assert snapshot.agent_runtime_engine == "langgraph"
     assert snapshot.model_router_enabled is True
     assert snapshot.model_router_shadow_mode is False
     assert snapshot.model_router_low_risk_takeover_enabled is True
@@ -184,14 +247,14 @@ def test_product_settings_keep_v3_main_path_without_slow_chat_local_takeover() -
     assert settings.disease_llm.shadow_mode is False
 
 
-def test_v3_settings_can_be_enabled_from_existing_config_root() -> None:
+def test_agent_runtime_settings_load_from_existing_config_root() -> None:
     root = _test_dir()
     config_path = root / "settings.yaml"
     config_path.write_text(
         "\n".join(
             [
-                "v3:",
-                "  enabled: true",
+                "agent_runtime:",
+                "  engine: langgraph",
                 "model_router:",
                 "  enabled: true",
                 "  shadow_mode: true",
@@ -203,7 +266,7 @@ def test_v3_settings_can_be_enabled_from_existing_config_root() -> None:
                 "lora:",
                 "  dataset_enabled: true",
                 "  inference_enabled: false",
-                "  registry_path: data/v3/test_registry.json",
+                "  registry_path: data/model_registry/test_registry.json",
                 "long_term_memory:",
                 "  write_enabled: true",
                 "  read_enabled: false",
@@ -218,15 +281,24 @@ def test_v3_settings_can_be_enabled_from_existing_config_root() -> None:
 
     settings = load_settings(config_path)
 
-    assert settings.v3.enabled is True
+    assert settings.agent_runtime.engine == "langgraph"
     assert settings.model_router.enabled is True
     assert settings.model_router.shadow_mode is True
     assert settings.local_model.enabled is True
     assert settings.local_model.timeout_seconds == 2
     assert settings.lora.dataset_enabled is True
-    assert settings.lora.registry_path == "data/v3/test_registry.json"
+    assert settings.lora.registry_path == "data/model_registry/test_registry.json"
     assert settings.long_term_memory.write_enabled is True
     assert settings.long_term_memory.ttl_days == 30
+
+
+def test_legacy_v3_top_level_config_is_rejected() -> None:
+    root = _test_dir()
+    config_path = root / "settings.yaml"
+    config_path.write_text("v3:\n  enabled: true\n", encoding="utf-8")
+
+    with pytest.raises(ValidationError, match="v3"):
+        load_settings(config_path)
 
 
 def test_v5_local_model_settings_load_real_backend_fields() -> None:

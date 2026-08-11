@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from backend.app.agent.graph import run_measurement_graph
-from backend.app.agent.workflow import run_measurement_analysis
+
 from backend.app.core.config import Settings
 from backend.app.schemas.measurement import MeasurementInput
 
@@ -15,7 +15,7 @@ def test_measurement_workflow_without_history() -> None:
         confidence=0.82,
     )
 
-    state = asyncio.run(run_measurement_analysis(measurement, session_id="s_measure_none"))
+    state = asyncio.run(run_measurement_graph(measurement, session_id="s_measure_none"))
 
     assert state.intent == "measurement_analysis"
     assert state.final_answer is not None
@@ -37,7 +37,7 @@ def test_measurement_workflow_with_history_and_evidence() -> None:
         confidence=0.82,
     )
 
-    state = asyncio.run(run_measurement_analysis(measurement, session_id="s_measure_history"))
+    state = asyncio.run(run_measurement_graph(measurement, session_id="s_measure_history"))
 
     assert state.final_answer is not None
     assert "增长 1.4 cm" in state.final_answer
@@ -53,7 +53,7 @@ def test_measurement_workflow_marks_demo_history() -> None:
         use_demo_history=True,
     )
 
-    state = asyncio.run(run_measurement_analysis(measurement, session_id="s_measure_demo"))
+    state = asyncio.run(run_measurement_graph(measurement, session_id="s_measure_demo"))
 
     assert state.final_answer is not None
     assert "演示数据" in state.final_answer
@@ -74,7 +74,6 @@ def test_measurement_graph_json_renderer_preserves_rule_report() -> None:
         confidence=0.82,
     )
     settings = Settings(
-        v3={"enabled": True},
         model_router={"enabled": True, "shadow_mode": False, "allow_low_risk_takeover": True},
         local_model={"enabled": True},
     )

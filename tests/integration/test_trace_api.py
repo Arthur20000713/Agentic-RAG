@@ -70,8 +70,8 @@ def test_trace_api_returns_agent_trace_bundle() -> None:
     assert payload["data"]["rag_trace"] == []
     assert payload["data"]["safety_result"] is None
     assert payload["data"]["verifier_result"] is None
-    assert payload["data"]["v3_debug_summary"]["flags"]["v3_enabled"] is False
-    assert payload["data"]["v3_debug_summary"]["route"]["status"] == "not_available"
+    assert payload["data"]["agent_runtime_debug_summary"]["flags"]["agent_runtime_engine"] == "langgraph"
+    assert payload["data"]["agent_runtime_debug_summary"]["route"]["status"] == "not_available"
 
 
 def test_trace_api_returns_rag_trace_bundle() -> None:
@@ -102,8 +102,8 @@ def test_trace_api_returns_rag_trace_bundle() -> None:
     assert payload["data"]["rag_trace"][0]["attempt_count"] == 1
 
 
-def test_chat_request_id_can_query_v3_agent_trace() -> None:
-    settings = Settings(database={"url": "sqlite:///:memory:"}, v3={"enabled": True})
+def test_chat_request_id_can_query_langgraph_agent_trace() -> None:
+    settings = Settings(database={"url": "sqlite:///:memory:"})
     client = TestClient(create_app(settings=settings))
 
     chat_response = client.post("/api/chat", json={"query": "How should cattle feeding be managed?", "session_id": "s_trace"})
@@ -118,7 +118,7 @@ def test_chat_request_id_can_query_v3_agent_trace() -> None:
     assert trace_response.status_code == 200
     assert data["request_id"] == request_id
     assert data["agent_trace"][0]["request_id"] == request_id
-    assert data["v3_debug_summary"]["agent_path"] == [
+    assert data["agent_runtime_debug_summary"]["agent_path"] == [
         "supervisor",
         "rag_agent",
         "grounded_answer_agent",
@@ -130,17 +130,16 @@ def test_chat_request_id_can_query_v3_agent_trace() -> None:
     assert data["verifier_result"]["passed"] is True
 
 
-def test_trace_api_returns_v3_debug_summary_for_route_safety_and_memory() -> None:
+def test_trace_api_returns_agent_runtime_debug_summary_for_route_safety_and_memory() -> None:
     settings = Settings(
         database={"url": "sqlite:///:memory:"},
-        v3={"enabled": True},
         model_router={"enabled": True, "shadow_mode": True},
         long_term_memory={"write_enabled": True},
     )
     client = TestClient(create_app(settings=settings))
     client.app.state.trace_service.record_agent_trace(
         session_id="s1",
-        request_id="req_v3_debug",
+        request_id="req_agent_runtime_debug",
         trace=[
             {
                 "node": "model_router_shadow",
@@ -176,12 +175,12 @@ def test_trace_api_returns_v3_debug_summary_for_route_safety_and_memory() -> Non
         )
     )
 
-    response = client.get("/api/traces/req_v3_debug")
+    response = client.get("/api/traces/req_agent_runtime_debug")
     payload = response.json()
-    summary = payload["data"]["v3_debug_summary"]
+    summary = payload["data"]["agent_runtime_debug_summary"]
 
     assert response.status_code == 200
-    assert summary["flags"]["v3_enabled"] is True
+    assert summary["flags"]["agent_runtime_engine"] == "langgraph"
     assert summary["route"]["route_mode"] == "shadow"
     assert summary["route"]["shadow_model"] == "local_small"
     assert summary["safety"]["passed"] is False

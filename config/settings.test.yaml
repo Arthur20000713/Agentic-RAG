@@ -14,8 +14,8 @@ rag_server:
   low_confidence_no_answer: true
 database:
   url: "sqlite:///:memory:"
-v3:
-  enabled: false
+agent_runtime:
+  engine: langgraph
 model_router:
   enabled: false
   shadow_mode: true
@@ -53,7 +53,7 @@ disease_llm:
 lora:
   dataset_enabled: false
   inference_enabled: false
-  registry_path: data/v3/model_registry.json
+  registry_path: data/model_registry/model_registry.json
 long_term_memory:
   write_enabled: false
   read_enabled: false

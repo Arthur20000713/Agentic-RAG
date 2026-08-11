@@ -48,7 +48,6 @@ def _session_service() -> SessionContextService:
 def test_session_follow_up_flow_merges_dynamic_disease_context() -> None:
     service = _session_service()
     settings = Settings(
-        v3={"enabled": True},
         primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock", "api_key_env": "X"},
         disease_llm={"enabled": True, "shadow_mode": False, "require_rag_evidence": True},
     )
@@ -95,7 +94,6 @@ def test_session_follow_up_flow_merges_dynamic_disease_context() -> None:
 def test_unified_chat_graph_keeps_bare_symptom_follow_up_on_disease_branch() -> None:
     service = _session_service()
     settings = Settings(
-        v3={"enabled": True},
         primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock"},
         disease_llm={"enabled": True, "shadow_mode": False},
     )
@@ -132,7 +130,6 @@ def test_unified_chat_graph_keeps_bare_symptom_follow_up_on_disease_branch() -> 
 def test_session_follow_up_flow_reset_clears_conflicted_context() -> None:
     service = _session_service()
     settings = Settings(
-        v3={"enabled": True},
         primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock", "api_key_env": "X"},
         disease_llm={"enabled": True, "shadow_mode": False, "require_rag_evidence": True},
     )

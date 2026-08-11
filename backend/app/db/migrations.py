@@ -19,6 +19,7 @@ APPLICATION_TABLES = {
     "farm_memory",
     "animal_memory",
     "eval_run_log",
+    "ai_execution_record",
 }
 
 
@@ -249,6 +250,34 @@ CREATE TABLE IF NOT EXISTS eval_run_log (
     report_path TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS ai_execution_record (
+    operation_id TEXT PRIMARY KEY,
+    idempotency_key TEXT NOT NULL UNIQUE,
+    operation_type TEXT NOT NULL,
+    request_id TEXT NOT NULL,
+    request_hash TEXT NOT NULL,
+    run_id TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL,
+    progress INTEGER NOT NULL DEFAULT 0,
+    request_json TEXT,
+    lease_token TEXT,
+    lease_expires_at TEXT,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    result_json TEXT,
+    error_json TEXT,
+    created_at TEXT NOT NULL,
+    started_at TEXT,
+    updated_at TEXT NOT NULL,
+    finished_at TEXT,
+    expires_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_execution_status_updated
+ON ai_execution_record(status, updated_at);
+
+CREATE INDEX IF NOT EXISTS idx_ai_execution_expires_at
+ON ai_execution_record(expires_at);
 """
 
 
@@ -265,6 +294,10 @@ def init_db(conn: sqlite3.Connection) -> None:
     _ensure_column(conn, "model_route_log", "fallback_reason", "TEXT")
     _ensure_column(conn, "model_route_log", "latency_ms", "INTEGER")
     _ensure_column(conn, "model_route_log", "model_version", "TEXT")
+    _ensure_column(conn, "ai_execution_record", "request_json", "TEXT")
+    _ensure_column(conn, "ai_execution_record", "lease_token", "TEXT")
+    _ensure_column(conn, "ai_execution_record", "lease_expires_at", "TEXT")
+    _ensure_column(conn, "ai_execution_record", "attempt_count", "INTEGER NOT NULL DEFAULT 0")
     _backfill_conversations(conn)
     conn.commit()
 

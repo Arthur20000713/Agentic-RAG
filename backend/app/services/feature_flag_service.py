@@ -6,7 +6,7 @@ from backend.app.core.config import Settings
 
 
 class FeatureFlagSnapshot(BaseModel):
-    v3_enabled: bool
+    agent_runtime_engine: str
     model_router_enabled: bool
     model_router_shadow_mode: bool
     model_router_low_risk_takeover_enabled: bool
@@ -28,7 +28,7 @@ class FeatureFlagService:
 
     def snapshot(self) -> FeatureFlagSnapshot:
         return FeatureFlagSnapshot(
-            v3_enabled=self.v3_enabled,
+            agent_runtime_engine=self.agent_runtime_engine,
             model_router_enabled=self.model_router_enabled,
             model_router_shadow_mode=self.model_router_shadow_mode,
             model_router_low_risk_takeover_enabled=self.model_router_low_risk_takeover_enabled,
@@ -45,12 +45,12 @@ class FeatureFlagService:
         )
 
     @property
-    def v3_enabled(self) -> bool:
-        return self.settings.v3.enabled
+    def agent_runtime_engine(self) -> str:
+        return self.settings.agent_runtime.engine
 
     @property
     def model_router_enabled(self) -> bool:
-        return self.v3_enabled and self.settings.model_router.enabled
+        return self.settings.model_router.enabled
 
     @property
     def model_router_shadow_mode(self) -> bool:
@@ -66,15 +66,15 @@ class FeatureFlagService:
 
     @property
     def local_model_enabled(self) -> bool:
-        return self.v3_enabled and self.settings.local_model.enabled
+        return self.settings.local_model.enabled
 
     @property
     def primary_llm_enabled(self) -> bool:
-        return self.v3_enabled and self.settings.primary_llm.enabled
+        return self.settings.primary_llm.enabled
 
     @property
     def disease_llm_enabled(self) -> bool:
-        return self.v3_enabled and self.settings.disease_llm.enabled
+        return self.settings.disease_llm.enabled
 
     @property
     def disease_llm_shadow_mode(self) -> bool:
@@ -82,23 +82,23 @@ class FeatureFlagService:
 
     @property
     def lora_dataset_enabled(self) -> bool:
-        return self.v3_enabled and self.settings.lora.dataset_enabled
+        return self.settings.lora.dataset_enabled
 
     @property
     def lora_inference_enabled(self) -> bool:
-        return self.v3_enabled and self.settings.lora.inference_enabled
+        return self.settings.lora.inference_enabled
 
     @property
     def memory_write_enabled(self) -> bool:
-        return self.v3_enabled and self.settings.long_term_memory.write_enabled
+        return self.settings.long_term_memory.write_enabled
 
     @property
     def memory_read_enabled(self) -> bool:
-        return self.v3_enabled and self.settings.long_term_memory.read_enabled
+        return self.settings.long_term_memory.read_enabled
 
     @property
     def safety_precheck_enabled(self) -> bool:
-        return self.v3_enabled and self.settings.enhanced_safety.precheck_enabled
+        return self.settings.enhanced_safety.precheck_enabled
 
     @property
     def final_guard_required(self) -> bool:

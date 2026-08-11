@@ -118,7 +118,6 @@ def test_normalize_query_falls_back_when_model_raises() -> None:
 
 def test_normalize_query_with_router_uses_local_output_in_takeover_mode() -> None:
     settings = Settings(
-        v3={"enabled": True},
         model_router={
             "enabled": True,
             "shadow_mode": False,
@@ -147,7 +146,6 @@ def test_normalize_query_with_router_uses_local_output_in_takeover_mode() -> Non
 
 def test_normalize_query_with_router_keeps_primary_result_in_shadow_mode() -> None:
     settings = Settings(
-        v3={"enabled": True},
         model_router={
             "enabled": True,
             "shadow_mode": True,
@@ -176,7 +174,6 @@ def test_normalize_query_with_router_keeps_primary_result_in_shadow_mode() -> No
 
 def test_normalize_query_with_router_falls_back_when_local_schema_invalid() -> None:
     settings = Settings(
-        v3={"enabled": True},
         model_router={
             "enabled": True,
             "shadow_mode": False,
@@ -198,7 +195,6 @@ def test_normalize_query_with_router_falls_back_when_local_schema_invalid() -> N
 
 def test_normalize_query_with_router_rejects_domain_drift_for_ordinary_chat() -> None:
     settings = Settings(
-        v3={"enabled": True},
         model_router={
             "enabled": True,
             "shadow_mode": False,

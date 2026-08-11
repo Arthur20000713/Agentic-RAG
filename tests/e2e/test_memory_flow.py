@@ -13,7 +13,14 @@ from backend.app.services.memory_service import MemoryEvent, MemoryService
 
 
 def test_measurement_api_does_not_write_memory_when_flag_disabled() -> None:
-    client = TestClient(create_app(settings=Settings(database={"url": "sqlite:///:memory:"})))
+    client = TestClient(
+        create_app(
+            settings=Settings(
+                database={"url": "sqlite:///:memory:"},
+                legacy_api={"measurement_enabled": True},
+            )
+        )
+    )
 
     response = client.post(
         "/api/measurement/analyze",
@@ -28,8 +35,8 @@ def test_measurement_api_does_not_write_memory_when_flag_disabled() -> None:
 def test_measurement_api_writes_user_confirmed_measurement_memory_when_enabled() -> None:
     settings = Settings(
         database={"url": "sqlite:///:memory:"},
-        v3={"enabled": True},
         long_term_memory={"write_enabled": True},
+        legacy_api={"measurement_enabled": True},
     )
     client = TestClient(create_app(settings=settings))
 
@@ -52,7 +59,7 @@ def test_measurement_api_writes_user_confirmed_measurement_memory_when_enabled()
 
 
 def test_measurement_graph_calls_maybe_write_memory_without_changing_report() -> None:
-    settings = Settings(v3={"enabled": True}, long_term_memory={"write_enabled": True})
+    settings = Settings(long_term_memory={"write_enabled": True})
     written: list[MemoryEvent] = []
     measurement = MeasurementInput(
         animal_id="yak_032",
@@ -79,7 +86,7 @@ def test_measurement_graph_calls_maybe_write_memory_without_changing_report() ->
 
 
 def test_disease_graph_writes_user_confirmed_facts_without_diagnosis_memory() -> None:
-    settings = Settings(v3={"enabled": True}, long_term_memory={"write_enabled": True})
+    settings = Settings(long_term_memory={"write_enabled": True})
     written: list[MemoryEvent] = []
 
     asyncio.run(

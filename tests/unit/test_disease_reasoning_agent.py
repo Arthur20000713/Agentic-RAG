@@ -17,7 +17,6 @@ class FakeReasoningClient:
 
 def _settings(*, shadow_mode: bool = True) -> Settings:
     return Settings(
-        v3={"enabled": True},
         primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock", "api_key_env": "X"},
         disease_llm={"enabled": True, "shadow_mode": shadow_mode, "require_rag_evidence": True},
     )

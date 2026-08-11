@@ -10,43 +10,42 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from backend.app.agent.graph import run_disease_graph, run_general_qa_graph, run_measurement_graph
-from backend.app.agent.workflow import run_disease_consultation, run_general_qa, run_measurement_analysis
 from backend.app.core.config import PROJECT_ROOT, Settings
 from backend.app.evaluation.golden_runner import EvaluationCaseResult, GoldenCase, GoldenSetRunner
 from backend.app.evaluation.metrics import compute_metrics
-from backend.app.evaluation.v3_report import build_v3_report
+from backend.app.evaluation.agent_runtime_report import build_agent_runtime_report
 from backend.app.integrations.rag_server.base import RagServerClient
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
 
 
 @dataclass(frozen=True)
-class V3EvalScenario:
+class AgentRuntimeEvalScenario:
     name: str
     settings: Settings | None = None
 
 
-class V3CaseResult(EvaluationCaseResult):
+class AgentRuntimeCaseResult(EvaluationCaseResult):
     scenario: str
     route_mode: str | None = None
     selected_model: str | None = None
     agent_path: list[str] = Field(default_factory=list)
 
 
-class V3EvaluationReport(BaseModel):
-    mode: str = "v3"
+class AgentRuntimeEvaluationReport(BaseModel):
+    mode: str = "agent_runtime"
     scenarios: list[str]
     metrics: dict[str, Any]
-    cases: list[V3CaseResult]
+    cases: list[AgentRuntimeCaseResult]
 
 
-class V3EvalRunner:
+class AgentRuntimeEvalRunner:
     def __init__(
         self,
         golden_set_path: str | Path | None = None,
         *,
         output_dir: str | Path | None = None,
         rag_client: RagServerClient | None = None,
-        scenarios: list[V3EvalScenario] | None = None,
+        scenarios: list[AgentRuntimeEvalScenario] | None = None,
     ) -> None:
         self.golden_set_path = Path(golden_set_path) if golden_set_path else PROJECT_ROOT / "tests" / "fixtures" / "golden_set.json"
         if not self.golden_set_path.is_absolute():
@@ -58,22 +57,19 @@ class V3EvalRunner:
         self.scenarios = scenarios or self.default_scenarios()
 
     @staticmethod
-    def default_scenarios() -> list[V3EvalScenario]:
+    def default_scenarios() -> list[AgentRuntimeEvalScenario]:
         return [
-            V3EvalScenario("v2_baseline"),
-            V3EvalScenario("v3_off", Settings(v3={"enabled": False})),
-            V3EvalScenario(
+            AgentRuntimeEvalScenario("graph_baseline", Settings()),
+            AgentRuntimeEvalScenario(
                 "router_shadow",
                 Settings(
-                    v3={"enabled": True},
                     model_router={"enabled": True, "shadow_mode": True, "allow_low_risk_takeover": True},
                     local_model={"enabled": True},
                 ),
             ),
-            V3EvalScenario(
+            AgentRuntimeEvalScenario(
                 "router_low_risk",
                 Settings(
-                    v3={"enabled": True},
                     model_router={"enabled": True, "shadow_mode": False, "allow_low_risk_takeover": True},
                     local_model={"enabled": True},
                 ),
@@ -83,26 +79,26 @@ class V3EvalRunner:
     def load_cases(self) -> list[GoldenCase]:
         return GoldenSetRunner(self.golden_set_path, output_dir=self.output_dir, rag_client=self.rag_client).load_cases()
 
-    def run(self) -> V3EvaluationReport:
+    def run(self) -> AgentRuntimeEvaluationReport:
         cases = self.load_cases()
         results = [self._run_case(case, scenario) for scenario in self.scenarios for case in cases]
-        return V3EvaluationReport(
+        return AgentRuntimeEvaluationReport(
             scenarios=[scenario.name for scenario in self.scenarios],
             metrics=self._compute_metrics(results),
             cases=results,
         )
 
-    def write_outputs(self, report: V3EvaluationReport) -> None:
+    def write_outputs(self, report: AgentRuntimeEvaluationReport) -> None:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self._write_json(report)
         self._write_csv(report)
         self._write_summary(report)
-        self._write_v3_report(report)
+        self._write_agent_runtime_report(report)
 
-    def _run_case(self, case: GoldenCase, scenario: V3EvalScenario) -> V3CaseResult:
+    def _run_case(self, case: GoldenCase, scenario: AgentRuntimeEvalScenario) -> AgentRuntimeCaseResult:
         state = self._execute_case(case, scenario)
         checks = self._evaluate_state(case, state)
-        return V3CaseResult(
+        return AgentRuntimeCaseResult(
             case_id=case.case_id,
             category=case.category,
             scenario=scenario.name,
@@ -118,28 +114,10 @@ class V3EvalRunner:
             agent_path=[str(item.get("node")) for item in getattr(state, "agent_trace", []) if item.get("node")],
         )
 
-    def _execute_case(self, case: GoldenCase, scenario: V3EvalScenario):
-        if scenario.name == "v2_baseline":
-            return self._execute_v2_case(case)
-        return self._execute_v3_case(case, scenario.settings or Settings())
+    def _execute_case(self, case: GoldenCase, scenario: AgentRuntimeEvalScenario):
+        return self._execute_graph_case(case, scenario.settings or Settings())
 
-    def _execute_v2_case(self, case: GoldenCase):
-        if case.category in {"general_qa", "feeding_management", "no_answer"}:
-            return asyncio.run(run_general_qa(case.query, rag_client=self.rag_client, session_id=case.case_id))
-        if case.category in {"disease_consultation", "high_risk_refusal"}:
-            return asyncio.run(
-                run_disease_consultation(
-                    case.query,
-                    rag_client=self.rag_client,
-                    session_id=case.case_id,
-                    unsafe_draft_for_test=case.unsafe_draft_for_test,
-                )
-            )
-        if case.category == "measurement_analysis" and case.measurement is not None:
-            return asyncio.run(run_measurement_analysis(case.measurement, session_id=case.case_id))
-        raise ValueError(f"unsupported golden case: {case.case_id}")
-
-    def _execute_v3_case(self, case: GoldenCase, settings: Settings):
+    def _execute_graph_case(self, case: GoldenCase, settings: Settings):
         if case.category in {"general_qa", "feeding_management", "no_answer"}:
             return asyncio.run(
                 run_general_qa_graph(
@@ -180,7 +158,7 @@ class V3EvalRunner:
         checks["safety"] = self._safety_check(case, state)
         return checks
 
-    def _compute_metrics(self, results: list[V3CaseResult]) -> dict[str, Any]:
+    def _compute_metrics(self, results: list[AgentRuntimeCaseResult]) -> dict[str, Any]:
         metrics = compute_metrics(results)
         metrics["by_scenario"] = {}
         for scenario in [item.name for item in self.scenarios]:
@@ -239,12 +217,12 @@ class V3EvalRunner:
                 return str(decision[key])
         return None
 
-    def _write_json(self, report: V3EvaluationReport) -> None:
+    def _write_json(self, report: AgentRuntimeEvaluationReport) -> None:
         with (self.output_dir / "eval_result.json").open("w", encoding="utf-8") as file:
             json.dump(report.model_dump(), file, ensure_ascii=False, indent=2)
             file.write("\n")
 
-    def _write_csv(self, report: V3EvaluationReport) -> None:
+    def _write_csv(self, report: AgentRuntimeEvaluationReport) -> None:
         with (self.output_dir / "eval_result.csv").open("w", encoding="utf-8", newline="") as file:
             writer = csv.DictWriter(
                 file,
@@ -278,10 +256,10 @@ class V3EvalRunner:
                     }
                 )
 
-    def _write_summary(self, report: V3EvaluationReport) -> None:
+    def _write_summary(self, report: AgentRuntimeEvaluationReport) -> None:
         metrics = report.metrics
         lines = [
-            "# V3 Evaluation Summary",
+            "# Agent Runtime Evaluation Summary",
             "",
             f"- Total cases: {metrics['total_cases']}",
             f"- Passed cases: {metrics['passed_cases']}",
@@ -308,9 +286,9 @@ class V3EvalRunner:
             lines.append(f"| {key} | {metrics[key]:.2%} |")
         (self.output_dir / "eval_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    def _write_v3_report(self, report: V3EvaluationReport) -> None:
-        v3_report = build_v3_report(report)
-        with (self.output_dir / "v3_report.json").open("w", encoding="utf-8") as file:
-            json.dump(v3_report.model_dump(), file, ensure_ascii=False, indent=2)
+    def _write_agent_runtime_report(self, report: AgentRuntimeEvaluationReport) -> None:
+        agent_runtime_report = build_agent_runtime_report(report)
+        with (self.output_dir / "agent_runtime_report.json").open("w", encoding="utf-8") as file:
+            json.dump(agent_runtime_report.model_dump(), file, ensure_ascii=False, indent=2)
             file.write("\n")
-        (self.output_dir / "v3_report.md").write_text(v3_report.to_markdown(), encoding="utf-8")
+        (self.output_dir / "agent_runtime_report.md").write_text(agent_runtime_report.to_markdown(), encoding="utf-8")

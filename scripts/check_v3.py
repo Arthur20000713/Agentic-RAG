@@ -109,7 +109,8 @@ def _check_stage_a() -> list[str]:
     test_settings = _read_text("config/settings.test.yaml")
     config_py = _read_text("backend/app/core/config.py")
     for required_text in (
-        "v3:",
+        "agent_runtime:",
+        "engine: langgraph",
         "model_router:",
         "local_model:",
         "lora:",
@@ -117,11 +118,11 @@ def _check_stage_a() -> list[str]:
         "enhanced_safety:",
     ):
         if required_text not in settings:
-            failures.append(f"config/settings.yaml is missing V3 config block: {required_text}")
+            failures.append(f"config/settings.yaml is missing agent runtime config: {required_text}")
         if required_text not in test_settings:
-            failures.append(f"config/settings.test.yaml is missing V3 config block: {required_text}")
+            failures.append(f"config/settings.test.yaml is missing agent runtime config: {required_text}")
     for class_name in (
-        "V3Settings",
+        "AgentRuntimeSettings",
         "ModelRouterSettings",
         "LocalModelSettings",
         "LoraSettings",
@@ -139,42 +140,37 @@ def _check_stage_b() -> list[str]:
             "backend/app/services/feature_flag_service.py",
             "backend/app/services/chat_service.py",
             "tests/unit/test_feature_flags.py",
-            "tests/e2e/test_v3_disabled_regression.py",
+            "tests/integration/test_api_contract.py",
         ]
     )
     service = _read_text("backend/app/services/feature_flag_service.py")
     chat_service = _read_text("backend/app/services/chat_service.py")
     tests = _read_text("tests/unit/test_feature_flags.py")
     api_tests = _read_text("tests/integration/test_api_contract.py")
-    disabled_e2e_tests = _read_text("tests/e2e/test_v3_disabled_regression.py")
     for required_text in (
         "FeatureFlagService",
         "FeatureFlagSnapshot",
+        "agent_runtime_engine",
         "model_router_low_risk_takeover_enabled",
         "safety_precheck_enabled",
     ):
         if required_text not in service:
             failures.append(f"feature_flag_service.py is missing required text: {required_text}")
-    for required_text in ("build_debug_payload", "v3_debug", "FeatureFlagService"):
+    for required_text in ("build_agent_runtime_debug_payload", "agent_runtime_debug", "run_chat_graph"):
         if required_text not in chat_service:
-            failures.append(f"chat_service.py is missing V3 debug payload text: {required_text}")
-    for required_text in ("v3_enabled", "model_router", "long_term_memory", "lora"):
+            failures.append(f"chat_service.py is missing agent runtime text: {required_text}")
+    for required_text in ("agent_runtime_engine", "model_router", "long_term_memory", "lora"):
         if required_text not in tests:
             failures.append(f"test_feature_flags.py is missing required coverage text: {required_text}")
-    if "v3_debug" not in api_tests:
-        failures.append("test_api_contract.py must cover v3_debug")
-    for required_text in (
-        "v3_disabled",
-        "/api/chat",
-        "/api/measurement/analyze",
-        "model_router",
-        "long_term_memory",
-    ):
-        if required_text not in disabled_e2e_tests:
-            failures.append(f"test_v3_disabled_regression.py is missing required coverage text: {required_text}")
+    if "agent_runtime_debug" not in api_tests:
+        failures.append("test_api_contract.py must cover agent_runtime_debug")
+    if "backend.app.agent.workflow" in chat_service or "from backend.app.schemas.agent import AgentState" in chat_service:
+        failures.append("chat_service.py must not retain the legacy workflow")
+    if (ROOT / "backend/app/agent/workflow.py").exists():
+        failures.append("legacy backend/app/agent/workflow.py must be removed")
+    if (ROOT / "tests/e2e/test_v3_disabled_regression.py").exists():
+        failures.append("legacy V3-disabled regression test must be removed")
     return failures
-
-
 def _check_stage_c() -> list[str]:
     failures = _missing_paths(
         [
@@ -471,52 +467,51 @@ def _check_stage_g() -> list[str]:
 def _check_stage_h() -> list[str]:
     failures = _missing_paths(
         [
-            "backend/app/evaluation/v3_runner.py",
-            "backend/app/evaluation/v3_report.py",
+            "backend/app/evaluation/agent_runtime_runner.py",
+            "backend/app/evaluation/agent_runtime_report.py",
             "backend/app/evaluation/real_rag_runner.py",
             "backend/app/api/traces.py",
             "backend/app/static/frontend/app.js",
             "scripts/run_eval.py",
             "tests/integration/test_eval_runner.py",
-            "tests/integration/test_v3_report.py",
+            "tests/integration/test_agent_runtime_report.py",
             "tests/integration/test_trace_api.py",
             "tests/integration/test_frontend_contract.py",
         ]
     )
-    v3_runner = _read_text("backend/app/evaluation/v3_runner.py")
-    v3_report = _read_text("backend/app/evaluation/v3_report.py")
+    v3_runner = _read_text("backend/app/evaluation/agent_runtime_runner.py")
+    v3_report = _read_text("backend/app/evaluation/agent_runtime_report.py")
     real_rag_runner = _read_text("backend/app/evaluation/real_rag_runner.py")
     traces_api = _read_text("backend/app/api/traces.py")
     frontend_js = _read_text("backend/app/static/frontend/app.js")
     run_eval = _read_text("scripts/run_eval.py")
     eval_tests = _read_text("tests/integration/test_eval_runner.py")
-    report_tests = _read_text("tests/integration/test_v3_report.py")
+    report_tests = _read_text("tests/integration/test_agent_runtime_report.py")
     trace_tests = _read_text("tests/integration/test_trace_api.py")
     frontend_tests = _read_text("tests/integration/test_frontend_contract.py")
     for required_text in (
-        "V3EvalRunner",
-        "v2_baseline",
-        "v3_off",
+        "AgentRuntimeEvalRunner",
+        "graph_baseline",
         "router_shadow",
         "router_low_risk",
-        "V3 Evaluation Summary",
+        "Agent Runtime Evaluation Summary",
     ):
         if required_text not in v3_runner:
             failures.append(f"v3_runner.py is missing required V3 eval text: {required_text}")
         if required_text not in eval_tests:
             failures.append(f"test_eval_runner.py is missing required V3 eval coverage text: {required_text}")
-    for required_text in ('"v3"', "V3EvalRunner", "args.mode == \"v3\""):
+    for required_text in ('"agent_runtime"', "AgentRuntimeEvalRunner", 'args.mode == "agent_runtime"'):
         if required_text not in run_eval:
             failures.append(f"run_eval.py is missing required V3 mode text: {required_text}")
-    for required_text in ("build_v3_report", "route", "safety", "memory", "fallback", "to_markdown"):
+    for required_text in ("build_agent_runtime_report", "route", "safety", "memory", "fallback", "to_markdown"):
         if required_text not in v3_report:
             failures.append(f"v3_report.py is missing required V3 report text: {required_text}")
         if required_text not in report_tests:
             failures.append(f"test_v3_report.py is missing required V3 report coverage text: {required_text}")
-    for required_text in ("v3_report.json", "v3_report.md", "build_v3_report"):
+    for required_text in ("agent_runtime_report.json", "agent_runtime_report.md", "build_agent_runtime_report"):
         if required_text not in v3_runner:
             failures.append(f"v3_runner.py is missing required V3 report output text: {required_text}")
-    for required_text in ("v3_debug_summary", "flags", "route", "safety", "memory"):
+    for required_text in ("agent_runtime_debug_summary", "flags", "route", "safety", "memory"):
         if required_text not in traces_api:
             failures.append(f"traces.py is missing required V3 debug API text: {required_text}")
         if required_text not in trace_tests:

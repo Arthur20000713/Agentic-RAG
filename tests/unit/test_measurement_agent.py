@@ -116,7 +116,6 @@ def test_measurement_agent_adds_json_renderer_only_for_local_takeover() -> None:
         confidence=0.82,
     )
     settings = Settings(
-        v3={"enabled": True},
         model_router={"enabled": True, "shadow_mode": False, "allow_low_risk_takeover": True},
         local_model={"enabled": True},
     )
@@ -147,7 +146,6 @@ def test_measurement_agent_falls_back_when_local_json_fails_schema() -> None:
         confidence=0.82,
     )
     settings = Settings(
-        v3={"enabled": True},
         model_router={"enabled": True, "shadow_mode": False, "allow_low_risk_takeover": True},
         local_model={"enabled": True},
     )
