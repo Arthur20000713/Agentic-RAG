@@ -1,0 +1,145 @@
+name: livestock-enterprise-platform
+
+services:
+  uploads-init:
+    image: alpine:3.20
+    command:
+      - sh
+      - -c
+      - >-
+        chown -R 10001:10001 /uploads /python-data /rag-index
+        && chmod 0750 /uploads /python-data /rag-index
+    volumes:
+      - knowledge-uploads:/uploads
+      - python-ai-data:/python-data
+      - rag-index-data:/rag-index
+    restart: "no"
+
+  mysql:
+    image: mysql:8.0.36
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-livestock_app}
+      MYSQL_USER: ${MYSQL_USER:-livestock_app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mysqladmin ping --silent -h 127.0.0.1 -u"$${MYSQL_USER}" -p"$${MYSQL_PASSWORD}"
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    command:
+      - sh
+      - -c
+      - exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep PONG
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  python-ai:
+    build:
+      context: .
+      dockerfile: docker/python.Dockerfile
+    environment:
+      APP_SETTINGS_PATH: config/settings.compose.yaml
+      RAG_QUERY_MODE: fake
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:?AI_SERVICE_TOKEN is required}
+      AI_EXECUTION_DATABASE_URL: sqlite:////var/lib/livestock-ai/ai_execution.db
+      SHARED_UPLOAD_ROOT: /var/lib/livestock-uploads
+    volumes:
+      - python-ai-data:/var/lib/livestock-ai
+      - knowledge-uploads:/var/lib/livestock-uploads:ro
+      - rag-index-data:/var/lib/rag-index
+    depends_on:
+      uploads-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen(
+          'http://127.0.0.1:8000/internal/v1/health/readiness',
+          timeout=3).read()
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  java-app:
+    build:
+      context: .
+      dockerfile: docker/java.Dockerfile
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-livestock_app}?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER:-livestock_app}
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      AI_SERVICE_BASE_URL: http://python-ai:8000
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:?AI_SERVICE_TOKEN is required}
+      AI_CHAT_MAX_CONCURRENT_CALLS: ${AI_CHAT_MAX_CONCURRENT_CALLS:-20}
+      SHARED_UPLOAD_ROOT: /var/lib/livestock-uploads
+      KNOWLEDGE_COLLECTION: ${KNOWLEDGE_COLLECTION:-test}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_ISSUER: ${JWT_ISSUER:-livestock-business-service}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-livestock-business-api}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+      BOOTSTRAP_ADMIN_ENABLED: "true"
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:?BOOTSTRAP_ADMIN_USERNAME is required}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:?BOOTSTRAP_ADMIN_PASSWORD is required}
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: logstash
+    volumes:
+      - knowledge-uploads:/var/lib/livestock-uploads
+    ports:
+      - 127.0.0.1:${JAVA_PORT:-8080}:8080
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      python-ai:
+        condition: service_healthy
+      uploads-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          bash -ec "exec 3<>/dev/tcp/127.0.0.1/8080;
+          printf 'GET /actuator/health/readiness HTTP/1.1\r\nHost:
+          127.0.0.1\r\nConnection: close\r\n\r\n' >&3;
+          grep -q '\"status\":\"UP\"' <&3"
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  mysql-data:
+  redis-data:
+  python-ai-data:
+  knowledge-uploads:
+  rag-index-data:

@@ -1,0 +1,65 @@
+app:
+  name: Livestock AI Service
+  environment: compose
+  debug: false
+rag_server:
+  query_mode: fake
+  repo_path:
+  python_executable:
+  collection: test
+  timeout_seconds: 2
+  strict_real_mode: false
+  min_mapped_score: 0.03
+  min_citation_count_for_answer: 1
+  low_confidence_no_answer: true
+database:
+  url: "sqlite:////var/lib/livestock-ai/ai_trace.db"
+agent_runtime:
+  engine: langgraph
+model_router:
+  enabled: false
+  shadow_mode: true
+  allow_low_risk_takeover: false
+  takeover_task_types:
+    - query_normalization
+    - measurement_analysis
+    - summarization
+  blocked_safety_levels:
+    - S3
+    - S4
+local_model:
+  enabled: false
+  provider: mock
+  timeout_seconds: 3
+  max_retries: 0
+  allow_final_answer: false
+  device: auto
+  torch_dtype: auto
+  max_new_tokens: 128
+  temperature: 0
+primary_llm:
+  enabled: false
+  provider: mock
+  model:
+  base_url:
+  api_key_env: PRIMARY_LLM_API_KEY
+  timeout_seconds: 3
+  max_retries: 0
+disease_llm:
+  enabled: false
+  shadow_mode: true
+  require_rag_evidence: true
+  allow_rule_fallback: true
+lora:
+  dataset_enabled: false
+  inference_enabled: false
+  registry_path: data/model_registry/model_registry.json
+long_term_memory:
+  write_enabled: false
+  read_enabled: false
+  ttl_days: 365
+enhanced_safety:
+  precheck_enabled: true
+  final_guard_required: true
+legacy_api:
+  measurement_enabled: false

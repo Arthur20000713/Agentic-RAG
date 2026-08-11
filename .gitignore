@@ -1,4 +1,9 @@
 .venv/
+.env
+.env.*
+!.env.example
+.idea/
+.tmp/
 .git_broken_acl/
 gitdir_broken_acl/
 gitdir/
@@ -12,8 +17,9 @@ pytest_tmp_probe/
 .ruff_cache/
 build/
 dist/
+target/
 *.egg-info/
 data/
 data/*.db
 data/app.db
-reports/
+/reports/
