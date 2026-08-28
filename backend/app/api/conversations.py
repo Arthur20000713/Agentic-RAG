@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Header, Path, Query, Request
 
+from backend.app.agent.checkpointing import checkpoint_thread_id
 from backend.app.core.errors import ErrorCode
 from backend.app.core.response import ApiResponse
 from backend.app.db.repositories import ConversationRepository
@@ -80,4 +81,7 @@ async def delete_conversation(
 ) -> dict:
     if not _repository(request).delete(session_id, client_id):
         return ApiResponse.fail(ErrorCode.NOT_FOUND, "conversation not found").model_dump()
+    checkpointer = getattr(request.app.state, "agent_checkpointer", None)
+    if checkpointer is not None:
+        await checkpointer.adelete_thread(checkpoint_thread_id(client_id, session_id))
     return ApiResponse.ok({"session_id": session_id, "deleted": True}).model_dump()

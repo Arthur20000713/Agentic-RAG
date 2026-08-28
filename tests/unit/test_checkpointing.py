@@ -9,6 +9,7 @@ from langgraph.graph import END, START, StateGraph
 
 from backend.app.agent.checkpointing import (
     checkpoint_config,
+    checkpoint_database_path,
     checkpoint_thread_id,
     open_sqlite_checkpointer,
 )
@@ -41,6 +42,13 @@ def test_checkpoint_thread_id_requires_both_identity_parts() -> None:
             assert "required" in str(exc)
         else:
             raise AssertionError("missing checkpoint identity should be rejected")
+
+
+def test_checkpoint_database_path_is_separate_from_application_database() -> None:
+    path = checkpoint_database_path("sqlite:///data/app.db")
+
+    assert Path(path).name == "app.db.checkpoints.sqlite3"
+    assert checkpoint_database_path("sqlite:///:memory:") == ":memory:"
 
 
 def test_sqlite_checkpointer_restores_same_thread_and_isolates_other_threads(

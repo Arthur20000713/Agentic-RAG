@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.store.base import BaseStore
+
 from backend.app.agent.graph import run_measurement_graph
 from backend.app.agent.rag_answer_policy import SAFETY_REFUSAL_POLICY_WARNING
 from backend.app.agent.state import MultiAgentState
@@ -36,10 +39,14 @@ class InternalAiService:
         rag_client: RagServerClient,
         settings: Settings,
         trace_service: TraceService | None = None,
+        checkpointer: BaseCheckpointSaver[Any] | None = None,
+        memory_store: BaseStore | None = None,
     ) -> None:
         self.rag_client = rag_client
         self.settings = settings
         self.trace_service = trace_service
+        self.checkpointer = checkpointer
+        self.memory_store = memory_store
 
     async def chat(self, payload: ChatRequest, *, run_id: str) -> ChatResponse:
         service = ChatService(
@@ -47,6 +54,14 @@ class InternalAiService:
             settings=self.settings,
             conversation_history=_conversation_history(payload),
             initial_session_context=dict(payload.context.slots),
+            checkpointer=self.checkpointer,
+            memory_store=self.memory_store,
+            memory_scope_authoritative=payload.animal_snapshot is not None,
+            animal_profile=(
+                payload.animal_snapshot.model_dump(mode="json")
+                if payload.animal_snapshot is not None
+                else None
+            ),
         )
         state = await service.ask(
             LegacyChatRequest(
@@ -82,7 +97,17 @@ class InternalAiService:
             confidence=payload.confidence,
             use_demo_history=payload.use_demo_history,
         )
-        state = await run_measurement_graph(measurement, settings=self.settings)
+        state = await run_measurement_graph(
+            measurement,
+            session_id=payload.operation_id,
+            request_id=payload.request_id,
+            user_id=payload.user_id,
+            animal_profile=payload.animal_snapshot.model_dump(mode="json"),
+            memory_scope_authoritative=True,
+            checkpointer=self.checkpointer,
+            store=self.memory_store,
+            settings=self.settings,
+        )
         result = MeasurementAnalysisResult.model_validate(state.measurement_report)
         if payload.confidence is not None and payload.confidence < 0.6:
             outcome = "LOW_CONFIDENCE"

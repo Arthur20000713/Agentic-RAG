@@ -9,6 +9,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from backend.app.agent.checkpointing import checkpoint_database_path, open_sqlite_checkpointer
+from backend.app.agent.memory_store import RepositoryMemoryStore
 from backend.app.api import chat, conversations, documents, health, internal_v1, measurement, rag, tasks, traces
 from backend.app.core.config import Settings, load_settings
 from backend.app.core.errors import ErrorCode
@@ -17,7 +19,7 @@ from backend.app.core.response import ApiResponse
 from backend.app.db.ai_execution_repository import AiExecutionRecordRepository
 from backend.app.db.connection import get_connection
 from backend.app.db.migrations import init_db
-from backend.app.db.repositories import AgentTraceRepository, RagTraceRepository
+from backend.app.db.repositories import AgentTraceRepository, MemoryRepository, RagTraceRepository
 from backend.app.integrations.rag_server import create_rag_server_client
 from backend.app.schemas.internal_v1 import ErrorDetail, ErrorResponse
 from backend.app.services.knowledge_ingestion_service import KnowledgeIngestionService
@@ -49,6 +51,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         AgentTraceRepository(execution_db_conn),
     )
     rag_client = create_rag_server_client(app_settings, trace_service=trace_service)
+    memory_store = RepositoryMemoryStore(MemoryRepository(db_conn))
+    checkpoint_path = checkpoint_database_path(app_settings.database.url)
     execution_repository = AiExecutionRecordRepository(
         execution_db_conn,
         ttl_hours=app_settings.internal_api.execution_ttl_hours,
@@ -62,19 +66,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        if app_settings.internal_api.ingestion_worker_enabled:
-            knowledge_ingestion_worker.start()
-        try:
-            yield
-        finally:
-            await knowledge_ingestion_worker.stop()
-            close = getattr(rag_client, "close", None)
-            if callable(close):
-                close_result = close()
-                if inspect.isawaitable(close_result):
-                    await close_result
-            db_conn.close()
-            execution_db_conn.close()
+        async with open_sqlite_checkpointer(checkpoint_path) as checkpointer:
+            _app.state.agent_checkpointer = checkpointer
+            if app_settings.internal_api.ingestion_worker_enabled:
+                knowledge_ingestion_worker.start()
+            try:
+                yield
+            finally:
+                await knowledge_ingestion_worker.stop()
+                close = getattr(rag_client, "close", None)
+                if callable(close):
+                    close_result = close()
+                    if inspect.isawaitable(close_result):
+                        await close_result
+                _app.state.agent_checkpointer = None
+                db_conn.close()
+                execution_db_conn.close()
 
     app = FastAPI(title=app_settings.app.name, lifespan=lifespan)
 
@@ -85,6 +92,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.trace_service = trace_service
     app.state.internal_trace_service = internal_trace_service
     app.state.rag_client = rag_client
+    app.state.memory_store = memory_store
+    app.state.agent_checkpointer = None
     app.state.ai_execution_repository = execution_repository
     app.state.knowledge_ingestion_worker = knowledge_ingestion_worker
 

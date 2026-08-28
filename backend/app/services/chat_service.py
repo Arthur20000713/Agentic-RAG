@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.store.base import BaseStore
+
 from backend.app.agent.graph import run_chat_graph
 from backend.app.agent.state import MultiAgentState
 from backend.app.core.config import PROJECT_ROOT, Settings
@@ -18,12 +21,20 @@ class ChatService:
         session_context_service: SessionContextService | None = None,
         conversation_history: list[dict[str, Any]] | None = None,
         initial_session_context: dict[str, Any] | None = None,
+        checkpointer: BaseCheckpointSaver[Any] | None = None,
+        memory_store: BaseStore | None = None,
+        memory_scope_authoritative: bool = False,
+        animal_profile: dict[str, Any] | None = None,
     ) -> None:
         self.rag_client = rag_client
         self.settings = settings or Settings()
         self.session_context_service = session_context_service
         self.conversation_history = list(conversation_history or [])
         self.initial_session_context = dict(initial_session_context or {})
+        self.checkpointer = checkpointer
+        self.memory_store = memory_store
+        self.memory_scope_authoritative = memory_scope_authoritative
+        self.animal_profile = dict(animal_profile or {}) or None
 
     async def ask(self, request: ChatRequest, *, request_id: str | None = None) -> MultiAgentState:
         return await run_chat_graph(
@@ -32,7 +43,12 @@ class ChatService:
             session_context_service=self.session_context_service,
             session_id=request.session_id,
             request_id=request_id,
+            user_id=request.user_id,
             animal_id=request.animal_id,
+            animal_profile=self.animal_profile,
+            memory_scope_authoritative=self.memory_scope_authoritative,
+            checkpointer=self.checkpointer,
+            store=self.memory_store,
             settings=self.settings,
             conversation_history=self.conversation_history,
             initial_session_context=self.initial_session_context,

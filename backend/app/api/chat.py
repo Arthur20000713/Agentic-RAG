@@ -38,6 +38,9 @@ async def chat(payload: ChatRequest, request: Request) -> dict:
         settings=request.app.state.settings,
         session_context_service=SessionContextService(request.app.state.db_conn),
         conversation_history=history,
+        checkpointer=getattr(request.app.state, "agent_checkpointer", None),
+        memory_store=request.app.state.memory_store,
+        memory_scope_authoritative=False,
     )
     state = await service.ask(payload, request_id=request_id)
     _record_chat_trace(request, state, request_id)

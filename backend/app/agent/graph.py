@@ -3,8 +3,11 @@ from __future__ import annotations
 from typing import Any
 from uuid import uuid4
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.store.base import BaseStore
 
+from backend.app.agent.checkpointing import checkpoint_config
 from backend.app.agent.langgraph_workflow import (
     AgentGraphRuntime,
     build_chat_graph,
@@ -46,8 +49,13 @@ async def run_chat_graph(
     session_context_service: SessionContextService | None = None,
     session_id: str | None = None,
     request_id: str | None = None,
+    user_id: str | None = None,
     animal_id: str | None = None,
+    animal_profile: dict[str, Any] | None = None,
+    memory_scope_authoritative: bool = False,
     memory_service: MemoryService | None = None,
+    checkpointer: BaseCheckpointSaver[Any] | None = None,
+    store: BaseStore | None = None,
     settings: Settings | None = None,
     query_normalizer_client: BaseModelClient | None = None,
     intent_router_client: BaseModelClient | None = None,
@@ -77,10 +85,19 @@ async def run_chat_graph(
         primary_llm_client=primary_llm_client,
         conversation_history=list(conversation_history or []),
         forced_intent=forced_intent,
+        user_id=user_id,
         animal_id=animal_id,
+        animal_profile=dict(animal_profile or {}) or None,
+        memory_scope_authoritative=memory_scope_authoritative,
         unsafe_draft_for_test=unsafe_draft_for_test,
     )
-    raw = await _CHAT_GRAPH.ainvoke(state, context=runtime)
+    graph = (
+        build_chat_graph(checkpointer=checkpointer, store=store)
+        if checkpointer is not None or store is not None
+        else _CHAT_GRAPH
+    )
+    invoke_config = checkpoint_config(user_id or "anonymous", state.session_id) if checkpointer else None
+    raw = await graph.ainvoke(state, context=runtime, config=invoke_config)
     return MultiAgentState.model_validate(raw)
 
 
@@ -90,6 +107,7 @@ async def run_general_qa_graph(
     rag_client: RagServerClient | None = None,
     session_id: str | None = None,
     request_id: str | None = None,
+    user_id: str | None = None,
     settings: Settings | None = None,
     query_normalizer_client: BaseModelClient | None = None,
     primary_llm_client: Any | None = None,
@@ -102,6 +120,7 @@ async def run_general_qa_graph(
         rag_client=rag_client,
         session_id=session_id,
         request_id=request_id,
+        user_id=user_id,
         settings=settings,
         query_normalizer_client=query_normalizer_client,
         primary_llm_client=primary_llm_client,
@@ -116,8 +135,13 @@ async def run_disease_graph(
     session_context_service: SessionContextService | None = None,
     session_id: str | None = None,
     request_id: str | None = None,
+    user_id: str | None = None,
     animal_id: str | None = None,
+    animal_profile: dict[str, Any] | None = None,
+    memory_scope_authoritative: bool = False,
     memory_service: MemoryService | None = None,
+    checkpointer: BaseCheckpointSaver[Any] | None = None,
+    store: BaseStore | None = None,
     unsafe_draft_for_test: str | None = None,
     settings: Settings | None = None,
     query_normalizer_client: BaseModelClient | None = None,
@@ -132,8 +156,13 @@ async def run_disease_graph(
         session_context_service=session_context_service,
         session_id=session_id,
         request_id=request_id,
+        user_id=user_id,
         animal_id=animal_id,
+        animal_profile=animal_profile,
+        memory_scope_authoritative=memory_scope_authoritative,
         memory_service=memory_service,
+        checkpointer=checkpointer,
+        store=store,
         settings=settings,
         query_normalizer_client=query_normalizer_client,
         primary_llm_client=primary_llm_client,
@@ -147,7 +176,13 @@ async def run_measurement_graph(
     measurement: MeasurementInput,
     *,
     session_id: str | None = None,
+    request_id: str | None = None,
+    user_id: str | None = None,
+    animal_profile: dict[str, Any] | None = None,
+    memory_scope_authoritative: bool = False,
     memory_service: MemoryService | None = None,
+    checkpointer: BaseCheckpointSaver[Any] | None = None,
+    store: BaseStore | None = None,
     settings: Settings | None = None,
 ) -> MultiAgentState:
     """Run structured body-measurement analysis through LangGraph."""
@@ -155,6 +190,7 @@ async def run_measurement_graph(
     app_settings = settings or Settings()
     state = MultiAgentState(
         session_id=session_id or _new_session_id(),
+        request_id=request_id,
         user_query=f"body measurement analysis for {measurement.animal_id}",
     )
     runtime = AgentGraphRuntime(
@@ -163,8 +199,18 @@ async def run_measurement_graph(
         memory_service=memory_service,
         forced_intent="measurement_analysis",
         intent_router=route_intent_with_model,
+        user_id=user_id,
+        animal_id=measurement.animal_id,
+        animal_profile=dict(animal_profile or {}) or None,
+        memory_scope_authoritative=memory_scope_authoritative,
     )
-    raw = await _MEASUREMENT_GRAPH.ainvoke(state, context=runtime)
+    graph = (
+        build_measurement_graph(checkpointer=checkpointer, store=store)
+        if checkpointer is not None or store is not None
+        else _MEASUREMENT_GRAPH
+    )
+    invoke_config = checkpoint_config(user_id or "anonymous", state.session_id) if checkpointer else None
+    raw = await graph.ainvoke(state, context=runtime, config=invoke_config)
     return MultiAgentState.model_validate(raw)
 
 

@@ -94,6 +94,8 @@ async def create_ai_chat_run(
         request.app.state.rag_client,
         request.app.state.settings,
         request.app.state.internal_trace_service,
+        checkpointer=getattr(request.app.state, "agent_checkpointer", None),
+        memory_store=request.app.state.memory_store,
     )
     try:
         result = await asyncio.wait_for(
@@ -216,6 +218,8 @@ async def analyze_measurement(
         request.app.state.rag_client,
         request.app.state.settings,
         request.app.state.internal_trace_service,
+        checkpointer=getattr(request.app.state, "agent_checkpointer", None),
+        memory_store=request.app.state.memory_store,
     )
     try:
         result = await asyncio.wait_for(

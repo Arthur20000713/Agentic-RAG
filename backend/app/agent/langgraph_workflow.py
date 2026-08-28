@@ -15,6 +15,7 @@ from backend.app.agent.direct_answer_agent import DirectAnswerAgent, fallback_di
 from backend.app.agent.disease_agent import DiseaseAgent
 from backend.app.agent.grounded_answer_agent import GroundedAnswerAgent
 from backend.app.agent.measurement_agent import MeasurementAgent
+from backend.app.agent.memory_tools import MemoryType, search_memory, write_memory
 from backend.app.agent.rag_agent import RagAgent
 from backend.app.agent.rag_answer_policy import (
     NO_ANSWER_TEXT,
@@ -41,6 +42,7 @@ from backend.app.services.feature_flag_service import FeatureFlagService
 from backend.app.services.memory_service import (
     MemoryEvent,
     MemoryFact,
+    MemorySource,
     MemoryService,
     build_measurement_memory_fact,
 )
@@ -67,7 +69,10 @@ class AgentGraphRuntime:
     conversation_history: list[dict[str, Any]] = field(default_factory=list)
     measurement: MeasurementInput | None = None
     forced_intent: IntentType | None = None
+    user_id: str | None = None
     animal_id: str | None = None
+    animal_profile: dict[str, Any] | None = None
+    memory_scope_authoritative: bool = False
     unsafe_draft_for_test: str | None = None
 
 
@@ -78,6 +83,7 @@ def build_chat_graph(
 ):
     builder = StateGraph(MultiAgentState, context_schema=AgentGraphRuntime)
     builder.add_node("context", _context_node)
+    builder.add_node("memory_search", _memory_search_node)
     builder.add_node("router", _router_node)
     builder.add_node("direct", _direct_node)
     builder.add_node("disease_prepare", _disease_prepare_node)
@@ -87,9 +93,11 @@ def build_chat_graph(
     builder.add_node("verifier", _verifier_node)
     builder.add_node("safety", _safety_node)
     builder.add_node("final", _final_node)
+    builder.add_node("memory_write", _memory_write_node)
 
     builder.add_edge(START, "context")
-    builder.add_edge("context", "router")
+    builder.add_edge("context", "memory_search")
+    builder.add_edge("memory_search", "router")
     builder.add_conditional_edges(
         "router",
         _chat_route,
@@ -110,7 +118,8 @@ def build_chat_graph(
     builder.add_edge("reasoning", "verifier")
     builder.add_edge("verifier", "safety")
     builder.add_edge("safety", "final")
-    builder.add_edge("final", END)
+    builder.add_edge("final", "memory_write")
+    builder.add_edge("memory_write", END)
     return builder.compile(checkpointer=checkpointer, store=store)
 
 
@@ -121,19 +130,23 @@ def build_measurement_graph(
 ):
     builder = StateGraph(MultiAgentState, context_schema=AgentGraphRuntime)
     builder.add_node("context", _context_node)
+    builder.add_node("memory_search", _memory_search_node)
     builder.add_node("router", _router_node)
     builder.add_node("measurement", _measurement_node)
     builder.add_node("verifier", _verifier_node)
     builder.add_node("safety", _safety_node)
     builder.add_node("final", _final_node)
+    builder.add_node("memory_write", _memory_write_node)
 
     builder.add_edge(START, "context")
-    builder.add_edge("context", "router")
+    builder.add_edge("context", "memory_search")
+    builder.add_edge("memory_search", "router")
     builder.add_edge("router", "measurement")
     builder.add_edge("measurement", "verifier")
     builder.add_edge("verifier", "safety")
     builder.add_edge("safety", "final")
-    builder.add_edge("final", END)
+    builder.add_edge("final", "memory_write")
+    builder.add_edge("memory_write", END)
     return builder.compile(checkpointer=checkpointer, store=store)
 
 
@@ -158,6 +171,47 @@ async def _context_node(
             session_data = persisted
 
     state.session_context = session_data
+    return _dump(state)
+
+
+async def _memory_search_node(
+    raw_state: MultiAgentState | dict[str, Any],
+    runtime: Runtime[AgentGraphRuntime],
+) -> dict[str, Any]:
+    state = _state(raw_state)
+    context = _context(runtime)
+    state.session_context.pop("long_term_memory", None)
+    if not _memory_ready(runtime, read=True):
+        return _dump(state)
+
+    store = runtime.store
+    if store is None:
+        return _dump(state)
+    try:
+        items = await search_memory(
+            store,
+            user_id=context.user_id or "",
+            subject_type="animal",
+            subject_id=context.animal_id or "",
+            limit=5,
+        )
+    except Exception:
+        state.tool_results["search_memory"] = {
+            "status": "error",
+            "error_code": "MEMORY_SEARCH_FAILED",
+            "count": 0,
+        }
+        _record_memory_trace(state, "search_memory", "error", 0)
+        return _dump(state)
+
+    records = [item.model_dump(mode="json") for item in items]
+    state.session_context["long_term_memory"] = records
+    state.tool_results["search_memory"] = {
+        "status": "success",
+        "count": len(records),
+        "records": records,
+    }
+    _record_memory_trace(state, "search_memory", "success", len(records))
     return _dump(state)
 
 
@@ -343,6 +397,69 @@ def _final_node(
         }
         if context.session_context_service is not None:
             context.session_context_service.save_context(next_context)
+    return _dump(state)
+
+
+async def _memory_write_node(
+    raw_state: MultiAgentState | dict[str, Any],
+    runtime: Runtime[AgentGraphRuntime],
+) -> dict[str, Any]:
+    state = _state(raw_state)
+    context = _context(runtime)
+    if not _memory_ready(runtime, read=False):
+        return _dump(state)
+
+    writes: list[dict[str, Any]] = []
+    if context.animal_profile:
+        result = await _safe_write_memory(
+            runtime,
+            state,
+            memory_type="animal_profile",
+            content=dict(context.animal_profile),
+            source="tool_result",
+            operation_id=None,
+            session_id=None,
+        )
+        writes.append(result)
+
+    if state.intent == "disease_consultation":
+        result = await _safe_write_memory(
+            runtime,
+            state,
+            memory_type="consultation",
+            content=_consultation_memory_content(state),
+            source="user_confirmed",
+            operation_id=state.request_id,
+            session_id=state.session_id,
+        )
+        writes.append(result)
+    elif state.intent == "measurement_analysis" and context.measurement is not None:
+        content: dict[str, Any] = {
+            "current": {
+                key: value
+                for key, value in context.measurement.current.model_dump().items()
+                if value is not None
+            }
+        }
+        if context.measurement.age_month is not None:
+            content["age_month"] = context.measurement.age_month
+        if context.measurement.confidence is not None:
+            content["confidence"] = context.measurement.confidence
+        result = await _safe_write_memory(
+            runtime,
+            state,
+            memory_type="measurement",
+            content=content,
+            source="tool_result",
+            operation_id=state.request_id,
+            session_id=state.session_id,
+        )
+        writes.append(result)
+
+    if writes:
+        state.tool_results["write_memory"] = writes
+        status = "error" if any(item.get("status") == "error" for item in writes) else "success"
+        _record_memory_trace(state, "write_memory", status, len(writes))
     return _dump(state)
 
 
@@ -668,6 +785,93 @@ def _record_memory_write(state: MultiAgentState, event: MemoryEvent | None) -> N
             "subject_id": event.subject_id,
             "fact_type": event.payload.get("fact_type"),
             "source": event.source,
+        }
+    )
+
+
+def _memory_ready(runtime: Runtime[AgentGraphRuntime], *, read: bool) -> bool:
+    context = _context(runtime)
+    flags = FeatureFlagService(context.settings)
+    enabled = flags.memory_read_enabled if read else flags.memory_write_enabled
+    return bool(
+        enabled
+        and context.memory_scope_authoritative
+        and context.user_id
+        and context.animal_id
+        and runtime.store is not None
+    )
+
+
+async def _safe_write_memory(
+    runtime: Runtime[AgentGraphRuntime],
+    state: MultiAgentState,
+    *,
+    memory_type: MemoryType,
+    content: dict[str, Any],
+    source: MemorySource,
+    operation_id: str | None,
+    session_id: str | None,
+) -> dict[str, Any]:
+    context = _context(runtime)
+    store = runtime.store
+    if store is None:
+        return {
+            "status": "error",
+            "error_code": "MEMORY_STORE_UNAVAILABLE",
+            "memory_type": memory_type,
+        }
+    try:
+        result = await write_memory(
+            store,
+            user_id=context.user_id or "",
+            subject_type="animal",
+            subject_id=context.animal_id or "",
+            memory_type=memory_type,
+            content=content,
+            source=source,
+            session_id=session_id,
+            operation_id=operation_id,
+            ttl_days=context.settings.long_term_memory.ttl_days,
+        )
+    except Exception:
+        return {
+            "status": "error",
+            "error_code": "MEMORY_WRITE_FAILED",
+            "memory_type": memory_type,
+        }
+    return result.model_dump(mode="json")
+
+
+def _consultation_memory_content(state: MultiAgentState) -> dict[str, Any]:
+    content: dict[str, Any] = {"user_query": state.user_query}
+    understanding = _last_disease_understanding(state)
+    if understanding is None:
+        return content
+    for key in (
+        "case_summary",
+        "species",
+        "observed_signs",
+        "context_factors",
+        "explicit_user_facts",
+        "source_spans",
+    ):
+        value = understanding.get(key)
+        if value not in (None, "", [], {}):
+            content[key] = value
+    return content
+
+
+def _record_memory_trace(
+    state: MultiAgentState,
+    node: str,
+    status: str,
+    record_count: int,
+) -> None:
+    state.agent_trace.append(
+        {
+            "node": node,
+            "status": status,
+            "record_count": record_count,
         }
     )
 

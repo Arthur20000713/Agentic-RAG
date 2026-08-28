@@ -20,7 +20,8 @@ def test_chat_graph_is_a_real_compiled_state_graph_with_required_nodes_and_edges
     assert isinstance(graph, CompiledStateGraph)
     drawable = graph.get_graph()
     assert {
-        "context",
+            "context",
+            "memory_search",
         "router",
         "direct",
         "disease_prepare",
@@ -29,11 +30,13 @@ def test_chat_graph_is_a_real_compiled_state_graph_with_required_nodes_and_edges
         "reasoning",
         "verifier",
         "safety",
-        "final",
+            "final",
+            "memory_write",
     }.issubset(drawable.nodes)
     assert {
         ("__start__", "context"),
-        ("context", "router"),
+            ("context", "memory_search"),
+            ("memory_search", "router"),
         ("router", "direct"),
         ("router", "disease_prepare"),
         ("router", "planner"),
@@ -44,7 +47,8 @@ def test_chat_graph_is_a_real_compiled_state_graph_with_required_nodes_and_edges
         ("reasoning", "verifier"),
         ("verifier", "safety"),
         ("safety", "final"),
-        ("final", "__end__"),
+            ("final", "memory_write"),
+            ("memory_write", "__end__"),
     }.issubset(_edge_pairs(graph))
 
 
@@ -54,22 +58,26 @@ def test_measurement_graph_is_a_real_compiled_state_graph_without_tool_path() ->
     assert isinstance(graph, CompiledStateGraph)
     drawable = graph.get_graph()
     assert {
-        "context",
+            "context",
+            "memory_search",
         "router",
         "measurement",
         "verifier",
         "safety",
-        "final",
+            "final",
+            "memory_write",
     }.issubset(drawable.nodes)
     assert "tool" not in drawable.nodes
     assert {
         ("__start__", "context"),
-        ("context", "router"),
+            ("context", "memory_search"),
+            ("memory_search", "router"),
         ("router", "measurement"),
         ("measurement", "verifier"),
         ("verifier", "safety"),
         ("safety", "final"),
-        ("final", "__end__"),
+            ("final", "memory_write"),
+            ("memory_write", "__end__"),
     }.issubset(_edge_pairs(graph))
 
 
