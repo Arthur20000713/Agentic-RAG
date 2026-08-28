@@ -6,8 +6,10 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
+from langgraph.store.base import BaseStore
 
 from backend.app.agent.direct_answer_agent import DirectAnswerAgent, fallback_direct_answer
 from backend.app.agent.disease_agent import DiseaseAgent
@@ -69,7 +71,11 @@ class AgentGraphRuntime:
     unsafe_draft_for_test: str | None = None
 
 
-def build_chat_graph():
+def build_chat_graph(
+    *,
+    checkpointer: BaseCheckpointSaver[Any] | None = None,
+    store: BaseStore | None = None,
+):
     builder = StateGraph(MultiAgentState, context_schema=AgentGraphRuntime)
     builder.add_node("context", _context_node)
     builder.add_node("router", _router_node)
@@ -105,10 +111,14 @@ def build_chat_graph():
     builder.add_edge("verifier", "safety")
     builder.add_edge("safety", "final")
     builder.add_edge("final", END)
-    return builder.compile()
+    return builder.compile(checkpointer=checkpointer, store=store)
 
 
-def build_measurement_graph():
+def build_measurement_graph(
+    *,
+    checkpointer: BaseCheckpointSaver[Any] | None = None,
+    store: BaseStore | None = None,
+):
     builder = StateGraph(MultiAgentState, context_schema=AgentGraphRuntime)
     builder.add_node("context", _context_node)
     builder.add_node("router", _router_node)
@@ -124,7 +134,7 @@ def build_measurement_graph():
     builder.add_edge("verifier", "safety")
     builder.add_edge("safety", "final")
     builder.add_edge("final", END)
-    return builder.compile()
+    return builder.compile(checkpointer=checkpointer, store=store)
 
 
 async def _context_node(
