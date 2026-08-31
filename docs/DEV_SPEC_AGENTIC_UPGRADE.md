@@ -199,13 +199,110 @@ P0 基线命令：
 
 ## 5. 阶段三：Agentic Retrieval
 
-Planner 阶段完成后细化，最小验收边界如下：
+### 5.1 目标与边界
 
-- 复杂问题可拆成有限个子查询，并保留原始问题。
-- query rewrite 不改变关键实体、动物、时间和否定语义。
-- evidence grader 对相关性、覆盖度、来源质量和冲突给出结构化结果。
-- 证据不足时允许一次受控二次检索，记录触发原因和改写查询。
-- 达到次数上限仍不足时进入 no-answer/追问，不编造答案。
+阶段三把阶段二的单个 `query_knowledge_hub` action 升级为有界检索微流程。顶层
+TaskPlan action allowlist 和 LangGraph 拓扑保持不变；decomposition、rewrite、grading
+不是模型可生成的 tool action，不能进入 Executor allowlist。
+
+```text
+trusted query
+  -> capture semantic constraints
+  -> decompose into 1..3 primary queries
+  -> sequential primary retrieval
+  -> aggregate and deduplicate
+  -> evidence grade #1
+      sufficient -> return canonical RAG result
+      refine -> one guarded secondary query -> aggregate -> evidence grade #2
+      no_answer -> return insufficient result
+```
+
+阶段三只改造 `general_qa` 和 `disease_consultation` 的 retrieval action。简单回答、越界问题和体尺分析仍不进入该微流程。阶段二 Replan 继续只处理工具/基础设施执行失败；证据不足属于结构化完成结果，不能触发阶段二 Replan。
+
+### 5.2 状态与 Schema
+
+新增 `backend/app/schemas/retrieval.py`，保存以下 checkpoint-safe 类型：
+
+- `QueryConstraintSnapshot`：从本轮受信输入提取动物/实体、数字与单位、日期/时长和否定 span。
+- `RetrievalQuery`：query ID、文本、来源（original/decomposed/secondary）、用途和 parent IDs。
+- `RetrievalAttempt`：round、query ID、operation key、状态、hit 数和稳定错误码；不复制完整 RAG payload。
+- `EvidenceConflict`：topic 和两个可验证 evidence ref；ref 必须存在于聚合 hit 集合。
+- `EvidenceGrade`：round、相关性、覆盖度、来源质量、缺失方面、冲突、reason codes 和服务端决策。
+- `AgenticRetrievalState`：原 query、约束、主查询、attempt、grade、调用计数、最终 selected hit keys 和终态。
+
+`MultiAgentState` 只增加一个 `agentic_retrieval` 嵌套字段，避免散落计数器。下游兼容投影仍为 `tool_results["livestock_rag_search"]`，值是所有检索调用去重后的最终 `RagSearchResult`；`retrieved_contexts` 只从最终 selected hits 重建一次。
+
+硬限制：
+
+- `MAX_PRIMARY_SUBQUERIES = 3`
+- `MAX_SECONDARY_RETRIEVALS = 1`
+- `MAX_RETRIEVAL_QUERY_CALLS = 4`
+- `MAX_FINAL_HITS = 12`
+- `MAX_RETRIEVAL_QUERY_LENGTH = 500`
+
+最多三个主子查询加一个针对缺口的二次查询。RAG-SERVER stdio client 首版顺序调用，不并行复用同一连接。
+
+### 5.3 Query Decomposition 与 Rewrite
+
+- `QueryDecomposer` 使用主模型的受限 JSON schema；模型不可用、超时、输出非法或语义保护失败时，回退到确定性拆分或原 query。
+- 原始 query 永久保留。模型不能控制 collection、top_k、provider、工具名或执行次数。
+- `QueryRewriteGuard` 只接收 grade 给出的 missing aspects，最多生成一个 secondary query。
+- 改写后的查询必须与历史查询不同，并完整保留原输入的动物/实体、数字与单位、日期/时长和否定 span。
+- 改写新增否定、删除否定范围、改变动物/主体、丢失数字时间或引入新诊断时，拒绝 secondary query，直接进入证据不足结果。
+- Memory 可补充背景，但不属于 constraint 的权威来源；本轮显式输入始终优先。
+
+### 5.4 Evidence Grading 与聚合
+
+- 聚合按 `(source_uri, chunk_id)` 去重；缺失 URI 时退回稳定 chunk key。
+- 同 key 保留更高可比 score 的 hit；不同 `score_type` 不直接比较，保留首轮 rank 顺序。
+- grader 对相关性、子查询覆盖度、source URI/来源元数据质量和冲突分别评分。
+- 模型可以返回结构化候选 grade，但最终 `sufficient/refine/no_answer` 由服务端阈值和冲突规则决定。
+- `empty`、`low_confidence`、覆盖不足、来源质量不足或可解决冲突只允许 grade #1 触发一次 secondary。
+- grade #2 后仍不足或冲突未解决时，canonical RAG status 为 `low_confidence`，GroundedAnswer/Verifier 返回 no-answer 或补充信息请求，不得使用残余 hit 编造答案。
+- 所有 query 都发生永久/瞬时 RAG error 且无可用证据时，才返回执行失败并交给阶段二 retry/replan。
+
+### 5.5 Checkpoint、幂等与可观测性
+
+- 语义调用 operation key 为 `{request}:{plan}:{step}:r{round}:{query_id}`；语义 query call 与 MCP transport retry 分开计数。
+- retrieval action 完成后的 checkpoint 保存策略、attempt、grade、调用数和最终投影；从该 checkpoint resume 不重复已完成 action。
+- 微流程中的 RAG 调用均为只读。若进程在单个 Executor node 内崩溃，LangGraph 只能从该 node 前重放只读调用；本阶段不宣称子查询级 exactly-once。
+- trace 记录 decomposition source/fallback、round、query ID、call count、hit count、grade decision/reason codes、secondary trigger 和终止码。
+- debug/trace summary 不返回主模型 prompt、思维链、Memory 内容或完整 hit payload。
+
+### 5.6 Safety、Memory 与回答边界
+
+- Safety precheck 在分解和改写前执行；需要直接拒绝的请求不得进入 secondary retrieval。
+- `VerifierAgent -> SafetyAgent -> Final` 仍是最终必经路径，禁止 `safety -> retrieval/replan`。
+- Memory search 仍在 Planner 前，Memory 不能进入 aggregate hits、evidence grade、citations 或 sources。
+- `memory_write` 仍只在 Final 后；retrieval、grade 和 Replan 均不能调用。
+- Agentic Retrieval 不修改 RAG-SERVER MCP tool schema，继续使用现有 `RagServerClient.query()` 契约。
+- grader 必须使用原始 chunk content；document summary 只能作为展示元数据，不能替换证据正文参与冲突或 grounding 判断。
+
+### 5.7 小任务与提交门禁
+
+| 编号 | 小任务 | 主要产物 | 目标验证 | 状态 |
+|---|---|---|---|---|
+| R0 | 审计与规范 | 本阶段 DEV_SPEC、微流程/预算/失败决策 | Planner 基线与 staged diff 审核 | 已完成 |
+| R1 | Retrieval schema 与语义约束 | checkpoint schema、常量、constraint extractor | 合法模型；超限/非法 ref/约束丢失拒绝 | 未开始 |
+| R2 | Query decomposition 与 rewrite guard | 模型 schema、确定性 fallback、语义漂移防护 | 中英文实体/时间/数字/否定保持；最多 3+1 queries | 未开始 |
+| R3 | Evidence aggregate 与 grader | 去重、相关性/覆盖/来源/冲突评分 | sufficient/refine/no-answer；冲突与 unknown source | 未开始 |
+| R4 | 有界 Agentic Retrieval orchestrator | 1..3 主检索、一次 secondary、canonical projection | 1/2/4 calls、部分失败、调用上限、无证据不 Replan | 未开始 |
+| R5 | Executor/Checkpoint/可观测性接线 | state/reset、handler、PlanVerifier、debug/trace | resume 不重跑 action；新 turn 清理；旧外部契约不变 | 未开始 |
+| R6 | 回答、Memory 与 Safety 边界 | no-answer/追问、citation、阻断和隔离测试 | Memory 不进 evidence；Safety 零回边；冲突不作答 | 未开始 |
+| R7 | 系统验收与完成报告 | scripted E2E、eval、真实 RAG 门禁、报告 | decomposition/rewrite/二检/上限/回归全部可追溯 | 未开始 |
+
+每个小任务先补失败测试，再写最小实现，精确 staged 审核，独立 commit 并 push。R1–R4 优先新增独立模块，R5–R7 接线冲突文件时必须排除根工作区已有真实 RAG、疾病上下文和 Java 改动。
+
+### 5.8 阶段验收标准
+
+- 单一问题只执行一个主 query；可拆问题最多三个主 query，原问题始终可追溯。
+- rewrite 不改变实体、动物、数字、时间和否定语义；违规改写产生稳定拒绝原因且不调用 RAG。
+- grader 的四个维度、missing aspects、conflicts 和最终 decision 可断言。
+- 证据不足最多触发一次 secondary；总语义 RAG 调用不超过四次。
+- 二次检索后仍不足、来源未知或冲突未解时 no-answer，无 citation 泄漏和无证据回答。
+- RAG 基础设施错误保持阶段二 retry/permanent 语义；证据不足不进入 Replan。
+- checkpoint/new turn、Memory 租户隔离、Safety、legacy/internal-v1 contract 和 Planner 上限均不退化。
+- Fake 全矩阵和非真实 RAG 全量回归通过；真实 RAG 测试单列语料、collection、环境和结果，不可伪造通过。
 
 ## 6. 阶段四：Model Router 与评测
 
