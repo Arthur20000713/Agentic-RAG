@@ -7,7 +7,9 @@ from pydantic import BaseModel, Field
 from backend.app.schemas.agent import AgentToolError, IntentType, RetrievedContext, RiskLevel
 from backend.app.schemas.planning import (
     ExecutionFailure,
+    MAX_REPLANS,
     PlanVerificationResult,
+    ReplanRecord,
     StepExecutionResult,
     TaskPlan,
 )
@@ -42,6 +44,8 @@ class MultiAgentState(BaseModel):
     execution_failure: ExecutionFailure | None = None
     execution_count: int = Field(default=0, ge=0)
     plan_verification: PlanVerificationResult | None = None
+    replan_count: int = Field(default=0, ge=0, le=MAX_REPLANS)
+    replan_history: list[ReplanRecord] = Field(default_factory=list)
     tool_plan: list[dict[str, Any]] = Field(default_factory=list)
     tool_attempt: int = 0
     tool_results: dict[str, Any] = Field(default_factory=dict)

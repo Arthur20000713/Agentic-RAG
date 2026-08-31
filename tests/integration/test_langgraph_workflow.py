@@ -240,7 +240,7 @@ def test_graph_rejects_preinjected_non_allowlisted_tool_without_calling_rag() ->
     assert state.tool_results["response_agent"]["sources"] == []
 
 
-def test_tool_node_executes_the_query_and_top_k_selected_by_planner() -> None:
+def test_legacy_tool_plan_cannot_override_trusted_query_or_bounds() -> None:
     rag_client = CountingRagClient()
     initial = MultiAgentState(
         session_id="s_planned_tool_arguments",
@@ -256,9 +256,9 @@ def test_tool_node_executes_the_query_and_top_k_selected_by_planner() -> None:
     state = _invoke_state(initial, rag_client=rag_client, forced_intent="general_qa")
 
     assert rag_client.query_count == 1
-    assert rag_client.queries == ["planner rewritten cattle feeding query"]
-    assert rag_client.top_ks == [2]
-    assert state.rag_query == "planner rewritten cattle feeding query"
+    assert rag_client.queries == ["original livestock question"]
+    assert rag_client.top_ks == [4]
+    assert state.rag_query == "original livestock question"
 
 
 def test_chat_service_delegates_every_query_to_the_unified_graph(monkeypatch) -> None:

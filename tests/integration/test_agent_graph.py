@@ -113,8 +113,13 @@ def test_general_qa_graph_runs_supervisor_rag_verifier_safety_response() -> None
     assert state.tool_results["response_agent"]["sources"][0]["source_uri"].startswith("rag://")
     assert [item["node"] for item in state.agent_trace] == [
         "supervisor",
+        "planner",
         "rag_agent",
+        "executor",
+        "plan_verifier",
         "grounded_answer_agent",
+        "executor",
+        "plan_verifier",
         "verifier_agent",
         "safety_agent",
         "response_agent",
@@ -321,9 +326,16 @@ def test_disease_graph_uses_rag_without_fixed_slot_follow_up() -> None:
     assert "目前体温是多少" not in state.final_answer
     assert [item["node"] for item in state.agent_trace] == [
         "supervisor",
+        "planner",
         "disease_agent",
+        "executor",
+        "plan_verifier",
         "rag_agent",
+        "executor",
+        "plan_verifier",
         "grounded_answer_agent",
+        "executor",
+        "plan_verifier",
         "verifier_agent",
         "safety_agent",
         "response_agent",
@@ -397,9 +409,16 @@ def test_disease_graph_high_risk_uses_rag_verifier_safety_response() -> None:
     assert "livestock_rag_search" in state.tool_results
     assert [item["node"] for item in state.agent_trace] == [
         "supervisor",
+        "planner",
         "disease_agent",
+        "executor",
+        "plan_verifier",
         "rag_agent",
+        "executor",
+        "plan_verifier",
         "grounded_answer_agent",
+        "executor",
+        "plan_verifier",
         "verifier_agent",
         "safety_agent",
         "response_agent",

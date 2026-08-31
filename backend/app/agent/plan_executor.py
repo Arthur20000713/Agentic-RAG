@@ -67,6 +67,8 @@ class ExecutorAgent:
     async def execute_next(self, state: MultiAgentState) -> MultiAgentState:
         started_at = time.perf_counter()
         plan = state.task_plan
+        if state.execution_failure is not None:
+            return state
         if plan is None:
             self._record_failure(
                 state,
@@ -75,14 +77,10 @@ class ExecutorAgent:
                 retryable=False,
             )
             return state
-        if state.execution_failure is not None:
-            return state
-
-        finished_step_ids = {result.step_id for result in state.step_results}
         succeeded_step_ids = {
             result.step_id for result in state.step_results if result.status == "succeeded"
         }
-        pending = [step for step in plan.steps if step.step_id not in finished_step_ids]
+        pending = [step for step in plan.steps if step.step_id not in succeeded_step_ids]
         if not pending:
             state.current_step_id = None
             return state
@@ -148,11 +146,13 @@ class ExecutorAgent:
             )
             status = "success"
         else:
+            error_code = (outcome.error_code or "STEP_EXECUTION_FAILED")[:96]
+            error_message = (outcome.error_message or "step execution failed")[:500]
             result = StepExecutionResult(
                 step_id=step.step_id,
                 status="failed",
-                error_code=outcome.error_code or "STEP_EXECUTION_FAILED",
-                error_message=outcome.error_message,
+                error_code=error_code,
+                error_message=error_message,
                 retryable=outcome.retryable,
                 attempt=attempt,
             )

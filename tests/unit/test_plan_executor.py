@@ -118,8 +118,11 @@ def test_plan_verifier_requests_replan_for_retryable_step_failure() -> None:
     )
 
     asyncio.run(executor.execute_next(state))
+    first_verification = PlanVerifier().verify(state)
+    asyncio.run(executor.execute_next(state))
     verification = PlanVerifier().verify(state)
 
+    assert first_verification.decision == "next"
     assert verification.decision == "replan"
     assert verification.error_code == "MODEL_SCHEMA_INVALID"
     assert state.execution_failure is not None

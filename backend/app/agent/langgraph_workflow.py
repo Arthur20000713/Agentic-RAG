@@ -16,6 +16,8 @@ from backend.app.agent.disease_agent import DiseaseAgent
 from backend.app.agent.grounded_answer_agent import GroundedAnswerAgent
 from backend.app.agent.measurement_agent import MeasurementAgent
 from backend.app.agent.memory_tools import MemoryType, search_memory, write_memory
+from backend.app.agent.plan_executor import ActionOutcome, ExecutionHandlers, ExecutorAgent
+from backend.app.agent.plan_verifier import PlanVerifier
 from backend.app.agent.rag_agent import RagAgent
 from backend.app.agent.rag_answer_policy import (
     NO_ANSWER_TEXT,
@@ -23,6 +25,7 @@ from backend.app.agent.rag_answer_policy import (
     classify_rag_answer_policy,
 )
 from backend.app.agent.response_agent import ResponseAgent
+from backend.app.agent.replan_agent import ReplanAgent
 from backend.app.agent.router import IntentRouter
 from backend.app.agent.safety_agent import SafetyAgent
 from backend.app.agent.safety_precheck import SafetyPrecheck
@@ -38,6 +41,7 @@ from backend.app.model.query_normalizer import normalize_query_with_router
 from backend.app.model.router import ModelRouteRequest, ModelRouter
 from backend.app.schemas.agent import AgentToolError, IntentType
 from backend.app.schemas.measurement import MeasurementInput
+from backend.app.schemas.planning import ExecutionFailure, PlanStep
 from backend.app.services.feature_flag_service import FeatureFlagService
 from backend.app.services.memory_service import (
     MemoryEvent,
@@ -51,7 +55,6 @@ from backend.app.services.session_context_service import SessionContextData, Ses
 
 RAG_TOOL_NAME = "livestock_rag_search"
 PLANNER_TOOL_NAME = "query_knowledge_hub"
-MAX_TOOL_ATTEMPTS = 2
 
 
 @dataclass
@@ -86,10 +89,10 @@ def build_chat_graph(
     builder.add_node("memory_search", _memory_search_node)
     builder.add_node("router", _router_node)
     builder.add_node("direct", _direct_node)
-    builder.add_node("disease_prepare", _disease_prepare_node)
     builder.add_node("planner", _planner_node)
-    builder.add_node("tool", _tool_node)
-    builder.add_node("reasoning", _reasoning_node)
+    builder.add_node("executor", _executor_node)
+    builder.add_node("plan_verifier", _plan_verifier_node)
+    builder.add_node("replan", _replan_node)
     builder.add_node("verifier", _verifier_node)
     builder.add_node("safety", _safety_node)
     builder.add_node("final", _final_node)
@@ -104,18 +107,27 @@ def build_chat_graph(
         {
             "direct": "direct",
             "general": "planner",
-            "disease": "disease_prepare",
+            "disease": "planner",
         },
     )
     builder.add_edge("direct", "verifier")
-    builder.add_edge("disease_prepare", "planner")
-    builder.add_edge("planner", "tool")
+    builder.add_edge("planner", "executor")
     builder.add_conditional_edges(
-        "tool",
-        _after_tool_route,
-        {"retry": "tool", "reasoning": "reasoning"},
+        "plan_verifier",
+        _after_plan_verification,
+        {
+            "next": "executor",
+            "replan": "replan",
+            "goal": "verifier",
+            "terminal": "verifier",
+        },
     )
-    builder.add_edge("reasoning", "verifier")
+    builder.add_edge("executor", "plan_verifier")
+    builder.add_conditional_edges(
+        "replan",
+        _after_replan,
+        {"executor": "executor", "verifier": "verifier"},
+    )
     builder.add_edge("verifier", "safety")
     builder.add_edge("safety", "final")
     builder.add_edge("final", "memory_write")
@@ -258,12 +270,53 @@ async def _direct_node(
     return _dump(state)
 
 
-async def _disease_prepare_node(
+async def _planner_node(
     raw_state: MultiAgentState | dict[str, Any],
     runtime: Runtime[AgentGraphRuntime],
 ) -> dict[str, Any]:
     state = _state(raw_state)
     context = _context(runtime)
+    if state.tool_plan:
+        valid, error_code = validate_tool_plan(state.tool_plan)
+        if not valid:
+            _record_invalid_plan(state, error_code or "PLANNER_TOOL_NOT_ALLOWED")
+            return _dump(state)
+    await SupervisorAgent().plan(
+        state,
+        settings=context.settings,
+        primary_llm_client=context.primary_llm_client,
+    )
+    return _dump(state)
+
+
+async def _executor_node(
+    raw_state: MultiAgentState | dict[str, Any],
+    runtime: Runtime[AgentGraphRuntime],
+) -> dict[str, Any]:
+    state = _state(raw_state)
+    context = _context(runtime)
+    handlers = ExecutionHandlers(
+        understand_disease=lambda current, step, key: _execute_disease_understanding(
+            current, step, key, context
+        ),
+        query_knowledge_hub=lambda current, step, key: _execute_knowledge_query(
+            current, step, key, context
+        ),
+        compose_grounded_answer=lambda current, step, key: _execute_grounded_answer(
+            current, step, key, context
+        ),
+        safe_fallback=_execute_safe_fallback,
+    )
+    await ExecutorAgent(handlers).execute_next(state)
+    return _dump(state)
+
+
+async def _execute_disease_understanding(
+    state: MultiAgentState,
+    step: PlanStep,
+    operation_key: str,
+    context: AgentGraphRuntime,
+) -> ActionOutcome:
     previous = _session_context_from_state(state)
     if previous is not None:
         state.normalized_query = merge_session_slots(state.normalized_query or state.user_query, previous)
@@ -279,57 +332,69 @@ async def _disease_prepare_node(
     gaps = [str(item) for item in assessment.get("information_gaps") or [] if str(item).strip()]
     assessment["follow_up_questions"] = [_gap_to_question(item, state.user_query) for item in gaps][:3]
     state.disease_assessment = assessment
-    _maybe_write_disease_memory(state, context)
-    return _dump(state)
+    if not assessment:
+        return ActionOutcome.failure(
+            "DISEASE_UNDERSTANDING_MISSING",
+            "disease understanding did not produce an assessment",
+            retryable=True,
+        )
+    return ActionOutcome.success("disease_assessment")
 
 
-def _planner_node(
-    raw_state: MultiAgentState | dict[str, Any],
-    runtime: Runtime[AgentGraphRuntime],
-) -> dict[str, Any]:
-    state = _state(raw_state)
-    if not state.tool_plan:
-        state.tool_plan = [
-            {
-                "tool": PLANNER_TOOL_NAME,
-                "arguments": {
-                    "query": (state.rag_query or state.normalized_query or state.user_query).strip(),
-                    "top_k": 4,
-                },
-            }
-        ]
-    return _dump(state)
-
-
-async def _tool_node(
-    raw_state: MultiAgentState | dict[str, Any],
-    runtime: Runtime[AgentGraphRuntime],
-) -> dict[str, Any]:
-    state = _state(raw_state)
-    context = _context(runtime)
-    valid, error_code = validate_tool_plan(state.tool_plan)
-    if not valid:
-        _record_invalid_plan(state, error_code or "PLANNER_TOOL_NOT_ALLOWED")
-        return _dump(state)
-
+async def _execute_knowledge_query(
+    state: MultiAgentState,
+    step: PlanStep,
+    operation_key: str,
+    context: AgentGraphRuntime,
+) -> ActionOutcome:
+    query_source = str(step.arguments["query_source"])
+    query = getattr(state, query_source, None)
+    if not isinstance(query, str) or not query.strip():
+        return ActionOutcome.failure(
+            "TRUSTED_QUERY_MISSING",
+            f"trusted query source is empty: {query_source}",
+            retryable=False,
+        )
     if state.tool_attempt:
         _prepare_rag_retry(state)
-    arguments = state.tool_plan[0]["arguments"]
-    state.rag_query = str(arguments["query"]).strip()
+    state.rag_query = query.strip()
     state.tool_attempt += 1
+    if context.rag_client is None:
+        return ActionOutcome.failure(
+            "RAG_CLIENT_MISSING",
+            "RAG client is not configured",
+            retryable=False,
+        )
     await RagAgent(
         context.rag_client,
-        top_k=int(arguments.get("top_k", 4)),
+        top_k=int(step.arguments["top_k"]),
     ).run(state)
-    return _dump(state)
+    result = state.tool_results.get(RAG_TOOL_NAME)
+    if state.evidence_status == "error":
+        error_code = (
+            str(result.get("error_code") or "RAG_EXECUTION_FAILED")
+            if isinstance(result, dict)
+            else "RAG_EXECUTION_FAILED"
+        )
+        error_message = (
+            str(result.get("error_message") or "RAG execution failed")
+            if isinstance(result, dict)
+            else "RAG execution failed"
+        )
+        return ActionOutcome.failure(
+            error_code,
+            error_message,
+            retryable=_retryable_rag_error(error_code),
+        )
+    return ActionOutcome.success(RAG_TOOL_NAME)
 
 
-async def _reasoning_node(
-    raw_state: MultiAgentState | dict[str, Any],
-    runtime: Runtime[AgentGraphRuntime],
-) -> dict[str, Any]:
-    state = _state(raw_state)
-    context = _context(runtime)
+async def _execute_grounded_answer(
+    state: MultiAgentState,
+    step: PlanStep,
+    operation_key: str,
+    context: AgentGraphRuntime,
+) -> ActionOutcome:
     policy = _apply_rag_answer_policy(state)
     if policy.should_use_retrieved_contexts:
         await GroundedAnswerAgent(
@@ -338,6 +403,45 @@ async def _reasoning_node(
         ).run(state)
     if state.intent == "disease_consultation" and context.unsafe_draft_for_test is not None:
         state.draft_answer = context.unsafe_draft_for_test
+    if not state.draft_answer:
+        return ActionOutcome.failure(
+            "REASONING_DRAFT_MISSING",
+            "grounded reasoning did not produce a draft answer",
+            retryable=True,
+        )
+    return ActionOutcome.success("draft_answer")
+
+
+def _execute_safe_fallback(
+    state: MultiAgentState,
+    step: PlanStep,
+    operation_key: str,
+) -> ActionOutcome:
+    state.draft_answer = NO_ANSWER_TEXT
+    state.evidence_status = "low_confidence"
+    state.retrieved_contexts.clear()
+    state.tool_results["plan_safe_fallback"] = {
+        "status": "success",
+        "reason_code": step.arguments.get("reason_code"),
+    }
+    return ActionOutcome.success("draft_answer")
+
+
+def _plan_verifier_node(
+    raw_state: MultiAgentState | dict[str, Any],
+    runtime: Runtime[AgentGraphRuntime],
+) -> dict[str, Any]:
+    state = _state(raw_state)
+    PlanVerifier().verify(state)
+    return _dump(state)
+
+
+def _replan_node(
+    raw_state: MultiAgentState | dict[str, Any],
+    runtime: Runtime[AgentGraphRuntime],
+) -> dict[str, Any]:
+    state = _state(raw_state)
+    ReplanAgent().replan(state)
     return _dump(state)
 
 
@@ -406,6 +510,8 @@ async def _memory_write_node(
 ) -> dict[str, Any]:
     state = _state(raw_state)
     context = _context(runtime)
+    if state.intent == "disease_consultation":
+        _maybe_write_disease_memory(state, context)
     if not _memory_ready(runtime, read=False):
         return _dump(state)
 
@@ -472,14 +578,18 @@ def _chat_route(raw_state: MultiAgentState | dict[str, Any]) -> str:
     return "direct"
 
 
-def _after_tool_route(raw_state: MultiAgentState | dict[str, Any]) -> str:
+def _after_plan_verification(raw_state: MultiAgentState | dict[str, Any]) -> str:
     state = _state(raw_state)
-    validation = state.tool_results.get("tool_plan_validation")
-    if isinstance(validation, dict) and not validation.get("valid", True):
-        return "reasoning"
-    if state.evidence_status == "error" and state.tool_attempt < MAX_TOOL_ATTEMPTS:
-        return "retry"
-    return "reasoning"
+    if state.plan_verification is None:
+        return "terminal"
+    return state.plan_verification.decision
+
+
+def _after_replan(raw_state: MultiAgentState | dict[str, Any]) -> str:
+    state = _state(raw_state)
+    if state.execution_failure is None and state.task_plan is not None:
+        return "executor"
+    return "verifier"
 
 
 def validate_tool_plan(plan: list[dict[str, Any]]) -> tuple[bool, str | None]:
@@ -709,6 +819,23 @@ def _record_invalid_plan(state: MultiAgentState, error_code: str) -> None:
             message=message,
         )
     )
+    state.execution_failure = ExecutionFailure(
+        category="invalid_plan",
+        error_code=error_code,
+        retryable=False,
+        reason=message,
+    )
+
+
+def _retryable_rag_error(error_code: str) -> bool:
+    permanent_codes = {
+        "RAG_CLIENT_MISSING",
+        "RAG_COLLECTION_NOT_FOUND",
+        "RAG_SERVER_NOT_FOUND",
+        "RAG_SERVER_PATH_MISSING",
+        "TRUSTED_QUERY_MISSING",
+    }
+    return error_code not in permanent_codes
 
 
 def _prepare_rag_retry(state: MultiAgentState) -> None:

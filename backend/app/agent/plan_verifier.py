@@ -4,6 +4,7 @@ import time
 
 from backend.app.agent.state import MultiAgentState
 from backend.app.schemas.planning import (
+    MAX_STEP_ATTEMPTS,
     ExecutionFailure,
     PlanStep,
     PlanVerificationResult,
@@ -26,6 +27,24 @@ class PlanVerifier:
             )
         if state.execution_failure is not None:
             failure = state.execution_failure
+            latest = state.step_results[-1] if state.step_results else None
+            if (
+                failure.retryable
+                and latest is not None
+                and latest.step_id == failure.step_id
+                and latest.attempt < MAX_STEP_ATTEMPTS
+            ):
+                state.execution_failure = None
+                return self._record(
+                    state,
+                    PlanVerificationResult(
+                        decision="next",
+                        step_id=failure.step_id,
+                        error_code=failure.error_code,
+                        reason="retry the failed step within its attempt budget",
+                    ),
+                    started_at,
+                )
             return self._record(
                 state,
                 PlanVerificationResult(
@@ -108,7 +127,11 @@ class PlanVerifier:
         state.agent_trace.append(
             {
                 "node": "plan_verifier",
-                "status": "success" if result.decision in {"next", "goal"} else "failed",
+                "status": (
+                    "retry"
+                    if result.decision == "next" and result.error_code is not None
+                    else "success" if result.decision in {"next", "goal"} else "failed"
+                ),
                 "plan_id": state.task_plan.plan_id if state.task_plan is not None else None,
                 "revision": state.task_plan.revision if state.task_plan is not None else None,
                 "step_id": result.step_id,
