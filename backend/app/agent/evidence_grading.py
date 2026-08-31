@@ -12,7 +12,8 @@ from backend.app.schemas.retrieval import (
 
 _RELEVANCE_THRESHOLD = 0.55
 _COVERAGE_THRESHOLD = 1.0
-_SOURCE_QUALITY_THRESHOLD = 0.75
+_SOURCE_QUALITY_THRESHOLD = 1.0
+_MAX_OBSERVED_HITS = 64
 
 
 @dataclass(frozen=True)
@@ -20,6 +21,7 @@ class AggregatedEvidence:
     hits: list[RagSearchHit]
     hit_keys: list[str]
     query_hit_keys: dict[str, list[str]]
+    query_statuses: dict[str, str]
 
     @property
     def hit_by_key(self) -> dict[str, RagSearchHit]:
@@ -35,16 +37,20 @@ class EvidenceAggregator:
         hit_keys: list[str] = []
         key_indexes: dict[str, int] = {}
         query_hit_keys: dict[str, list[str]] = {}
+        query_statuses: dict[str, str] = {}
 
         for query_id, result in results:
+            query_statuses[query_id] = result.status
             query_keys = query_hit_keys.setdefault(query_id, [])
             if result.status == "error":
                 continue
             for hit in result.hits:
                 key = evidence_hit_key(hit)
+                existing_index = key_indexes.get(key)
+                if existing_index is None and len(hits) >= _MAX_OBSERVED_HITS:
+                    continue
                 if key not in query_keys:
                     query_keys.append(key)
-                existing_index = key_indexes.get(key)
                 if existing_index is None:
                     key_indexes[key] = len(hits)
                     hit_keys.append(key)
@@ -58,6 +64,7 @@ class EvidenceAggregator:
             hits=hits,
             hit_keys=hit_keys,
             query_hit_keys=query_hit_keys,
+            query_statuses=query_statuses,
         )
 
 
@@ -98,6 +105,10 @@ class EvidenceGrader:
             reason_codes.append("source_quality_below_threshold")
         if conflicts:
             reason_codes.append("evidence_conflict")
+        if "low_confidence" in evidence.query_statuses.values():
+            reason_codes.append("upstream_low_confidence")
+        if reason_codes and not missing_aspects:
+            missing_aspects = [query.purpose for query in queries][:3]
 
         decision = "sufficient" if not reason_codes else ("refine" if round == 1 else "no_answer")
         return EvidenceGrade(
@@ -122,7 +133,7 @@ class EvidenceGrader:
     def _source_quality(self, hits: list[RagSearchHit]) -> float:
         if not hits:
             return 0.0
-        traceable = sum(_has_traceable_source(hit) for hit in hits)
+        traceable = sum(has_traceable_source(hit) for hit in hits)
         return round(traceable / len(hits), 4)
 
     def _conflicts(self, evidence: AggregatedEvidence) -> list[EvidenceConflict]:
@@ -159,7 +170,7 @@ def evidence_hit_key(hit: RagSearchHit) -> str:
     return f"evidence://{sha256(raw.encode('utf-8')).hexdigest()}"
 
 
-def _has_traceable_source(hit: RagSearchHit) -> bool:
+def has_traceable_source(hit: RagSearchHit) -> bool:
     source = (hit.source_uri or "").casefold()
     return bool(
         source
@@ -174,4 +185,5 @@ __all__ = [
     "EvidenceAggregator",
     "EvidenceGrader",
     "evidence_hit_key",
+    "has_traceable_source",
 ]

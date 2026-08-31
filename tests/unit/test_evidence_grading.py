@@ -77,6 +77,19 @@ def test_aggregator_builds_stable_fallback_key_without_source_uri() -> None:
     assert first.hit_keys[0].startswith("chunk://")
 
 
+def test_aggregator_caps_checkpoint_observed_hits() -> None:
+    hits = [
+        _hit(f"c{index}", source_uri=f"rag://kb/doc_{index}")
+        for index in range(65)
+    ]
+
+    evidence = EvidenceAggregator().aggregate([("q_1", _result("query", *hits))])
+
+    assert len(evidence.hits) == 64
+    assert len(evidence.hit_keys) == 64
+    assert len(evidence.query_hit_keys["q_1"]) == 64
+
+
 def test_grader_accepts_complete_relevant_and_traceable_evidence() -> None:
     queries = [
         _query("q_feed", "calf feeding", "feeding"),
@@ -154,6 +167,30 @@ def test_grader_rejects_unknown_source_quality_after_second_round() -> None:
     assert second.decision == "no_answer"
 
 
+def test_grader_requires_every_selected_source_to_be_traceable() -> None:
+    queries = [_query("q_feed", "calf feeding", "feeding")]
+    evidence = EvidenceAggregator().aggregate(
+        [
+            (
+                "q_feed",
+                _result(
+                    "calf feeding",
+                    _hit("known", source_uri="rag://kb/known"),
+                    _hit(
+                        "unknown-chunk-2",
+                        source_uri="rag://kb/unknown-doc-2/unknown-chunk-2",
+                    ),
+                ),
+            )
+        ]
+    )
+
+    grade = EvidenceGrader().grade(round=1, queries=queries, evidence=evidence)
+
+    assert grade.source_quality == 0.5
+    assert grade.decision == "refine"
+
+
 def test_grader_surfaces_traceable_conflicts_and_never_marks_them_sufficient() -> None:
     queries = [_query("q_water", "calf water allowance", "water allowance")]
     left = _hit(
@@ -192,3 +229,19 @@ def test_grader_treats_empty_evidence_as_a_bounded_refinement() -> None:
     assert grade.relevance == 0.0
     assert grade.missing_aspects == ["feeding"]
     assert "no_evidence" in grade.reason_codes
+
+
+def test_grader_does_not_upgrade_an_upstream_low_confidence_result() -> None:
+    queries = [_query("q_feed", "calf feeding", "feeding")]
+    result = _result(
+        "calf feeding",
+        _hit("feed", source_uri="rag://kb/feed", score=0.95),
+    ).model_copy(update={"status": "low_confidence"})
+    evidence = EvidenceAggregator().aggregate([("q_feed", result)])
+
+    first = EvidenceGrader().grade(round=1, queries=queries, evidence=evidence)
+    second = EvidenceGrader().grade(round=2, queries=queries, evidence=evidence)
+
+    assert first.decision == "refine"
+    assert "upstream_low_confidence" in first.reason_codes
+    assert second.decision == "no_answer"
