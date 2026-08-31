@@ -283,7 +283,7 @@ trusted query
 | 编号 | 小任务 | 主要产物 | 目标验证 | 状态 |
 |---|---|---|---|---|
 | R0 | 审计与规范 | 本阶段 DEV_SPEC、微流程/预算/失败决策 | Planner 基线与 staged diff 审核 | 已完成 |
-| R1 | Retrieval schema 与语义约束 | checkpoint schema、常量、constraint extractor | 合法模型；超限/非法 ref/约束丢失拒绝 | 未开始 |
+| R1 | Retrieval schema 与语义约束 | checkpoint schema、常量、constraint extractor | 合法模型；超限/非法 ref/约束丢失拒绝 | 已完成 |
 | R2 | Query decomposition 与 rewrite guard | 模型 schema、确定性 fallback、语义漂移防护 | 中英文实体/时间/数字/否定保持；最多 3+1 queries | 未开始 |
 | R3 | Evidence aggregate 与 grader | 去重、相关性/覆盖/来源/冲突评分 | sufficient/refine/no-answer；冲突与 unknown source | 未开始 |
 | R4 | 有界 Agentic Retrieval orchestrator | 1..3 主检索、一次 secondary、canonical projection | 1/2/4 calls、部分失败、调用上限、无证据不 Replan | 未开始 |
