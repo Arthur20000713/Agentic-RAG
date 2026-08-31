@@ -4,16 +4,21 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from backend.app.schemas.agent import AgentToolError, IntentType, RetrievedContext, RiskLevel
+from backend.app.schemas.agent import (
+    AgentToolError,
+    IntentType,
+    RetrievedContext,
+    RiskLevel,
+)
 from backend.app.schemas.planning import (
-    ExecutionFailure,
     MAX_REPLANS,
+    ExecutionFailure,
     PlanVerificationResult,
     ReplanRecord,
     StepExecutionResult,
     TaskPlan,
 )
-
+from backend.app.schemas.retrieval import AgenticRetrievalState
 
 EvidenceStatus = Literal["success", "empty", "low_confidence", "error"]
 
@@ -33,6 +38,7 @@ class MultiAgentState(BaseModel):
     rag_query: str | None = None
     retrieved_contexts: list[RetrievedContext] = Field(default_factory=list)
     evidence_status: EvidenceStatus | None = None
+    agentic_retrieval: AgenticRetrievalState | None = None
     disease_assessment: dict[str, Any] | None = None
     measurement_report: dict[str, Any] | None = None
     draft_answer: str | None = None

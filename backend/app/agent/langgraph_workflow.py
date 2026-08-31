@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import re
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
@@ -12,21 +13,28 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.runtime import Runtime
 from langgraph.store.base import BaseStore
 
-from backend.app.agent.direct_answer_agent import DirectAnswerAgent, fallback_direct_answer
+from backend.app.agent.agentic_retrieval import AgenticRetrievalOrchestrator
+from backend.app.agent.direct_answer_agent import (
+    DirectAnswerAgent,
+    fallback_direct_answer,
+)
 from backend.app.agent.disease_agent import DiseaseAgent
 from backend.app.agent.grounded_answer_agent import GroundedAnswerAgent
 from backend.app.agent.measurement_agent import MeasurementAgent
 from backend.app.agent.memory_tools import MemoryType, search_memory, write_memory
-from backend.app.agent.plan_executor import ActionOutcome, ExecutionHandlers, ExecutorAgent
+from backend.app.agent.plan_executor import (
+    ActionOutcome,
+    ExecutionHandlers,
+    ExecutorAgent,
+)
 from backend.app.agent.plan_verifier import PlanVerifier
-from backend.app.agent.rag_agent import RagAgent
 from backend.app.agent.rag_answer_policy import (
     NO_ANSWER_TEXT,
     SAFETY_REFUSAL_TEXT,
     classify_rag_answer_policy,
 )
-from backend.app.agent.response_agent import ResponseAgent
 from backend.app.agent.replan_agent import ReplanAgent
+from backend.app.agent.response_agent import ResponseAgent
 from backend.app.agent.router import IntentRouter
 from backend.app.agent.safety_agent import SafetyAgent
 from backend.app.agent.safety_precheck import SafetyPrecheck
@@ -39,20 +47,24 @@ from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
 from backend.app.model.base import BaseModelClient
 from backend.app.model.intent_router import IntentRoutingResult, route_intent_with_model
 from backend.app.model.query_normalizer import normalize_query_with_router
-from backend.app.model.router import ModelRouteRequest, ModelRouter
-from backend.app.schemas.agent import AgentToolError, IntentType
+from backend.app.model.router import ModelRouter, ModelRouteRequest
+from backend.app.schemas.agent import AgentToolError, IntentType, RetrievedContext
 from backend.app.schemas.measurement import MeasurementInput
 from backend.app.schemas.planning import ExecutionFailure, PlanStep
+from backend.app.schemas.rag_server import RagSearchResult
+from backend.app.schemas.retrieval import RetrievalQuerySource
 from backend.app.services.feature_flag_service import FeatureFlagService
 from backend.app.services.memory_service import (
     MemoryEvent,
     MemoryFact,
-    MemorySource,
     MemoryService,
+    MemorySource,
     build_measurement_memory_fact,
 )
-from backend.app.services.session_context_service import SessionContextData, SessionContextService
-
+from backend.app.services.session_context_service import (
+    SessionContextData,
+    SessionContextService,
+)
 
 RAG_TOOL_NAME = "livestock_rag_search"
 PLANNER_TOOL_NAME = "query_knowledge_hub"
@@ -217,6 +229,7 @@ def _reset_transient_turn_state(state: MultiAgentState) -> None:
     state.rag_query = None
     state.retrieved_contexts = []
     state.evidence_status = None
+    state.agentic_retrieval = None
     state.disease_assessment = None
     state.measurement_report = None
     state.draft_answer = None
@@ -399,7 +412,8 @@ async def _execute_knowledge_query(
     operation_key: str,
     context: AgentGraphRuntime,
 ) -> ActionOutcome:
-    query_source = str(step.arguments["query_source"])
+    started_at = time.perf_counter()
+    query_source = cast(RetrievalQuerySource, step.arguments["query_source"])
     query = getattr(state, query_source, None)
     if not isinstance(query, str) or not query.strip():
         return ActionOutcome.failure(
@@ -417,21 +431,54 @@ async def _execute_knowledge_query(
             "RAG client is not configured",
             retryable=False,
         )
-    await RagAgent(
+    outcome = await AgenticRetrievalOrchestrator(
         context.rag_client,
         top_k=int(step.arguments["top_k"]),
-    ).run(state)
-    result = state.tool_results.get(RAG_TOOL_NAME)
+        settings=context.settings,
+        primary_llm_client=context.primary_llm_client,
+    ).run(
+        original_query=state.rag_query,
+        query_source=query_source,
+        request_id=state.request_id,
+        operation_prefix=operation_key.rsplit(":", 1)[0],
+    )
+    state.agentic_retrieval = outcome.state
+    state.tool_results[RAG_TOOL_NAME] = outcome.result.model_dump(mode="json")
+    state.evidence_status = outcome.result.status
+    _replace_retrieved_contexts(state, outcome.result)
+    _record_agentic_retrieval_trace(
+        state,
+        query=state.rag_query,
+        latency_ms=max(0, int((time.perf_counter() - started_at) * 1000)),
+    )
+    result = state.tool_results[RAG_TOOL_NAME]
     if state.evidence_status == "error":
+        first_attempt_error = next(
+            (
+                attempt.error_code
+                for attempt in outcome.state.attempts
+                if attempt.status == "error" and attempt.error_code
+            ),
+            None,
+        )
         error_code = (
-            str(result.get("error_code") or "RAG_EXECUTION_FAILED")
+            str(first_attempt_error or result.get("error_code") or "RAG_EXECUTION_FAILED")
             if isinstance(result, dict)
             else "RAG_EXECUTION_FAILED"
         )
+        if isinstance(result, dict):
+            result["error_code"] = error_code
         error_message = (
             str(result.get("error_message") or "RAG execution failed")
             if isinstance(result, dict)
             else "RAG execution failed"
+        )
+        state.errors.append(
+            AgentToolError(
+                tool_name="rag_agent",
+                error_code=error_code,
+                message=error_message,
+            )
         )
         return ActionOutcome.failure(
             error_code,
@@ -897,6 +944,68 @@ def _prepare_rag_retry(state: MultiAgentState) -> None:
     state.errors = [error for error in state.errors if error.tool_name != "rag_agent"]
     state.retrieved_contexts.clear()
     state.evidence_status = None
+    state.agentic_retrieval = None
+
+
+def _replace_retrieved_contexts(
+    state: MultiAgentState,
+    result: RagSearchResult,
+) -> None:
+    state.retrieved_contexts = [
+        RetrievedContext(
+            chunk_id=hit.chunk_id,
+            document_id=hit.document_id,
+            title=hit.document_title,
+            content=hit.content,
+            page=hit.page,
+            section_title=hit.section_title,
+            score=hit.score,
+            source_type=hit.metadata.get("source_type"),
+        )
+        for hit in result.hits
+    ]
+
+
+def _record_agentic_retrieval_trace(
+    state: MultiAgentState,
+    *,
+    query: str,
+    latency_ms: int,
+) -> None:
+    retrieval = state.agentic_retrieval
+    if retrieval is None:
+        return
+    final_grade = retrieval.grades[-1] if retrieval.grades else None
+    error_code = next(
+        (
+            attempt.error_code
+            for attempt in retrieval.attempts
+            if attempt.status == "error" and attempt.error_code
+        ),
+        None,
+    )
+    state.agent_trace.append(
+        {
+            "node": "rag_agent",
+            "mode": "agentic_retrieval",
+            "status": state.evidence_status,
+            "evidence_status": state.evidence_status,
+            "query": query,
+            "primary_query_count": len(retrieval.primary_queries),
+            "secondary_used": retrieval.secondary_query is not None,
+            "rag_call_count": retrieval.rag_call_count,
+            "result_count": len(retrieval.selected_hit_keys),
+            "grade_decision": final_grade.decision if final_grade is not None else None,
+            "grade_reason_codes": list(final_grade.reason_codes) if final_grade is not None else [],
+            "decomposition_source": retrieval.decomposition_source,
+            "decomposition_fallback_reason": retrieval.decomposition_fallback_reason,
+            "rewrite_source": retrieval.rewrite_source,
+            "rewrite_fallback_reason": retrieval.rewrite_fallback_reason,
+            "termination_code": retrieval.termination_code,
+            "error_code": error_code,
+            "latency_ms": latency_ms,
+        }
+    )
 
 
 def _session_context_from_state(state: MultiAgentState) -> SessionContextData | None:

@@ -287,7 +287,7 @@ trusted query
 | R2 | Query decomposition 与 rewrite guard | 模型 schema、确定性 fallback、语义漂移防护 | 中英文实体/时间/数字/否定保持；最多 3+1 queries | 已完成 |
 | R3 | Evidence aggregate 与 grader | 去重、相关性/覆盖/来源/冲突评分 | sufficient/refine/no-answer；冲突与 unknown source | 已完成 |
 | R4 | 有界 Agentic Retrieval orchestrator | 1..3 主检索、一次 secondary、canonical projection | 1/2/4 calls、部分失败、调用上限、无证据不 Replan | 已完成 |
-| R5 | Executor/Checkpoint/可观测性接线 | state/reset、handler、PlanVerifier、debug/trace | resume 不重跑 action；新 turn 清理；旧外部契约不变 | 未开始 |
+| R5 | Executor/Checkpoint/可观测性接线 | state/reset、handler、PlanVerifier、debug/trace | resume 不重跑 action；新 turn 清理；旧外部契约不变 | 已完成 |
 | R6 | 回答、Memory 与 Safety 边界 | no-answer/追问、citation、阻断和隔离测试 | Memory 不进 evidence；Safety 零回边；冲突不作答 | 未开始 |
 | R7 | 系统验收与完成报告 | scripted E2E、eval、真实 RAG 门禁、报告 | decomposition/rewrite/二检/上限/回归全部可追溯 | 未开始 |
 

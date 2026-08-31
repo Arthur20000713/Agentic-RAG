@@ -142,6 +142,8 @@ def test_orchestrator_returns_sufficient_canonical_result_in_one_call() -> None:
     assert [citation.chunk_id for citation in outcome.result.citations] == ["feed"]
     assert outcome.state.final_status == "sufficient"
     assert outcome.state.rag_call_count == 1
+    assert outcome.state.decomposition_source == "test"
+    assert outcome.state.rewrite_source is None
     assert outcome.state.attempts[0].operation_key.endswith(":r1:q_primary_1")
 
 

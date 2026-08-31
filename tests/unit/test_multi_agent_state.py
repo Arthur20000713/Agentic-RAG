@@ -19,6 +19,7 @@ def test_multi_agent_state_has_contract_fields_and_defaults() -> None:
     assert state.rag_query is None
     assert state.retrieved_contexts == []
     assert state.evidence_status is None
+    assert state.agentic_retrieval is None
     assert state.disease_assessment is None
     assert state.measurement_report is None
     assert state.draft_answer is None

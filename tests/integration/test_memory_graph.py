@@ -138,9 +138,11 @@ def test_checkpointed_chat_turn_resets_transient_agent_state() -> None:
     first, second = asyncio.run(invoke())
 
     assert "livestock_rag_search" in first.tool_results
+    assert first.agentic_retrieval is not None
     assert second.intent == "out_of_scope"
     assert "livestock_rag_search" not in second.tool_results
     assert second.retrieved_contexts == []
+    assert second.agentic_retrieval is None
     assert second.errors == []
     assert second.task_plan is None
     assert second.current_step_id is None
@@ -185,6 +187,7 @@ def test_sqlite_checkpoint_resume_does_not_repeat_completed_step(tmp_path: Path)
     result = asyncio.run(invoke())
 
     assert client.query_count == 1
+    assert result.agentic_retrieval is not None
     assert result.execution_count == 2
     assert [item.step_id for item in result.step_results] == ["retrieve", "compose"]
     assert result.plan_verification is not None

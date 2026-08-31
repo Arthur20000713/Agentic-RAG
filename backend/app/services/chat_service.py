@@ -13,6 +13,7 @@ from backend.app.schemas.api import ChatRequest
 from backend.app.services.feature_flag_service import FeatureFlagService
 from backend.app.services.session_context_service import SessionContextService
 
+
 class ChatService:
     def __init__(
         self,
@@ -92,9 +93,41 @@ def build_agent_runtime_debug_payload(
                 "evidence_status": state.evidence_status,
                 "model_fallbacks": list(state.tool_results.get("model_fallbacks") or []),
                 "planning": _planning_debug_summary(state),
+                "agentic_retrieval": _agentic_retrieval_debug_summary(state),
             }
         )
     return payload
+
+
+def _agentic_retrieval_debug_summary(state: MultiAgentState) -> dict[str, Any]:
+    retrieval = state.agentic_retrieval
+    if retrieval is None:
+        return {"status": "not_available"}
+    return {
+        "status": retrieval.final_status,
+        "decomposition_source": retrieval.decomposition_source,
+        "decomposition_fallback_reason": retrieval.decomposition_fallback_reason,
+        "primary_query_count": len(retrieval.primary_queries),
+        "secondary_used": retrieval.secondary_query is not None,
+        "rewrite_source": retrieval.rewrite_source,
+        "rewrite_fallback_reason": retrieval.rewrite_fallback_reason,
+        "rewrite_rejection_reasons": list(retrieval.rewrite_rejection_reasons),
+        "rag_call_count": retrieval.rag_call_count,
+        "termination_code": retrieval.termination_code,
+        "grades": [
+            {
+                "round": grade.round,
+                "decision": grade.decision,
+                "relevance": grade.relevance,
+                "coverage": grade.coverage,
+                "source_quality": grade.source_quality,
+                "reason_codes": list(grade.reason_codes),
+                "missing_aspect_count": len(grade.missing_aspects),
+                "conflict_count": len(grade.conflicts),
+            }
+            for grade in retrieval.grades
+        ],
+    }
 
 
 def _planning_debug_summary(state: MultiAgentState) -> dict[str, Any]:

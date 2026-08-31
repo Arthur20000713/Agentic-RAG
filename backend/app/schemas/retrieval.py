@@ -114,6 +114,11 @@ class AgenticRetrievalState(BaseModel):
     original_query: str = Field(min_length=1, max_length=MAX_RETRIEVAL_QUERY_LENGTH)
     query_source: RetrievalQuerySource
     constraints: QueryConstraintSnapshot
+    decomposition_source: str = Field(default="unknown", min_length=1, max_length=32)
+    decomposition_fallback_reason: str | None = Field(default=None, max_length=96)
+    rewrite_source: str | None = Field(default=None, max_length=32)
+    rewrite_fallback_reason: str | None = Field(default=None, max_length=96)
+    rewrite_rejection_reasons: list[str] = Field(default_factory=list, max_length=8)
     primary_queries: list[RetrievalQuery] = Field(
         min_length=1,
         max_length=MAX_PRIMARY_SUBQUERIES,

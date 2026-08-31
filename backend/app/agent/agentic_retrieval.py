@@ -107,6 +107,8 @@ class AgenticRetrievalOrchestrator:
                 attempts=attempts,
                 grades=grades,
                 evidence=evidence,
+                decomposition=decomposition,
+                rewrite=None,
             )
         if first_grade.decision == "sufficient":
             return self._sufficient_outcome(
@@ -119,6 +121,8 @@ class AgenticRetrievalOrchestrator:
                 grades=grades,
                 evidence=evidence,
                 results=results,
+                decomposition=decomposition,
+                rewrite=None,
             )
 
         gap_queries = [
@@ -142,6 +146,8 @@ class AgenticRetrievalOrchestrator:
                 evidence=evidence,
                 results=results,
                 termination_code="REWRITE_REJECTED",
+                decomposition=decomposition,
+                rewrite=rewrite,
             )
         secondary_query = rewrite.query
         if len(attempts) >= MAX_RETRIEVAL_QUERY_CALLS:
@@ -176,6 +182,8 @@ class AgenticRetrievalOrchestrator:
                 grades=grades,
                 evidence=evidence,
                 results=results,
+                decomposition=decomposition,
+                rewrite=rewrite,
             )
         return self._insufficient_outcome(
             original_query=original_query,
@@ -188,6 +196,8 @@ class AgenticRetrievalOrchestrator:
             evidence=evidence,
             results=results,
             termination_code="EVIDENCE_INSUFFICIENT_AFTER_SECONDARY",
+            decomposition=decomposition,
+            rewrite=rewrite,
         )
 
     async def _search(
@@ -292,6 +302,8 @@ class AgenticRetrievalOrchestrator:
         attempts: list[RetrievalAttempt],
         grades: list[EvidenceGrade],
         evidence: AggregatedEvidence,
+        decomposition: Any,
+        rewrite: Any | None,
         selected_keys: list[str],
         final_status: str,
         termination_code: str | None,
@@ -301,6 +313,17 @@ class AgenticRetrievalOrchestrator:
             original_query=original_query,
             query_source=query_source,
             constraints=constraints,
+            decomposition_source=str(decomposition.source)[:32],
+            decomposition_fallback_reason=_bounded_reason(decomposition.fallback_reason),
+            rewrite_source=(str(rewrite.source)[:32] if rewrite is not None else None),
+            rewrite_fallback_reason=(
+                _bounded_reason(rewrite.fallback_reason) if rewrite is not None else None
+            ),
+            rewrite_rejection_reasons=(
+                [str(item)[:96] for item in rewrite.rejection_reasons[:8]]
+                if rewrite is not None
+                else []
+            ),
             primary_queries=primary_queries,
             secondary_query=secondary_query,
             attempts=attempts,
@@ -362,6 +385,10 @@ def _mapping_warnings(results: list[tuple[str, RagSearchResult]]) -> list[str]:
     for _, result in results:
         warnings.extend(item for item in result.mapping_warnings if item not in warnings)
     return warnings
+
+
+def _bounded_reason(reason: Any | None) -> str | None:
+    return str(reason)[:96] if reason is not None else None
 
 
 __all__ = ["AgenticRetrievalOrchestrator", "AgenticRetrievalOutcome"]
