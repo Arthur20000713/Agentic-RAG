@@ -230,13 +230,15 @@ class TransformersBackend(BaseLocalBackend):
         if self._generator is not None:
             return self._generator(prompt, request)
 
-        try:
-            import torch
-            from transformers import AutoModelForCausalLM, AutoTokenizer
-        except ImportError as exc:
-            raise ImportError("install local transformers dependencies with: pip install -e .[transformers]") from exc
-
         if self._model is None or self._tokenizer is None or self._loaded_model_name != request.model:
+            try:
+                import torch
+                from transformers import AutoModelForCausalLM, AutoTokenizer
+            except ImportError as exc:
+                raise ImportError(
+                    "install local transformers dependencies with: pip install -e .[transformers]"
+                ) from exc
+
             dtype = request.options.get("torch_dtype", "auto")
             model_kwargs: dict[str, Any] = {"trust_remote_code": False}
             if dtype:

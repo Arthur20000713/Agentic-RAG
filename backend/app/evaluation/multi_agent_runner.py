@@ -130,31 +130,61 @@ class MultiAgentEvalRunner:
         if case.category in {"general_qa", "feeding_management"}:
             return [
                 "supervisor",
+                "planner",
                 "rag_agent",
+                "executor",
+                "plan_verifier",
                 "grounded_answer_agent",
+                "executor",
+                "plan_verifier",
                 "verifier_agent",
                 "safety_agent",
                 "response_agent",
             ]
         if case.category == "no_answer":
-            return ["supervisor", "rag_agent", "verifier_agent", "safety_agent", "response_agent"]
+            return [
+                "supervisor",
+                "planner",
+                "rag_agent",
+                "executor",
+                "plan_verifier",
+                "executor",
+                "plan_verifier",
+                "verifier_agent",
+                "safety_agent",
+                "response_agent",
+            ]
         if case.category == "measurement_analysis":
             return ["supervisor", "measurement_agent", "verifier_agent", "safety_agent", "response_agent"]
         if case.category == "high_risk_refusal":
             return [
                 "supervisor",
+                "planner",
                 "disease_agent",
+                "executor",
+                "plan_verifier",
                 "rag_agent",
+                "executor",
+                "plan_verifier",
                 "grounded_answer_agent",
+                "executor",
+                "plan_verifier",
                 "verifier_agent",
                 "safety_agent",
                 "response_agent",
             ]
         return [
             "supervisor",
+            "planner",
             "disease_agent",
+            "executor",
+            "plan_verifier",
             "rag_agent",
+            "executor",
+            "plan_verifier",
             "grounded_answer_agent",
+            "executor",
+            "plan_verifier",
             "verifier_agent",
             "safety_agent",
             "response_agent",

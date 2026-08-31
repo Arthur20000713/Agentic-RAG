@@ -175,7 +175,7 @@ context -> memory_search -> router
 | P3 | Executor 与 PlanVerifier | 串行依赖调度、结果契约、step/goal 判定 | 依赖顺序、输出缺失、永久失败、deadlock | 已完成 |
 | P4 | Replan 与 LangGraph 拓扑 | 条件边、失败分类、保留成功步骤、循环上限 | 一次失败后改计划成功；安全/永久失败不循环 | 已完成 |
 | P5 | Checkpoint 与可观测性 | resume API、新 turn reset、trace/debug 摘要 | 重启续跑不重复步骤；同 thread 新请求无状态泄漏 | 已完成 |
-| P6 | 系统验收与审核 | scripted E2E、回归结果、完成报告 | 成功/重规划/失败/安全/上限/Memory 边界与全量离线回归 | 未开始 |
+| P6 | 系统验收与审核 | scripted E2E、回归结果、完成报告 | 成功/重规划/失败/安全/上限/Memory 边界与全量离线回归 | 已完成 |
 
 每个小任务先补失败测试，再写最小实现，运行目标回归，审核 staged diff，独立 commit 并 push。
 
@@ -194,6 +194,8 @@ P0 基线命令：
 ```powershell
 .venv\Scripts\python.exe -m pytest tests/unit/test_langgraph_topology.py tests/unit/test_verifier_agent.py tests/unit/test_checkpointing.py tests/integration/test_langgraph_workflow.py tests/integration/test_tool_timeout.py -q -p no:cacheprovider
 ```
+
+阶段完成记录见 `docs/PLANNER_COMPLETION_REPORT.md`。
 
 ## 5. 阶段三：Agentic Retrieval
 
