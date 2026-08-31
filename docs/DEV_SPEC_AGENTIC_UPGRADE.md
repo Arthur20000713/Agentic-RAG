@@ -105,13 +105,95 @@
 
 ## 4. 阶段二：Planner + Executor + Verifier + Replan
 
-Memory 完成后补充该阶段的详细设计评审，当前先锁定最小验收边界：
+### 4.1 当前基线与改造范围
 
-- Planner 输出受 schema 约束的目标、步骤、依赖、工具和完成条件。
-- Executor 每次只执行当前可运行步骤，所有工具仍经过 allowlist 和参数校验。
-- Verifier 对步骤结果和总体目标分别判定，返回结构化失败原因。
-- 可恢复失败进入 Replan，携带已完成步骤和失败证据；设置最大重规划次数，防止死循环。
-- 覆盖成功、工具失败后重规划、不可恢复失败、安全阻断和循环上限测试。
+当前 `SupervisorAgent` 只做意图分类；`_planner_node` 只生成一个固定的 `query_knowledge_hub` 调用；`tool` 节点失败时只用相同参数重试。现有 `VerifierAgent` 验证最终回答、引用和安全约束，不验证计划步骤或总体目标。
+
+阶段二只改造 `general_qa` 与 `disease_consultation`。`assistant_intro`、`out_of_scope` 和结构化 `measurement_analysis` 保持固定路径，避免无意义的规划延迟。阶段二每个计划最多包含一次知识检索；query decomposition、query rewrite、evidence grading 和二次检索留到阶段三。
+
+### 4.2 状态与 Schema
+
+新增 checkpoint-safe Pydantic 模型：
+
+- `PlanStep`：`step_id`、action、description、dependencies、arguments、completion criteria。
+- `TaskPlan`：`plan_id`、goal、steps、overall criteria、source 和 revision。
+- `StepExecutionResult`：step、status、output reference、error、retryable 和 attempt；只引用 `tool_results`，不复制大段 RAG payload。
+- `ExecutionFailure`：失败类别、稳定错误码、step、可恢复性和原因。
+- `ReplanRecord`：revision、触发错误、保留的完成步骤和替换步骤。
+
+`MultiAgentState` 保存计划、当前步骤、步骤结果、失败、执行次数、重规划次数和历史。模型客户端、工具函数、数据库连接仍只存在于 runtime。旧 `tool_plan/tool_attempt` 在阶段二保留为兼容投影，完成迁移后再单独评估删除。
+
+### 4.3 Planner、Executor、Verifier 与 Replan
+
+- `TaskPlanner` 只接收最小结构化上下文，主模型仅返回 schema 约束 JSON；模型不可用或输出非法时使用服务端确定性 fallback。所有计划在执行前必须经过 schema、DAG、action allowlist 和参数验证。
+- action allowlist 限于无副作用内部动作：`understand_disease`、`query_knowledge_hub`、`compose_grounded_answer`、`safe_fallback`。禁止反射调用任意函数或执行用户提供的 tool JSON。
+- `ExecutorAgent` 串行选择依赖已完成的第一个 pending step。阶段二不实现并行执行。
+- `PlanVerifier` 独立于最终 `VerifierAgent`：前者验证步骤输出和总体目标，后者继续验证最终回答、citation 和 grounding。
+- `ReplanAgent` 接收已完成步骤与失败摘要，保留成功结果，只替换未完成或失败步骤。相同参数重试只算 retry；revision 增加且步骤发生变化才算 replan。
+- Memory search 仍在 Planner 前提供上下文，但不能成为 evidence/citation；`memory_write` 仍在 Final 后，不能成为 Executor step。
+- Safety 是不可绕过的终点门禁。禁止任何 `safety -> replan` 边。
+
+推荐 chat 拓扑：
+
+```text
+context -> memory_search -> router
+  complex -> planner -> executor -> plan_verifier
+  plan_verifier -> executor | replan | verifier
+  replan -> executor | verifier
+  direct -> verifier
+  verifier -> safety -> final -> memory_write -> END
+```
+
+### 4.4 失败分类与循环上限
+
+| 类别 | 例子 | 行为 |
+|---|---|---|
+| 可恢复执行失败 | RAG timeout、瞬时 MCP/internal error、reasoning draft/schema 缺失 | 在预算内 replan，保留已完成步骤 |
+| 证据不足 | empty、low confidence | 阶段二直接 no-answer/追问，不进行二次检索 |
+| 不可恢复计划失败 | schema/DAG/allowlist/参数错误、依赖环、无 runnable step | Executor 零调用，fail closed |
+| 不可恢复环境失败 | RAG path/collection 缺失、受信输入缺失 | 安全失败答复，不用 fake client 降级 |
+| 安全阻断 | dosage、prescription、definitive diagnosis 等 | 直接进入 Safety/Final，禁止 replan |
+| deadline/cancellation | internal-v1 deadline、任务取消 | 向上传播，不包装成可重试工具错误 |
+
+服务端硬限制：`max_plan_steps=3`、`max_replans=2`、`max_step_attempts=2`、`max_total_step_executions=8`。达到任一上限后以稳定终止码结束并返回无证据安全答复；LangGraph recursion limit 只作为最后保险。
+
+### 4.5 Checkpoint、幂等与可观测性
+
+- 每个执行步骤使用稳定 operation key：`request_id + plan_id + step_id + attempt`。
+- 同一中断 run 从 SQLite checkpoint 恢复时，不重复已完成步骤；必须用 `ainvoke(None, config)` 或受控 `Command(resume=...)` 验证真实 resume，不能重新提交完整 state 冒充恢复。
+- 同一 thread 的新 request 必须清空 plan、current step、results、failure 和 replan history；以 `request_id` 区分 resume 与新 turn。
+- trace 记录 planner/executor/plan_verifier/replan 的 plan revision、step、attempt、decision、error code 和 latency；不记录 chain-of-thought、完整 prompt、密钥或大段工具 payload。
+- legacy 与 internal-v1 的外部 response contract 保持不变；规划摘要先进入现有 debug/trace。
+
+### 4.6 小任务与提交门禁
+
+| 编号 | 小任务 | 主要产物 | 目标验证 | 状态 |
+|---|---|---|---|---|
+| P0 | 审计与规范 | 本阶段 DEV_SPEC、状态/失败/边界决策 | Planner 相关基线通过；`git diff --check` | 已完成 |
+| P1 | Planning schema 与校验器 | Pydantic schema、DAG/allowlist/limit validator | 合法计划；duplicate/missing/cycle/unknown/超限均拒绝 | 未开始 |
+| P2 | TaskPlanner 与 Supervisor 协调 | 主模型 schema 输出、确定性 fallback、plan trace | general 两步、disease 三步；非法模型输出不执行 | 未开始 |
+| P3 | Executor 与 PlanVerifier | 串行依赖调度、结果契约、step/goal 判定 | 依赖顺序、输出缺失、永久失败、deadlock | 未开始 |
+| P4 | Replan 与 LangGraph 拓扑 | 条件边、失败分类、保留成功步骤、循环上限 | 一次失败后改计划成功；安全/永久失败不循环 | 未开始 |
+| P5 | Checkpoint 与可观测性 | resume API、新 turn reset、trace/debug 摘要 | 重启续跑不重复步骤；同 thread 新请求无状态泄漏 | 未开始 |
+| P6 | 系统验收与审核 | scripted E2E、回归结果、完成报告 | 成功/重规划/失败/安全/上限/Memory 边界与全量离线回归 | 未开始 |
+
+每个小任务先补失败测试，再写最小实现，运行目标回归，审核 staged diff，独立 commit 并 push。
+
+### 4.7 阶段验收标准
+
+- 简单路径输出、citation、risk 和 Safety 行为与当前版本兼容。
+- complex plan 的 step ID 唯一、依赖无环、只使用 action/tool allowlist。
+- recoverable failure 触发 revision 增加的真实 replan，完成步骤不重跑，恢复成功后旧错误归档而不污染最终状态。
+- invalid/permanent/safety/deadline 路径分别按策略结束，Executor 调用数和终止码可断言。
+- 三种无限循环输入在 `asyncio.wait_for` 内按服务端预算终止。
+- Checkpointer 可跨连接恢复未完成计划；不同用户仍隔离；新 turn 不继承旧计划瞬态字段。
+- Memory 不进入 retrieved evidence/citations，replan 不重复 `write_memory`。
+
+P0 基线命令：
+
+```powershell
+.venv\Scripts\python.exe -m pytest tests/unit/test_langgraph_topology.py tests/unit/test_verifier_agent.py tests/unit/test_checkpointing.py tests/integration/test_langgraph_workflow.py tests/integration/test_tool_timeout.py -q -p no:cacheprovider
+```
 
 ## 5. 阶段三：Agentic Retrieval
 
