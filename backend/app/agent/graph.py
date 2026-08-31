@@ -72,6 +72,7 @@ async def run_chat_graph(
         session_id=session_id or _new_session_id(),
         request_id=request_id,
         user_query=query,
+        turn_reset_required=True,
         session_context=dict(initial_session_context or {}),
     )
     runtime = AgentGraphRuntime(
@@ -192,6 +193,7 @@ async def run_measurement_graph(
         session_id=session_id or _new_session_id(),
         request_id=request_id,
         user_query=f"body measurement analysis for {measurement.animal_id}",
+        turn_reset_required=True,
     )
     runtime = AgentGraphRuntime(
         settings=app_settings,

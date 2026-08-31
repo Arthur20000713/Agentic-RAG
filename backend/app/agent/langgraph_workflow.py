@@ -8,6 +8,7 @@ from typing import Any
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 from langgraph.runtime import Runtime
 from langgraph.store.base import BaseStore
 
@@ -83,6 +84,7 @@ def build_chat_graph(
     *,
     checkpointer: BaseCheckpointSaver[Any] | None = None,
     store: BaseStore | None = None,
+    interrupt_after: list[str] | None = None,
 ):
     builder = StateGraph(MultiAgentState, context_schema=AgentGraphRuntime)
     builder.add_node("context", _context_node)
@@ -132,7 +134,23 @@ def build_chat_graph(
     builder.add_edge("safety", "final")
     builder.add_edge("final", "memory_write")
     builder.add_edge("memory_write", END)
-    return builder.compile(checkpointer=checkpointer, store=store)
+    return builder.compile(
+        checkpointer=checkpointer,
+        store=store,
+        interrupt_after=interrupt_after,
+    )
+
+
+async def resume_chat_graph(
+    graph: CompiledStateGraph,
+    *,
+    runtime: AgentGraphRuntime,
+    config: dict[str, Any],
+) -> MultiAgentState:
+    """Resume an interrupted chat run from its persisted checkpoint."""
+
+    raw = await graph.ainvoke(None, context=runtime, config=config)
+    return MultiAgentState.model_validate(raw)
 
 
 def build_measurement_graph(
@@ -168,6 +186,8 @@ async def _context_node(
 ) -> dict[str, Any]:
     state = _state(raw_state)
     context = _context(runtime)
+    if state.turn_reset_required:
+        _reset_transient_turn_state(state)
     session_data = dict(state.session_context)
     if context.conversation_history:
         session_data["conversation_history"] = list(context.conversation_history)
@@ -184,6 +204,38 @@ async def _context_node(
 
     state.session_context = session_data
     return _dump(state)
+
+
+def _reset_transient_turn_state(state: MultiAgentState) -> None:
+    state.turn_reset_required = False
+    state.normalized_query = None
+    state.intent = None
+    state.risk_level = None
+    state.route_reason = None
+    state.active_agent = None
+    state.extracted_slots = {}
+    state.rag_query = None
+    state.retrieved_contexts = []
+    state.evidence_status = None
+    state.disease_assessment = None
+    state.measurement_report = None
+    state.draft_answer = None
+    state.verification_result = None
+    state.safety_result = None
+    state.final_answer = None
+    state.task_plan = None
+    state.current_step_id = None
+    state.step_results = []
+    state.execution_failure = None
+    state.execution_count = 0
+    state.plan_verification = None
+    state.replan_count = 0
+    state.replan_history = []
+    state.tool_plan = []
+    state.tool_attempt = 0
+    state.tool_results = {}
+    state.errors = []
+    state.agent_trace = []
 
 
 async def _memory_search_node(

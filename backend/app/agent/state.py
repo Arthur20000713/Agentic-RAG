@@ -22,6 +22,7 @@ class MultiAgentState(BaseModel):
     session_id: str
     request_id: str | None = None
     user_query: str
+    turn_reset_required: bool = False
     normalized_query: str | None = None
     intent: IntentType | None = None
     risk_level: RiskLevel | None = None

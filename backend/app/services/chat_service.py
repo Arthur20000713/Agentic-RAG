@@ -91,9 +91,47 @@ def build_agent_runtime_debug_payload(
                 "verifier": state.verification_result,
                 "evidence_status": state.evidence_status,
                 "model_fallbacks": list(state.tool_results.get("model_fallbacks") or []),
+                "planning": _planning_debug_summary(state),
             }
         )
     return payload
+
+
+def _planning_debug_summary(state: MultiAgentState) -> dict[str, Any]:
+    plan = state.task_plan
+    if plan is None:
+        return {"status": "not_available"}
+
+    completed = {item.step_id for item in state.step_results if item.status == "succeeded"}
+    failed = {item.step_id for item in state.step_results if item.status == "failed"}
+    decision = state.plan_verification.decision if state.plan_verification is not None else None
+    if decision == "goal":
+        status = "completed"
+    elif decision == "terminal" or state.execution_failure is not None:
+        status = "terminated"
+    else:
+        status = "in_progress"
+    termination_code = None
+    if status == "terminated":
+        if state.execution_failure is not None:
+            termination_code = state.execution_failure.error_code
+        elif state.plan_verification is not None:
+            termination_code = state.plan_verification.error_code
+
+    return {
+        "status": status,
+        "plan_id": plan.plan_id,
+        "revision": plan.revision,
+        "source": plan.source,
+        "step_count": len(plan.steps),
+        "completed_step_count": len(completed),
+        "failed_step_count": len(failed),
+        "execution_count": state.execution_count,
+        "replan_count": state.replan_count,
+        "current_step_id": state.current_step_id,
+        "final_decision": decision,
+        "termination_code": termination_code,
+    }
 
 
 def _disease_llm_debug_summary(settings: Settings, state: MultiAgentState | None) -> dict:

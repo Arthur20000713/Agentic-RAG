@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
+from typing import Any
 
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.store.memory import InMemoryStore
 
-from backend.app.agent.checkpointing import checkpoint_config
+from backend.app.agent.checkpointing import checkpoint_config, open_sqlite_checkpointer
 from backend.app.agent.graph import run_chat_graph, run_disease_graph
-from backend.app.agent.langgraph_workflow import AgentGraphRuntime, build_chat_graph
+from backend.app.agent.langgraph_workflow import (
+    AgentGraphRuntime,
+    build_chat_graph,
+    resume_chat_graph,
+)
 from backend.app.agent.memory_store import RepositoryMemoryStore
 from backend.app.agent.state import MultiAgentState
 from backend.app.core.config import Settings
@@ -15,6 +21,17 @@ from backend.app.db.connection import get_connection
 from backend.app.db.migrations import init_db
 from backend.app.db.repositories import MemoryRepository
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
+from backend.app.schemas.rag_server import RagSearchResult
+
+
+class CountingRagClient(FakeRagServerClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.query_count = 0
+
+    async def query(self, query: str, **kwargs: Any) -> RagSearchResult:
+        self.query_count += 1
+        return await super().query(query, **kwargs)
 
 
 def test_chat_graph_accepts_checkpointer_and_store() -> None:
@@ -125,3 +142,51 @@ def test_checkpointed_chat_turn_resets_transient_agent_state() -> None:
     assert "livestock_rag_search" not in second.tool_results
     assert second.retrieved_contexts == []
     assert second.errors == []
+    assert second.task_plan is None
+    assert second.current_step_id is None
+    assert second.step_results == []
+    assert second.execution_failure is None
+    assert second.execution_count == 0
+    assert second.plan_verification is None
+    assert second.replan_count == 0
+    assert second.replan_history == []
+    assert second.rag_query is None
+    assert second.draft_answer != first.draft_answer
+    assert second.final_answer != first.final_answer
+
+
+def test_sqlite_checkpoint_resume_does_not_repeat_completed_step(tmp_path: Path) -> None:
+    checkpoint_path = tmp_path / "planner_resume.sqlite3"
+    config = checkpoint_config("user_resume", "session_resume")
+    client = CountingRagClient()
+    runtime = AgentGraphRuntime(settings=Settings(), rag_client=client)
+    state = MultiAgentState(
+        session_id="session_resume",
+        request_id="request_resume",
+        user_query="How should cattle feeding be managed?",
+    )
+
+    async def invoke() -> MultiAgentState:
+        async with open_sqlite_checkpointer(checkpoint_path) as saver:
+            graph = build_chat_graph(
+                checkpointer=saver,
+                interrupt_after=["executor"],
+            )
+            interrupted = await graph.ainvoke(state, context=runtime, config=config)
+            snapshot = await graph.aget_state(config)
+            assert snapshot.next == ("plan_verifier",)
+            assert interrupted["execution_count"] == 1
+            assert client.query_count == 1
+
+        async with open_sqlite_checkpointer(checkpoint_path) as saver:
+            graph = build_chat_graph(checkpointer=saver)
+            return await resume_chat_graph(graph, runtime=runtime, config=config)
+
+    result = asyncio.run(invoke())
+
+    assert client.query_count == 1
+    assert result.execution_count == 2
+    assert [item.step_id for item in result.step_results] == ["retrieve", "compose"]
+    assert result.plan_verification is not None
+    assert result.plan_verification.decision == "goal"
+    assert result.final_answer

@@ -39,6 +39,7 @@ def agent_runtime_debug_summary(request: Request, request_id: str, agent_trace: 
         "flags": flags,
         "route": _route_summary(trace_items),
         "safety": _safety_summary(trace_items),
+        "planning": _planning_summary(trace_items),
         "memory": _memory_summary(request, flags),
         "rag_status": build_rag_status_payload(request.app.state.settings),
         "agent_path": [str(item.get("node")) for item in trace_items if item.get("node")],
@@ -100,6 +101,64 @@ def _verifier_summary(trace_items: list[dict]) -> dict:
         "issue_count": latest.get("issue_count", 0),
         "citation_issue_count": latest.get("citation_issue_count", 0),
         "unsupported_claim_count": latest.get("unsupported_claim_count", 0),
+    }
+
+
+def _planning_summary(trace_items: list[dict]) -> dict:
+    planner_items = [item for item in trace_items if item.get("node") == "planner"]
+    if not planner_items:
+        return {"status": "not_available"}
+
+    planner = planner_items[-1]
+    executor_items = [item for item in trace_items if item.get("node") == "executor"]
+    verifier_items = [item for item in trace_items if item.get("node") == "plan_verifier"]
+    replan_items = [item for item in trace_items if item.get("node") == "replan"]
+    latest_verifier = verifier_items[-1] if verifier_items else {}
+    latest_plan = replan_items[-1] if replan_items else planner
+    decision = latest_verifier.get("decision")
+    if decision == "goal":
+        status = "completed"
+    elif decision == "terminal":
+        status = "terminated"
+    else:
+        status = "in_progress"
+
+    revisions = [
+        item.get("revision")
+        for item in [*planner_items, *executor_items, *verifier_items, *replan_items]
+        if isinstance(item.get("revision"), int)
+    ]
+    completed = {
+        str(item["step_id"])
+        for item in executor_items
+        if item.get("status") == "success" and item.get("step_id")
+    }
+    failed = {
+        str(item["step_id"])
+        for item in executor_items
+        if item.get("status") == "failed" and item.get("step_id")
+    }
+    latest_executor = executor_items[-1] if executor_items else {}
+    termination_code = None
+    if status == "terminated":
+        termination_code = latest_verifier.get("error_code") or latest_executor.get("error_code")
+
+    return {
+        "status": status,
+        "plan_id": planner.get("plan_id"),
+        "revision": max(revisions) if revisions else planner.get("revision"),
+        "source": latest_plan.get("source"),
+        "step_count": latest_plan.get("step_count", 0),
+        "completed_step_count": len(completed),
+        "failed_step_count": len(failed),
+        "execution_count": len(executor_items),
+        "replan_count": max(
+            (int(item.get("replan_count", 0)) for item in replan_items),
+            default=0,
+        ),
+        "current_step_id": latest_executor.get("step_id"),
+        "final_decision": decision,
+        "termination_code": termination_code,
     }
 
 

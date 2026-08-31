@@ -6,6 +6,7 @@ from backend.app.core.config import Settings
 from backend.app.db.connection import get_connection
 from backend.app.db.migrations import init_db
 from backend.app.db.repositories import AgentTraceRepository, MemoryRepository, RagTraceRepository
+from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
 from backend.app.main import create_app
 from backend.app.services.memory_service import MemoryEvent
 from backend.app.services.trace_service import TraceService
@@ -72,6 +73,9 @@ def test_trace_api_returns_agent_trace_bundle() -> None:
     assert payload["data"]["verifier_result"] is None
     assert payload["data"]["agent_runtime_debug_summary"]["flags"]["agent_runtime_engine"] == "langgraph"
     assert payload["data"]["agent_runtime_debug_summary"]["route"]["status"] == "not_available"
+    assert payload["data"]["agent_runtime_debug_summary"]["planning"] == {
+        "status": "not_available"
+    }
 
 
 def test_trace_api_returns_rag_trace_bundle() -> None:
@@ -104,7 +108,9 @@ def test_trace_api_returns_rag_trace_bundle() -> None:
 
 def test_chat_request_id_can_query_langgraph_agent_trace() -> None:
     settings = Settings(database={"url": "sqlite:///:memory:"})
-    client = TestClient(create_app(settings=settings))
+    app = create_app(settings=settings)
+    app.state.rag_client = FakeRagServerClient()
+    client = TestClient(app)
 
     chat_response = client.post("/api/chat", json={"query": "How should cattle feeding be managed?", "session_id": "s_trace"})
     chat_payload = chat_response.json()
@@ -120,12 +126,26 @@ def test_chat_request_id_can_query_langgraph_agent_trace() -> None:
     assert data["agent_trace"][0]["request_id"] == request_id
     assert data["agent_runtime_debug_summary"]["agent_path"] == [
         "supervisor",
+        "planner",
         "rag_agent",
+        "executor",
+        "plan_verifier",
         "grounded_answer_agent",
+        "executor",
+        "plan_verifier",
         "verifier_agent",
         "safety_agent",
         "response_agent",
     ]
+    planning = data["agent_runtime_debug_summary"]["planning"]
+    assert planning["status"] == "completed"
+    assert planning["revision"] == 1
+    assert planning["step_count"] == 2
+    assert planning["completed_step_count"] == 2
+    assert planning["failed_step_count"] == 0
+    assert planning["execution_count"] == 2
+    assert planning["replan_count"] == 0
+    assert planning["final_decision"] == "goal"
     assert data["safety_result"]["passed"] is True
     assert data["verifier_result"]["passed"] is True
 
@@ -133,6 +153,7 @@ def test_chat_request_id_can_query_langgraph_agent_trace() -> None:
 def test_trace_api_returns_agent_runtime_debug_summary_for_route_safety_and_memory() -> None:
     settings = Settings(
         database={"url": "sqlite:///:memory:"},
+        rag_server={"query_mode": "fake", "repo_path": None},
         model_router={"enabled": True, "shadow_mode": True},
         long_term_memory={"write_enabled": True},
     )
@@ -190,3 +211,92 @@ def test_trace_api_returns_agent_runtime_debug_summary_for_route_safety_and_memo
     assert summary["rag_status"]["rag_mode"] == "fake"
     assert summary["rag_status"]["collection"] == "default"
     assert summary["rag_status"]["quality_gate_status"] == "not_configured"
+    assert summary["planning"] == {"status": "not_available"}
+
+
+def test_trace_api_summarizes_replan_without_exposing_payloads() -> None:
+    client = TestClient(create_app(settings=Settings(database={"url": "sqlite:///:memory:"})))
+    client.app.state.trace_service.record_agent_trace(
+        session_id="s_replan",
+        request_id="req_replan",
+        trace=[
+            {
+                "node": "planner",
+                "status": "success",
+                "plan_id": "plan_req_replan",
+                "revision": 1,
+                "source": "fallback",
+                "step_count": 2,
+                "prompt": "must not escape",
+            },
+            {
+                "node": "executor",
+                "status": "failed",
+                "revision": 1,
+                "step_id": "retrieve",
+                "attempt": 1,
+                "error_code": "RAG_TRANSIENT",
+            },
+            {
+                "node": "executor",
+                "status": "failed",
+                "revision": 1,
+                "step_id": "retrieve",
+                "attempt": 2,
+                "error_code": "RAG_TRANSIENT",
+                "tool_payload": {"secret": "must not escape"},
+            },
+            {
+                "node": "plan_verifier",
+                "status": "failed",
+                "revision": 1,
+                "decision": "replan",
+                "error_code": "RAG_TRANSIENT",
+            },
+            {
+                "node": "replan",
+                "status": "success",
+                "revision": 2,
+                "source": "replan",
+                "step_count": 1,
+                "replan_count": 1,
+                "failure_code": "RAG_TRANSIENT",
+            },
+            {
+                "node": "executor",
+                "status": "success",
+                "revision": 2,
+                "step_id": "fallback_r2",
+                "attempt": 1,
+            },
+            {
+                "node": "plan_verifier",
+                "status": "success",
+                "revision": 2,
+                "decision": "goal",
+            },
+        ],
+        status="success",
+        latency_ms=8,
+    )
+
+    response = client.get("/api/traces/req_replan")
+    planning = response.json()["data"]["agent_runtime_debug_summary"]["planning"]
+
+    assert response.status_code == 200
+    assert planning == {
+        "status": "completed",
+        "plan_id": "plan_req_replan",
+        "revision": 2,
+        "source": "replan",
+        "step_count": 1,
+        "completed_step_count": 1,
+        "failed_step_count": 1,
+        "execution_count": 3,
+        "replan_count": 1,
+        "current_step_id": "fallback_r2",
+        "final_decision": "goal",
+        "termination_code": None,
+    }
+    assert "prompt" not in str(planning)
+    assert "secret" not in str(planning)

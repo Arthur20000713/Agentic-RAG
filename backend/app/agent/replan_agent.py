@@ -86,6 +86,8 @@ class ReplanAgent:
                 "status": status,
                 "plan_id": state.task_plan.plan_id if state.task_plan is not None else None,
                 "revision": state.task_plan.revision if state.task_plan is not None else None,
+                "source": state.task_plan.source if state.task_plan is not None else None,
+                "step_count": len(state.task_plan.steps) if state.task_plan is not None else 0,
                 "replan_count": state.replan_count,
                 "failure_code": failure_code,
                 "latency_ms": max(0, int((time.perf_counter() - started_at) * 1000)),

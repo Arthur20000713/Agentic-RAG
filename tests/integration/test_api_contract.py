@@ -131,7 +131,9 @@ def test_chat_api_uses_langgraph_runtime() -> None:
     settings = Settings(
         database={"url": "sqlite:///:memory:"},
     )
-    client = TestClient(create_app(settings=settings))
+    app = create_app(settings=settings)
+    app.state.rag_client = FakeRagServerClient()
+    client = TestClient(app)
 
     response = client.post("/api/chat", json={"query": "How should cattle feeding be managed?", "session_id": "s_langgraph"})
 
@@ -143,12 +145,18 @@ def test_chat_api_uses_langgraph_runtime() -> None:
     assert payload["data"]["agent_runtime_debug"]["engine"] == "langgraph"
     assert payload["data"]["agent_runtime_debug"]["agent_path"] == [
         "supervisor",
+        "planner",
         "rag_agent",
+        "executor",
+        "plan_verifier",
         "grounded_answer_agent",
+        "executor",
+        "plan_verifier",
         "verifier_agent",
         "safety_agent",
         "response_agent",
     ]
+    assert payload["data"]["agent_runtime_debug"]["planning"]["status"] == "completed"
     assert payload["data"]["agent_runtime_debug"]["verifier"]["passed"] is True
     assert payload["data"]["agent_runtime_debug"]["safety"]["passed"] is True
 
