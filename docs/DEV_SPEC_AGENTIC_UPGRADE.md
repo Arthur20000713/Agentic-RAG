@@ -60,11 +60,11 @@
 | 编号 | 小任务 | 主要产物 | 目标验证 | 状态 |
 |---|---|---|---|---|
 | M0 | 审计与规范 | 本 DEV_SPEC、基线测试记录、安全/数据所有权决策 | 现有 Memory 相关离线测试通过；`git diff --check` | 已完成 |
-| M1 | Checkpointer 基础 | SQLite saver 生命周期、graph compile 注入、`session_id -> thread_id` | 同线程恢复、异线程隔离、瞬态字段不泄漏 | 未开始 |
-| M2 | Store 适配器 | Repository-backed `BaseStore`、租户 namespace、TTL envelope | put/get/search/delete、跨用户隔离、关闭重开后仍可读 | 未开始 |
-| M3 | Memory tools | `search_memory`、`write_memory`、来源/类型安全校验 | 允许来源、拒绝来源、幂等/更新、查询与过期过滤 | 未开始 |
-| M4 | 正式路径接线 | Memory 节点、ChatService、`/api/chat`、internal-v1、功能开关 | session A 写入，session B 读取；tools/trace 可见；关闭开关无副作用 | 未开始 |
-| M5 | 系统验收与审核 | 重启 E2E、安全负例、回归结果、完成报告 | 跨 App 重启、跨用户隔离、冲突优先级、全量非真实 RAG 回归 | 未开始 |
+| M1 | Checkpointer 基础 | SQLite saver 生命周期、graph compile 注入、`session_id -> thread_id` | 同线程恢复、异线程隔离、瞬态字段不泄漏 | 已完成 |
+| M2 | Store 适配器 | Repository-backed `BaseStore`、租户 namespace、TTL envelope | put/get/search/delete、跨用户隔离、关闭重开后仍可读 | 已完成 |
+| M3 | Memory tools | `search_memory`、`write_memory`、来源/类型安全校验 | 允许来源、拒绝来源、幂等/更新、查询与过期过滤 | 已完成 |
+| M4 | 正式路径接线 | Memory 节点、ChatService、`/api/chat`、internal-v1、功能开关 | session A 写入，session B 读取；tools/trace 可见；关闭开关无副作用 | 已完成 |
+| M5 | 系统验收与审核 | 重启 E2E、安全负例、回归结果、完成报告 | 跨 App 重启、跨用户隔离、冲突优先级、全量非真实 RAG 回归 | 已完成 |
 
 每个小任务遵循 TDD：先补失败测试，再写最小实现，运行目标测试，检查 diff，commit 并 push。
 
@@ -97,11 +97,11 @@
 ### 3.5 Memory 测试命令
 
 ```powershell
-.venv\Scripts\python.exe -m pytest tests/unit/test_memory_service.py tests/unit/test_memory_store.py tests/unit/test_memory_tools.py -q -p no:cacheprovider
-.venv\Scripts\python.exe -m pytest tests/integration/test_memory_schema.py tests/integration/test_memory_repository.py tests/integration/test_memory_graph.py -q -p no:cacheprovider
-.venv\Scripts\python.exe -m pytest tests/e2e/test_memory_flow.py -q -p no:cacheprovider
-.venv\Scripts\python.exe -m pytest -m "not rag_server" -q -p no:cacheprovider
+.venv\Scripts\python.exe -m pytest tests/unit/test_checkpointing.py tests/unit/test_memory_service.py tests/unit/test_memory_store.py tests/unit/test_memory_tools.py tests/integration/test_memory_schema.py tests/integration/test_memory_repository.py tests/integration/test_memory_store_persistence.py tests/integration/test_memory_graph.py tests/integration/test_memory_internal_api.py tests/e2e/test_memory_flow.py tests/e2e/test_long_term_memory_system.py -q -p no:cacheprovider
+.venv\Scripts\python.exe -m pytest -m "not rag_server" --ignore=tests/integration/test_p4_sqlite_mysql_migration.py --ignore=tests/integration/test_p6_livestock_sqlite_mysql_migration.py -q -p no:cacheprovider
 ```
+
+阶段完成记录见 `docs/MEMORY_COMPLETION_REPORT.md`。两项 MySQL 迁移测试只有在 Docker Desktop Linux engine 可用时单独执行，不得将环境跳过记录为通过。
 
 ## 4. 阶段二：Planner + Executor + Verifier + Replan
 
