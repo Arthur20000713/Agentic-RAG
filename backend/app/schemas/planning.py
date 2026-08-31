@@ -26,6 +26,7 @@ FailureCategory = Literal[
     "safety",
     "deadline",
 ]
+PlanDecision = Literal["next", "replan", "goal", "terminal"]
 
 
 class PlanStep(BaseModel):
@@ -142,6 +143,15 @@ class ReplanRecord(BaseModel):
     replacement_step_ids: list[str] = Field(default_factory=list, max_length=MAX_PLAN_STEPS)
 
 
+class PlanVerificationResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: PlanDecision
+    step_id: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_]*$")
+    error_code: str | None = Field(default=None, min_length=1, max_length=96)
+    reason: str = Field(min_length=1, max_length=500)
+
+
 __all__ = [
     "ExecutionFailure",
     "FailureCategory",
@@ -151,6 +161,8 @@ __all__ = [
     "MAX_TOTAL_STEP_EXECUTIONS",
     "PlanSource",
     "PlanStep",
+    "PlanDecision",
+    "PlanVerificationResult",
     "PlanningAction",
     "ReplanRecord",
     "StepExecutionResult",

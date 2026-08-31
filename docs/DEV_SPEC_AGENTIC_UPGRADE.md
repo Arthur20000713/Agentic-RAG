@@ -172,7 +172,7 @@ context -> memory_search -> router
 | P0 | 审计与规范 | 本阶段 DEV_SPEC、状态/失败/边界决策 | Planner 相关基线通过；`git diff --check` | 已完成 |
 | P1 | Planning schema 与校验器 | Pydantic schema、DAG/allowlist/limit validator | 合法计划；duplicate/missing/cycle/unknown/超限均拒绝 | 已完成 |
 | P2 | TaskPlanner 与 Supervisor 协调 | 主模型 schema 输出、确定性 fallback、plan trace | general 两步、disease 三步；非法模型输出不执行 | 已完成 |
-| P3 | Executor 与 PlanVerifier | 串行依赖调度、结果契约、step/goal 判定 | 依赖顺序、输出缺失、永久失败、deadlock | 未开始 |
+| P3 | Executor 与 PlanVerifier | 串行依赖调度、结果契约、step/goal 判定 | 依赖顺序、输出缺失、永久失败、deadlock | 已完成 |
 | P4 | Replan 与 LangGraph 拓扑 | 条件边、失败分类、保留成功步骤、循环上限 | 一次失败后改计划成功；安全/永久失败不循环 | 未开始 |
 | P5 | Checkpoint 与可观测性 | resume API、新 turn reset、trace/debug 摘要 | 重启续跑不重复步骤；同 thread 新请求无状态泄漏 | 未开始 |
 | P6 | 系统验收与审核 | scripted E2E、回归结果、完成报告 | 成功/重规划/失败/安全/上限/Memory 边界与全量离线回归 | 未开始 |
