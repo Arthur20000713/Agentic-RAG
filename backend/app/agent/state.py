@@ -5,6 +5,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from backend.app.schemas.agent import AgentToolError, IntentType, RetrievedContext, RiskLevel
+from backend.app.schemas.planning import TaskPlan
 
 
 EvidenceStatus = Literal["success", "empty", "low_confidence", "error"]
@@ -30,6 +31,7 @@ class MultiAgentState(BaseModel):
     verification_result: dict[str, Any] | None = None
     safety_result: dict[str, Any] | None = None
     final_answer: str | None = None
+    task_plan: TaskPlan | None = None
     tool_plan: list[dict[str, Any]] = Field(default_factory=list)
     tool_attempt: int = 0
     tool_results: dict[str, Any] = Field(default_factory=dict)
