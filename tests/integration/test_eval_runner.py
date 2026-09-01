@@ -691,7 +691,7 @@ def test_golden_runner_records_real_rag_observability_fields() -> None:
     case = report.cases[0]
 
     assert case.rag_result_observed is True
-    assert case.citation_count == 0
+    assert case.citation_count == 1
     assert case.source_uri_count == 1
     assert case.mapping_warnings == ["RAG_CITATION_SYNTHESIZED_FROM_HIT"]
     assert "RAG_CITATION_SYNTHESIZED_FROM_HIT" in case.errors

@@ -30,7 +30,7 @@ def test_document_qa_flow_fake_result_has_citations() -> None:
 def test_document_qa_flow_empty_result_does_not_fabricate_citations() -> None:
     state = asyncio.run(
         run_general_qa_graph(
-            "empty knowledge-base question",
+            "empty calf feeding knowledge-base question",
             rag_client=FakeRagServerClient(),
             session_id="s_document_qa_empty",
         )
@@ -42,7 +42,9 @@ def test_document_qa_flow_empty_result_does_not_fabricate_citations() -> None:
     assert state.final_answer
     assert "[1]" not in state.final_answer
     assert state.retrieved_contexts == []
-    assert rag_result["status"] == "empty"
+    assert rag_result["status"] == "low_confidence"
+    assert state.agentic_retrieval.final_status == "insufficient"
+    assert state.agentic_retrieval.rag_call_count == 2
     assert rag_result["hits"] == []
     assert rag_result["citations"] == []
     assert state.errors == []
