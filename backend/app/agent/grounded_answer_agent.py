@@ -6,13 +6,15 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
-from backend.app.agent.rag_answer_policy import NO_ANSWER_TEXT
+from backend.app.agent.rag_answer_policy import (
+    NO_ANSWER_TEXT,
+    build_insufficient_evidence_answer,
+)
 from backend.app.agent.state import MultiAgentState
 from backend.app.core.config import Settings
 from backend.app.model.answer_generator import AnswerGenerator
 from backend.app.model.primary_llm import PrimaryLLMClient, PrimaryLLMRequest
 from backend.app.schemas.rag_server import RagSearchResult
-
 
 RAG_TOOL_NAME = "livestock_rag_search"
 
@@ -42,6 +44,23 @@ class GroundedAnswerAgent:
         started_at = time.perf_counter()
         state.active_agent = "grounded_answer_agent"
         rag_result = self._rag_result(state)
+
+        retrieval = state.agentic_retrieval
+        if retrieval is not None and retrieval.final_status == "insufficient":
+            final_grade = retrieval.grades[-1] if retrieval.grades else None
+            self._discard_agentic_evidence(state)
+            self._use_no_answer(
+                state,
+                status="no_answer",
+                fallback_reason=retrieval.termination_code or "agentic_retrieval_insufficient",
+                started_at=started_at,
+                answer_text=build_insufficient_evidence_answer(
+                    state.user_query,
+                    missing_aspects=list(final_grade.missing_aspects) if final_grade else [],
+                    has_conflicts=bool(final_grade and final_grade.conflicts),
+                ),
+            )
+            return state
 
         if rag_result is not None and rag_result.status in {"empty", "low_confidence"}:
             if await self._use_reference_answer(
@@ -240,8 +259,9 @@ class GroundedAnswerAgent:
         status: str,
         fallback_reason: str,
         started_at: float,
+        answer_text: str = NO_ANSWER_TEXT,
     ) -> None:
-        state.draft_answer = NO_ANSWER_TEXT
+        state.draft_answer = answer_text
         state.evidence_status = "low_confidence"
         state.retrieved_contexts.clear()
         self._record(
@@ -251,6 +271,15 @@ class GroundedAnswerAgent:
             fallback_reason=fallback_reason,
             started_at=started_at,
         )
+
+    def _discard_agentic_evidence(self, state: MultiAgentState) -> None:
+        state.retrieved_contexts.clear()
+        result = state.tool_results.get(RAG_TOOL_NAME)
+        if isinstance(result, dict):
+            result["status"] = "low_confidence"
+            result["hits"] = []
+            result["citations"] = []
+            result["answer_text"] = None
 
     def _record(
         self,

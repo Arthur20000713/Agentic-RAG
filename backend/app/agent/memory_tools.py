@@ -10,7 +10,6 @@ from pydantic import BaseModel, Field
 from backend.app.agent.memory_store import memory_namespace
 from backend.app.services.memory_service import MemorySource, MemorySubjectType
 
-
 SEARCH_MEMORY_TOOL_NAME = "search_memory"
 WRITE_MEMORY_TOOL_NAME = "write_memory"
 MemoryType = Literal["animal_profile", "consultation", "measurement", "observation"]
@@ -123,6 +122,16 @@ async def search_memory(
     return results
 
 
+def exclude_long_term_memory(session_context: dict[str, Any] | None) -> dict[str, Any]:
+    """Keep recalled Memory outside model-controlled routing and retrieval inputs."""
+
+    return {
+        key: value
+        for key, value in (session_context or {}).items()
+        if key != "long_term_memory"
+    }
+
+
 def _validate_write(
     memory_type: str,
     content: dict[str, Any],
@@ -172,11 +181,12 @@ def _context_item(value: dict[str, Any]) -> MemoryContextItem:
 
 
 __all__ = [
+    "SEARCH_MEMORY_TOOL_NAME",
+    "WRITE_MEMORY_TOOL_NAME",
     "MemoryContextItem",
     "MemoryType",
     "MemoryWriteResult",
-    "SEARCH_MEMORY_TOOL_NAME",
-    "WRITE_MEMORY_TOOL_NAME",
+    "exclude_long_term_memory",
     "search_memory",
     "write_memory",
 ]

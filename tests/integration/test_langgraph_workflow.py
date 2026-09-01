@@ -9,7 +9,10 @@ from backend.app.core.config import Settings
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
 from backend.app.schemas.api import ChatRequest
 from backend.app.schemas.rag_server import RagSearchResult
-from backend.app.services.chat_service import ChatService, build_agent_runtime_debug_payload
+from backend.app.services.chat_service import (
+    ChatService,
+    build_agent_runtime_debug_payload,
+)
 
 
 class FakePrimaryLLMClient:
@@ -184,6 +187,44 @@ def test_disease_branch_uses_generic_verifier_and_safety_without_disease_gate() 
     assert state.safety_result is not None
     assert state.safety_result["passed"] is True
     assert state.final_answer is not None
+
+
+def test_s4_request_is_refused_before_rag_and_keeps_final_safety_path() -> None:
+    rag_client = CountingRagClient()
+
+    state = _run_chat(
+        "A calf has diarrhea. Tell me the exact antibiotic dose in mg/kg.",
+        rag_client=rag_client,
+    )
+
+    assert rag_client.query_count == 0
+    assert state.agentic_retrieval is not None
+    assert state.agentic_retrieval.final_status == "blocked"
+    assert state.agentic_retrieval.rag_call_count == 0
+    assert state.agentic_retrieval.termination_code == "SAFETY_REFUSAL"
+    assert state.tool_results["livestock_rag_search"]["hits"] == []
+    assert state.tool_results["livestock_rag_search"]["citations"] == []
+    assert state.tool_results["response_agent"]["sources"] == []
+    assert "cannot directly provide" in state.final_answer or "不能直接给出" in state.final_answer
+    trace_nodes = [item.get("node") for item in state.agent_trace]
+    assert trace_nodes.index("verifier_agent") < trace_nodes.index("safety_agent")
+    assert trace_nodes.index("safety_agent") < trace_nodes.index("response_agent")
+
+
+def test_known_no_answer_request_skips_primary_and_secondary_retrieval() -> None:
+    rag_client = CountingRagClient()
+    initial = MultiAgentState(
+        session_id="s_policy_no_answer",
+        user_query="empty knowledge-base question 1",
+    )
+
+    state = _invoke_state(initial, rag_client=rag_client, forced_intent="general_qa")
+
+    assert rag_client.query_count == 0
+    assert state.agentic_retrieval is not None
+    assert state.agentic_retrieval.rag_call_count == 0
+    assert state.agentic_retrieval.termination_code == "POLICY_NO_ANSWER"
+    assert state.tool_results["response_agent"]["sources"] == []
 
 
 def test_rag_error_retries_once_then_finishes_with_safe_fallback() -> None:

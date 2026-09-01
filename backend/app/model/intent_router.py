@@ -4,14 +4,14 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
+from backend.app.agent.memory_tools import exclude_long_term_memory
 from backend.app.agent.router import IntentRouter
 from backend.app.agent.safety_precheck import SafetyPrecheck
 from backend.app.core.config import Settings
 from backend.app.model.base import BaseModelClient
 from backend.app.model.local_client import LocalModelClient
-from backend.app.model.router import ModelRouteRequest, ModelRouter
+from backend.app.model.router import ModelRouter, ModelRouteRequest
 from backend.app.schemas.agent import IntentType
-
 
 ALLOWED_INTENTS = [
     "assistant_intro",
@@ -80,7 +80,7 @@ async def route_intent_with_model(
             context={
                 "allowed_intents": ALLOWED_INTENTS,
                 "user_query": query,
-                "session_context": session_context or {},
+                "session_context": exclude_long_term_memory(session_context),
                 "safety_level": safety.level,
             },
         )

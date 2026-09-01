@@ -51,6 +51,12 @@ def test_chat_graph_is_a_real_compiled_state_graph_with_required_nodes_and_edges
             ("final", "memory_write"),
             ("memory_write", "__end__"),
     }.issubset(_edge_pairs(graph))
+    assert {
+        target for source, target in _edge_pairs(graph) if source == "verifier"
+    } == {"safety"}
+    assert {
+        target for source, target in _edge_pairs(graph) if source == "safety"
+    } == {"final"}
 
 
 def test_measurement_graph_is_a_real_compiled_state_graph_without_tool_path() -> None:
@@ -80,6 +86,12 @@ def test_measurement_graph_is_a_real_compiled_state_graph_without_tool_path() ->
             ("final", "memory_write"),
             ("memory_write", "__end__"),
     }.issubset(_edge_pairs(graph))
+    assert {
+        target for source, target in _edge_pairs(graph) if source == "verifier"
+    } == {"safety"}
+    assert {
+        target for source, target in _edge_pairs(graph) if source == "safety"
+    } == {"final"}
 
 
 def test_tool_plan_validation_allows_only_one_knowledge_hub_query() -> None:

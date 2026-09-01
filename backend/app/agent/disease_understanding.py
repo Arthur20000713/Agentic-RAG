@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
+from backend.app.agent.memory_tools import exclude_long_term_memory
 from backend.app.agent.state import MultiAgentState
 from backend.app.core.config import Settings
 from backend.app.model.primary_llm import PrimaryLLMClient, PrimaryLLMRequest
@@ -74,7 +75,7 @@ class DiseaseUnderstandingAgent:
                 "session_id": state.session_id,
                 "normalized_query": state.normalized_query,
                 "intent": state.intent,
-                "session_context": state.session_context,
+                "session_context": exclude_long_term_memory(state.session_context),
             },
             system_prompt=(
                 "You understand livestock disease consultation messages. "

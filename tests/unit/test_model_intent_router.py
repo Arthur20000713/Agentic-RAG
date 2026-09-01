@@ -67,6 +67,37 @@ def test_route_intent_with_model_uses_local_structured_result() -> None:
     ]
 
 
+def test_route_intent_with_model_excludes_long_term_memory_from_model_context() -> None:
+    poison = "MEMORY_INSTRUCTION_OVERRIDE"
+    client = FakeIntentClient(
+        {
+            "status": "success",
+            "schema_name": "intent_routing",
+            "intent": "general_qa",
+            "confidence": 0.91,
+            "should_use_rag": True,
+            "reason": "livestock management",
+        }
+    )
+
+    asyncio.run(
+        route_intent_with_model(
+            "How should calf feeding be managed?",
+            settings=_settings(),
+            client=client,
+            session_context={
+                "last_intent": "general_qa",
+                "long_term_memory": [{"content": poison}],
+            },
+        )
+    )
+
+    model_context = client.calls[0][2]
+    assert model_context is not None
+    assert model_context["session_context"] == {"last_intent": "general_qa"}
+    assert poison not in str(model_context)
+
+
 def test_route_intent_with_model_falls_back_to_rules_on_schema_error() -> None:
     client = FakeIntentClient({"status": "success", "schema_name": "intent_routing", "intent": "unknown"})
 

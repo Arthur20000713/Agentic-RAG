@@ -28,6 +28,7 @@ from backend.app.agent.plan_executor import (
     ExecutorAgent,
 )
 from backend.app.agent.plan_verifier import PlanVerifier
+from backend.app.agent.query_constraints import extract_query_constraints
 from backend.app.agent.rag_answer_policy import (
     NO_ANSWER_TEXT,
     SAFETY_REFUSAL_TEXT,
@@ -52,7 +53,11 @@ from backend.app.schemas.agent import AgentToolError, IntentType, RetrievedConte
 from backend.app.schemas.measurement import MeasurementInput
 from backend.app.schemas.planning import ExecutionFailure, PlanStep
 from backend.app.schemas.rag_server import RagSearchResult
-from backend.app.schemas.retrieval import RetrievalQuerySource
+from backend.app.schemas.retrieval import (
+    AgenticRetrievalState,
+    RetrievalQuery,
+    RetrievalQuerySource,
+)
 from backend.app.services.feature_flag_service import FeatureFlagService
 from backend.app.services.memory_service import (
     MemoryEvent,
@@ -425,6 +430,24 @@ async def _execute_knowledge_query(
         _prepare_rag_retry(state)
     state.rag_query = query.strip()
     state.tool_attempt += 1
+    policy = _apply_rag_answer_policy(state)
+    if policy.force_no_answer or policy.force_safety_refusal:
+        termination_code = "SAFETY_REFUSAL" if policy.force_safety_refusal else "POLICY_NO_ANSWER"
+        state.agentic_retrieval = _blocked_retrieval_state(
+            state.rag_query,
+            query_source=query_source,
+            termination_code=termination_code,
+        )
+        result = RagSearchResult(query=state.rag_query, status="low_confidence")
+        state.tool_results[RAG_TOOL_NAME] = result.model_dump(mode="json")
+        state.evidence_status = result.status
+        _replace_retrieved_contexts(state, result)
+        _record_agentic_retrieval_trace(
+            state,
+            query=state.rag_query,
+            latency_ms=max(0, int((time.perf_counter() - started_at) * 1000)),
+        )
+        return ActionOutcome.success(RAG_TOOL_NAME)
     if context.rag_client is None:
         return ActionOutcome.failure(
             "RAG_CLIENT_MISSING",
@@ -879,7 +902,12 @@ def _record_model_router_shadow(state: MultiAgentState, settings: Settings) -> N
 
 
 def _apply_rag_answer_policy(state: MultiAgentState):
-    policy = classify_rag_answer_policy(state.normalized_query or state.user_query)
+    raw_policy = classify_rag_answer_policy(state.user_query)
+    policy = (
+        raw_policy
+        if raw_policy.force_no_answer or raw_policy.force_safety_refusal
+        else classify_rag_answer_policy(state.normalized_query or state.user_query)
+    )
     if policy.warning:
         state.tool_results["rag_answer_policy"] = policy.model_dump()
     if policy.force_no_answer:
@@ -889,6 +917,30 @@ def _apply_rag_answer_policy(state: MultiAgentState):
         state.retrieved_contexts.clear()
         state.draft_answer = SAFETY_REFUSAL_TEXT
     return policy
+
+
+def _blocked_retrieval_state(
+    query: str,
+    *,
+    query_source: RetrievalQuerySource,
+    termination_code: str,
+) -> AgenticRetrievalState:
+    return AgenticRetrievalState(
+        original_query=query,
+        query_source=query_source,
+        constraints=extract_query_constraints(query),
+        decomposition_source="blocked",
+        primary_queries=[
+            RetrievalQuery(
+                query_id="q_original",
+                text=query,
+                origin="original",
+                purpose="request policy boundary",
+            )
+        ],
+        final_status="blocked",
+        termination_code=termination_code,
+    )
 
 
 def _record_invalid_plan(state: MultiAgentState, error_code: str) -> None:

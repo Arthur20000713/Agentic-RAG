@@ -6,11 +6,14 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from backend.app.agent.rag_answer_policy import NO_ANSWER_POLICY_WARNING, NO_ANSWER_TEXT, SAFETY_REFUSAL_POLICY_WARNING
+from backend.app.agent.rag_answer_policy import (
+    NO_ANSWER_POLICY_WARNING,
+    NO_ANSWER_TEXT,
+    SAFETY_REFUSAL_POLICY_WARNING,
+)
 from backend.app.agent.state import MultiAgentState
 from backend.app.agent.verifier import VerifierLite
 from backend.app.schemas.agent import AgentToolError
-
 
 RAG_TOOL_NAME = "livestock_rag_search"
 PARTIAL_SOURCE_URI_WARNING = "RAG_MAPPING_PARTIAL_SOURCE_URI"
@@ -127,14 +130,14 @@ class VerifierAgent:
             elif any(index < 1 or index > citation_count for index in indexes):
                 issues.append("citation_index_out_of_range")
         mapping_warnings = self._rag_result(state).get("mapping_warnings") or []
-        if PARTIAL_SOURCE_URI_WARNING in mapping_warnings:
+        if self._requires_citations(state) and PARTIAL_SOURCE_URI_WARNING in mapping_warnings:
             issues.append("partial_source_uri")
         return issues
 
     def _unsupported_claims(self, state: MultiAgentState, answer: str) -> list[str]:
         if state.intent not in {"general_qa", "disease_consultation"}:
             return []
-        if self._is_reference_only_answer(state):
+        if self._is_reference_only_answer(state) or self._is_structured_no_answer(state):
             return []
         if state.evidence_status not in {"empty", "low_confidence", "error"}:
             return []
@@ -147,7 +150,7 @@ class VerifierAgent:
     def _claim_checks(self, state: MultiAgentState, answer: str) -> list[ClaimCheck]:
         if state.intent not in {"general_qa", "disease_consultation"}:
             return []
-        if self._is_reference_only_answer(state):
+        if self._is_reference_only_answer(state) or self._is_structured_no_answer(state):
             return []
         if self._rag_answer_policy_blocks_sources(state):
             return []
@@ -173,6 +176,13 @@ class VerifierAgent:
     def _is_reference_only_answer(self, state: MultiAgentState) -> bool:
         record = state.tool_results.get("grounded_answer_agent")
         return isinstance(record, dict) and record.get("reference_only") is True
+
+    def _is_structured_no_answer(self, state: MultiAgentState) -> bool:
+        record = state.tool_results.get("grounded_answer_agent")
+        if isinstance(record, dict) and record.get("status") == "no_answer":
+            return True
+        retrieval = state.agentic_retrieval
+        return retrieval is not None and retrieval.final_status == "insufficient"
 
     def _claim_supported_by_evidence(self, claim: str, state: MultiAgentState) -> bool | None:
         claim_tokens = self._english_claim_tokens(claim)

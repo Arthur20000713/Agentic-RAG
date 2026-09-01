@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import asyncio
 
-from backend.app.agent.graph import run_disease_graph, run_general_qa_graph, run_measurement_graph
+from backend.app.agent.graph import (
+    run_disease_graph,
+    run_general_qa_graph,
+    run_measurement_graph,
+)
 from backend.app.agent.rag_answer_policy import NO_ANSWER_POLICY_WARNING, NO_ANSWER_TEXT
 from backend.app.core.config import Settings
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
@@ -187,7 +191,7 @@ def test_general_graph_uses_primary_llm_draft_for_assistant_intro_without_rag() 
     ]
 
 
-def test_general_qa_graph_returns_clearly_labeled_reference_answer_when_rag_is_empty() -> None:
+def test_general_qa_graph_returns_agentic_no_answer_when_rag_is_empty() -> None:
     settings = Settings(
         primary_llm={"enabled": True, "provider": "mock", "model": "mock", "base_url": "mock"},
     )
@@ -205,9 +209,10 @@ def test_general_qa_graph_returns_clearly_labeled_reference_answer_when_rag_is_e
     assert state.intent == "general_qa"
     assert state.evidence_status == "low_confidence"
     assert "did not return enough evidence" in state.final_answer
-    assert "reference only" in state.final_answer.lower()
     assert "qualified veterinarian or livestock specialist" in state.final_answer
-    assert state.tool_results["grounded_answer_agent"]["reference_only"] is True
+    assert "reference only" not in state.final_answer.lower()
+    assert state.tool_results["grounded_answer_agent"]["status"] == "no_answer"
+    assert state.tool_results["grounded_answer_agent"]["reference_only"] is False
     assert state.tool_results["response_agent"]["sources"] == []
     assert state.verification_result is not None
     assert state.verification_result["passed"] is True
@@ -276,7 +281,7 @@ def test_general_qa_graph_keeps_low_confidence_no_answer_safe() -> None:
 
     assert state.evidence_status == "low_confidence"
     assert state.final_answer is not None
-    assert "没有检索到足够依据" in state.final_answer
+    assert "did not return enough evidence" in state.final_answer
     assert state.tool_results["response_agent"]["sources"] == []
     assert state.safety_result is not None
     assert state.safety_result["passed"] is True

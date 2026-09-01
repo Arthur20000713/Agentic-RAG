@@ -6,7 +6,6 @@ from pydantic import BaseModel
 
 from backend.app.agent.safety_precheck import SafetyPrecheck
 
-
 NO_ANSWER_POLICY_WARNING = "RAG_POLICY_NO_ANSWER"
 SAFETY_REFUSAL_POLICY_WARNING = "RAG_POLICY_SAFETY_REFUSAL"
 
@@ -60,6 +59,53 @@ def classify_rag_answer_policy(query: str) -> RagAnswerPolicyDecision:
         )
 
     return RagAnswerPolicyDecision()
+
+
+def build_insufficient_evidence_answer(
+    query: str,
+    *,
+    missing_aspects: list[str],
+    has_conflicts: bool,
+) -> str:
+    gaps = _safe_missing_aspects(missing_aspects)
+    is_chinese = bool(re.search(r"[\u3400-\u9fff]", query))
+    if is_chinese:
+        base = (
+            "检索到的证据存在尚未解决的冲突，因此无法给出确定回答。"
+            "请由专业兽医或技术人员对原始资料进行人工复核。"
+            if has_conflicts
+            else NO_ANSWER_TEXT
+        )
+        if not gaps:
+            return base
+        questions = "\n".join(f"- {gap.rstrip('？?')}？" for gap in gaps)
+        return f"{base}\n为继续判断，请补充以下信息：\n{questions}"
+
+    base = (
+        "The retrieved evidence contains unresolved conflicts, so I cannot give a definitive answer. "
+        "Please ask a qualified veterinarian or livestock specialist to review the original sources."
+        if has_conflicts
+        else (
+            "The knowledge base did not return enough evidence for a definitive answer. "
+            "Please provide more specific information or consult a qualified veterinarian or livestock specialist."
+        )
+    )
+    if not gaps:
+        return base
+    questions = "\n".join(f"- {gap.rstrip('？?')}?" for gap in gaps)
+    return f"{base}\nTo continue, please provide:\n{questions}"
+
+
+def _safe_missing_aspects(values: list[str]) -> list[str]:
+    gaps: list[str] = []
+    for value in values:
+        gap = re.sub(r"\[(?:\d+|source[^\]]*)\]", "", str(value), flags=re.IGNORECASE)
+        gap = re.sub(r"\s+", " ", gap).strip(" -:;，。")[:80]
+        if gap and gap not in gaps:
+            gaps.append(gap)
+        if len(gaps) == 3:
+            break
+    return gaps
 
 
 _SAFETY_REFUSAL_PATTERNS: tuple[re.Pattern[str], ...] = tuple(

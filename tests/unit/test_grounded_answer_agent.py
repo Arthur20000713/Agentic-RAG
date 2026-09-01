@@ -12,6 +12,13 @@ from backend.app.core.config import Settings
 from backend.app.model.primary_llm import PrimaryLLMRequest
 from backend.app.schemas.agent import RetrievedContext
 from backend.app.schemas.rag_server import RagCitation, RagSearchHit, RagSearchResult
+from backend.app.schemas.retrieval import (
+    AgenticRetrievalState,
+    EvidenceConflict,
+    EvidenceGrade,
+    QueryConstraintSnapshot,
+    RetrievalQuery,
+)
 from backend.app.services.chat_service import state_to_chat_data
 
 
@@ -96,6 +103,92 @@ def _empty_state() -> MultiAgentState:
         evidence_status="empty",
     )
     state.tool_results["livestock_rag_search"] = result.model_dump()
+    return state
+
+
+def _agentic_insufficient_state(*, conflicts: bool = False) -> MultiAgentState:
+    query = "犊牛断奶后的饲喂方案是什么？"
+    source_uri = "rag://livestock/conflict"
+    second_source_uri = "rag://livestock/conflict-2"
+    hit = RagSearchHit(
+        chunk_id="chunk_conflict",
+        document_title="Residual evidence",
+        content="This hit must not survive an insufficient decision.",
+        source_uri=source_uri,
+        score=0.9,
+    )
+    state = MultiAgentState(
+        session_id="s_agentic_insufficient",
+        user_query=query,
+        normalized_query=query,
+        intent="general_qa",
+        evidence_status="low_confidence",
+        retrieved_contexts=[
+            RetrievedContext(
+                chunk_id=hit.chunk_id,
+                title=hit.document_title,
+                content=hit.content,
+                score=hit.score,
+            )
+        ],
+        agentic_retrieval=AgenticRetrievalState(
+            original_query=query,
+            query_source="normalized_query",
+            constraints=QueryConstraintSnapshot(),
+            primary_queries=[
+                RetrievalQuery(
+                    query_id="q_original",
+                    text=query,
+                    origin="original",
+                    purpose="断奶后日粮与饮水",
+                )
+            ],
+            grades=[
+                EvidenceGrade(
+                    round=2,
+                    relevance=0.9,
+                    coverage=0.5,
+                    source_quality=1.0,
+                    missing_aspects=["日龄", "当前体重", "现有日粮"],
+                    conflicts=(
+                        [
+                            EvidenceConflict(
+                                topic="断奶后精料用量",
+                                left_ref=f"{source_uri}#chunk_conflict",
+                                right_ref=f"{second_source_uri}#chunk_conflict_2",
+                            )
+                        ]
+                        if conflicts
+                        else []
+                    ),
+                    reason_codes=["evidence_conflict" if conflicts else "coverage_below_threshold"],
+                    decision="no_answer",
+                )
+            ],
+            observed_hit_keys=(
+                [
+                    f"{source_uri}#chunk_conflict",
+                    f"{second_source_uri}#chunk_conflict_2",
+                ]
+                if conflicts
+                else []
+            ),
+            final_status="insufficient",
+            termination_code="EVIDENCE_INSUFFICIENT_AFTER_SECONDARY",
+        ),
+    )
+    state.tool_results["livestock_rag_search"] = RagSearchResult(
+        query=query,
+        status="low_confidence",
+        hits=[hit],
+        citations=[
+            RagCitation(
+                title=hit.document_title,
+                source_uri=hit.source_uri,
+                chunk_id=hit.chunk_id,
+            )
+        ],
+    ).model_dump()
     return state
 
 
@@ -252,3 +345,52 @@ def test_grounded_answer_agent_uses_reference_only_llm_answer_when_rag_is_empty(
     assert state.verification_result is not None
     assert state.verification_result["passed"] is True
     assert state_to_chat_data(state, settings=_settings())["sources"] == []
+
+
+def test_agentic_insufficient_evidence_never_uses_reference_only_model_answer() -> None:
+    llm = FakePrimaryLLM(
+        {
+            "status": "success",
+            "answer_draft": "这段通用知识回答不得被采用。",
+        }
+    )
+    state = _agentic_insufficient_state()
+    state.tool_results["livestock_rag_search"]["mapping_warnings"] = [
+        "RAG_MAPPING_PARTIAL_SOURCE_URI"
+    ]
+
+    asyncio.run(GroundedAnswerAgent(_settings(), primary_llm_client=llm).run(state))
+    VerifierAgent().verify(state)
+    ResponseAgent().render(state)
+
+    assert llm.requests == []
+    assert "这段通用知识回答不得被采用" not in state.final_answer
+    assert all(item in state.final_answer for item in ("日龄", "当前体重", "现有日粮"))
+    assert state.retrieved_contexts == []
+    assert state.tool_results["livestock_rag_search"]["hits"] == []
+    assert state.tool_results["livestock_rag_search"]["citations"] == []
+    assert state.tool_results["response_agent"]["sources"] == []
+    assert state.tool_results["grounded_answer_agent"]["status"] == "no_answer"
+    assert state.verification_result is not None
+    assert state.verification_result["passed"] is True
+
+
+def test_agentic_unresolved_conflict_returns_no_answer_without_citations() -> None:
+    llm = FakePrimaryLLM(
+        {
+            "status": "success",
+            "answer_draft": "Choose the first conflicting claim.",
+        }
+    )
+    state = _agentic_insufficient_state(conflicts=True)
+
+    asyncio.run(GroundedAnswerAgent(_settings(), primary_llm_client=llm).run(state))
+    VerifierAgent().verify(state)
+    ResponseAgent().render(state)
+
+    assert llm.requests == []
+    assert "证据存在尚未解决的冲突" in state.final_answer
+    assert "人工复核" in state.final_answer
+    assert "Choose the first conflicting claim" not in state.final_answer
+    assert "[1]" not in state.final_answer
+    assert state.tool_results["response_agent"]["sources"] == []
