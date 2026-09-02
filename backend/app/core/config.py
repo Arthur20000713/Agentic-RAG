@@ -5,8 +5,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
-
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, StrictFloat
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_SETTINGS_PATH = PROJECT_ROOT / "config" / "settings.yaml"
@@ -97,6 +96,15 @@ class PrimaryLLMSettings(BaseModel):
     max_retries: int = 0
 
 
+class ModelPricingSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    primary_input_usd_per_million_tokens: StrictFloat | None = Field(default=None, ge=0)
+    primary_output_usd_per_million_tokens: StrictFloat | None = Field(default=None, ge=0)
+    local_input_usd_per_million_tokens: StrictFloat | None = Field(default=0.0, ge=0)
+    local_output_usd_per_million_tokens: StrictFloat | None = Field(default=0.0, ge=0)
+
+
 class DiseaseLLMSettings(BaseModel):
     enabled: bool = False
     shadow_mode: bool = True
@@ -136,6 +144,7 @@ class Settings(BaseModel):
     model_router: ModelRouterSettings = Field(default_factory=ModelRouterSettings)
     local_model: LocalModelSettings = Field(default_factory=LocalModelSettings)
     primary_llm: PrimaryLLMSettings = Field(default_factory=PrimaryLLMSettings)
+    model_pricing: ModelPricingSettings = Field(default_factory=ModelPricingSettings)
     disease_llm: DiseaseLLMSettings = Field(default_factory=DiseaseLLMSettings)
     lora: LoraSettings = Field(default_factory=LoraSettings)
     long_term_memory: LongTermMemorySettings = Field(default_factory=LongTermMemorySettings)

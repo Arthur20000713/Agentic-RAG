@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from backend.app.core.config import Settings
-from backend.app.model.router import ModelRouteDecision, ModelRouteRequest, ModelRouter
+from backend.app.model.router import ModelRouteDecision, ModelRouter, ModelRouteRequest
 from backend.app.model.router_policy import blocked_by_safety, is_local_takeover_allowed
 
 
@@ -181,3 +181,64 @@ def test_model_router_allows_intent_routing_as_low_risk_structured_task() -> Non
     assert decision.selected_model == "local_small"
     assert decision.route_mode == "takeover"
     assert decision.local_candidate_allowed is True
+
+
+def test_model_router_allows_low_risk_livestock_triage() -> None:
+    settings = Settings(
+        model_router={
+            "enabled": True,
+            "shadow_mode": False,
+            "allow_low_risk_takeover": True,
+            "takeover_task_types": ["livestock_triage"],
+        },
+        local_model={"enabled": True},
+    )
+
+    decision = ModelRouter(settings).route(
+        ModelRouteRequest(task_type="livestock_triage", safety_level="S2")
+    )
+
+    assert decision.selected_model == "local_small"
+    assert decision.route_mode == "takeover"
+
+
+def test_planning_reasoning_and_final_answer_are_always_primary() -> None:
+    settings = Settings(
+        model_router={
+            "enabled": True,
+            "shadow_mode": False,
+            "allow_low_risk_takeover": True,
+            "takeover_task_types": ["planning", "reasoning", "final_answer"],
+        },
+        local_model={"enabled": True, "allow_final_answer": True},
+    )
+
+    for task_type in ("planning", "reasoning", "final_answer"):
+        decision = ModelRouter(settings).route(
+            ModelRouteRequest(task_type=task_type, safety_level="S0")
+        )
+
+        assert decision.selected_model == "primary"
+        assert decision.local_candidate_allowed is False
+        assert decision.blocked_reason == "task_requires_primary"
+
+
+def test_high_risk_livestock_triage_is_never_local() -> None:
+    settings = Settings(
+        model_router={
+            "enabled": True,
+            "shadow_mode": False,
+            "allow_low_risk_takeover": True,
+            "takeover_task_types": ["livestock_triage"],
+        },
+        local_model={"enabled": True},
+    )
+
+    for safety_level in ("S3", "S4"):
+        decision = ModelRouter(settings).route(
+            ModelRouteRequest(task_type="livestock_triage", safety_level=safety_level)
+        )
+
+        assert decision.selected_model == "primary"
+        assert decision.local_candidate_allowed is False
+        assert decision.blocked_reason == "high_risk_requires_primary"

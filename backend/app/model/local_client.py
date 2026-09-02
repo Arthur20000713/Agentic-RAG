@@ -7,7 +7,26 @@ from backend.app.lora.dataset import LoraTaskType
 from backend.app.lora.inference import select_lora_adapter
 from backend.app.lora.registry import ModelRegistry, ModelRegistryEntry
 from backend.app.model.base import BaseModelClient
-from backend.app.model.local_backends import BaseLocalBackend, LocalBackendRequest, OllamaBackend, TransformersBackend
+from backend.app.model.local_backends import (
+    BaseLocalBackend,
+    LocalBackendRequest,
+    OllamaBackend,
+    TransformersBackend,
+)
+
+PRIMARY_ONLY_SCHEMA_NAMES = {
+    "direct_answer_draft",
+    "disease_case_understanding",
+    "disease_reasoning",
+    "final_answer",
+    "grounded_rag_answer",
+    "planning",
+    "reasoning",
+    "reference_only_answer",
+    "retrieval_decomposition",
+    "retrieval_rewrite",
+    "task_plan",
+}
 
 
 class LocalModelClient(BaseModelClient):
@@ -39,6 +58,13 @@ class LocalModelClient(BaseModelClient):
                 "schema_name": normalized_schema,
                 "fallback_required": True,
                 "reason": "local model client only supports structured JSON tasks",
+            }
+        if normalized_schema in PRIMARY_ONLY_SCHEMA_NAMES:
+            return {
+                "status": "unsupported",
+                "schema_name": normalized_schema,
+                "fallback_required": True,
+                "reason": "local model may not execute primary-only schema",
             }
 
         if self.provider == "mock":

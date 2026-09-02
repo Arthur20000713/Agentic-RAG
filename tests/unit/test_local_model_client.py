@@ -5,10 +5,14 @@ from pathlib import Path
 from uuid import uuid4
 
 from backend.app.core.config import Settings
-from backend.app.model.base import BaseModelClient
-from backend.app.model.local_backends import BaseLocalBackend, LocalBackendRequest, LocalBackendResponse
-from backend.app.model.local_client import LocalModelClient
 from backend.app.lora.registry import ModelRegistry, ModelRegistryEntry
+from backend.app.model.base import BaseModelClient
+from backend.app.model.local_backends import (
+    BaseLocalBackend,
+    LocalBackendRequest,
+    LocalBackendResponse,
+)
+from backend.app.model.local_client import LocalModelClient
 
 
 class RecordingBackend(BaseLocalBackend):
@@ -116,6 +120,24 @@ def test_local_model_client_refuses_final_answer_schema() -> None:
     assert result["status"] == "unsupported"
     assert result["fallback_required"] is True
     assert "structured JSON" in result["reason"]
+
+
+def test_local_model_client_refuses_primary_only_reasoning_schemas() -> None:
+    client = LocalModelClient()
+
+    for schema_name in (
+        "planning",
+        "reasoning",
+        "task_plan",
+        "disease_reasoning",
+        "grounded_rag_answer",
+        "retrieval_decomposition",
+    ):
+        result = asyncio.run(client.generate_json("do not bypass routing", schema_name=schema_name))
+
+        assert result["status"] == "unsupported"
+        assert result["fallback_required"] is True
+        assert result["reason"] == "local model may not execute primary-only schema"
 
 
 def test_local_model_client_returns_fixed_json_for_generic_structured_task() -> None:

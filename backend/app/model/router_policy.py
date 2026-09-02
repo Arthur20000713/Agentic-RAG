@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 
 LOW_RISK_LEVELS = {"S0", "S1", "S2"}
 HIGH_RISK_LEVELS = {"S3", "S4"}
+PRIMARY_ONLY_TASK_TYPES = {"planning", "reasoning", "final_answer"}
 
 
 class RouterPolicy:
@@ -32,6 +33,9 @@ def is_local_takeover_allowed(request: ModelRouteRequest, settings: Settings) ->
         if request.safety_level in {"S2", "S3", "S4"}:
             return False, "risk_final_answer_requires_primary"
         return False, "final_answer_requires_primary"
+
+    if request.task_type in PRIMARY_ONLY_TASK_TYPES:
+        return False, "task_requires_primary"
 
     if request.safety_level not in LOW_RISK_LEVELS:
         return False, "safety_level_not_low_risk"

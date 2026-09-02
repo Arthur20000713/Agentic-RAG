@@ -1,25 +1,12 @@
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import BaseModel, Field
 
 from backend.app.agent.safety_precheck import SafetyLevel
 from backend.app.core.config import Settings
 from backend.app.model.router_policy import RouterPolicy
+from backend.app.schemas.model_routing import ModelName, ModelRouteMode, ModelTaskType
 from backend.app.services.feature_flag_service import FeatureFlagService
-
-
-ModelName = Literal["primary", "local_small"]
-ModelTaskType = Literal[
-    "final_answer",
-    "intent_routing",
-    "query_normalization",
-    "structured_extraction",
-    "measurement_analysis",
-    "summarization",
-]
-ModelRouteMode = Literal["disabled", "primary", "shadow", "takeover"]
 
 
 class ModelRouteRequest(BaseModel):
