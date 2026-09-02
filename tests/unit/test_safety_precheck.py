@@ -33,6 +33,14 @@ def test_safety_precheck_marks_group_outbreak_and_food_safety_as_s3() -> None:
     assert "food_safety" in result.risk_tags
 
 
+@pytest.mark.parametrize("query", ["calf has no group outbreak", "犊牛没有群体发病"])
+def test_safety_precheck_does_not_escalate_an_explicitly_negated_group_outbreak(query: str) -> None:
+    result = SafetyPrecheck().classify(query)
+
+    assert result.level != "S3"
+    assert "group_outbreak" not in result.risk_tags
+
+
 @pytest.mark.parametrize(
     ("query", "expected_tag"),
     [

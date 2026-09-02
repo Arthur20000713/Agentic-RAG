@@ -187,6 +187,31 @@ class LocalModelClient(BaseModelClient):
                 "fallback_required": False,
                 "provider": self.provider,
             }
+        if normalized_schema == "livestock_triage":
+            from backend.app.agent.router import IntentRouter
+            from backend.app.agent.safety_precheck import SafetyPrecheck
+
+            route_query = str((context or {}).get("user_query") or prompt)
+            route = IntentRouter().route(route_query)
+            safety = SafetyPrecheck().classify(route_query)
+            risk_by_safety = {
+                "S0": "low",
+                "S1": "low",
+                "S2": "medium",
+                "S3": "high",
+                "S4": "emergency",
+            }
+            return {
+                "status": "success",
+                "schema_name": normalized_schema,
+                "intent_candidate": route.intent,
+                "confidence": route.confidence,
+                "slots": [],
+                "risk_candidate": risk_by_safety[safety.level],
+                "risk_signals": list(safety.risk_tags),
+                "fallback_required": False,
+                "provider": self.provider,
+            }
         return {
             "status": "success",
             "schema_name": normalized_schema,

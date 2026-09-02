@@ -3,7 +3,11 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from backend.app.model.local_backends import LocalBackendRequest, OllamaBackend, TransformersBackend
+from backend.app.model.local_backends import (
+    LocalBackendRequest,
+    OllamaBackend,
+    TransformersBackend,
+)
 from backend.app.model.local_schema import parse_local_json_response
 
 
@@ -168,6 +172,35 @@ def test_transformers_backend_builds_intent_routing_prompt() -> None:
     assert response.status == "success"
     assert response.provider == "transformers"
     assert response.content["intent"] == "disease_consultation"
+    assert response.content["fallback_required"] is False
+
+
+def test_transformers_backend_builds_livestock_triage_prompt() -> None:
+    captured: dict[str, object] = {}
+
+    def fake_generator(prompt: str, request: LocalBackendRequest) -> str:
+        captured["prompt"] = prompt
+        captured["request"] = request
+        return (
+            '{"status":"success","schema_name":"livestock_triage","fallback_required":false,'
+            '"intent_candidate":"disease_consultation","confidence":0.91,"slots":[],'
+            '"risk_candidate":"medium","risk_signals":["fever"]}'
+        )
+
+    backend = TransformersBackend(generator=fake_generator)
+    request = LocalBackendRequest(
+        prompt="calf fever 40.2C",
+        schema_name="livestock_triage",
+        endpoint="",
+        model="Qwen/Qwen2.5-0.5B-Instruct",
+    )
+
+    response = asyncio.run(backend.generate(request))
+
+    assert "source_span" in str(captured["prompt"])
+    assert "do not diagnose" in str(captured["prompt"]).casefold()
+    assert response.status == "success"
+    assert response.content["intent_candidate"] == "disease_consultation"
     assert response.content["fallback_required"] is False
 
 

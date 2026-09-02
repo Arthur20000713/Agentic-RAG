@@ -171,7 +171,7 @@ class TransformersBackend(BaseLocalBackend):
             "temperature": request.options.get("temperature", 0.0),
         }
         normalized_schema = request.schema_name.strip().lower()
-        if normalized_schema not in {"query_normalization", "intent_routing"}:
+        if normalized_schema not in {"query_normalization", "intent_routing", "livestock_triage"}:
             return _backend_failure(
                 request,
                 self.provider,
@@ -361,9 +361,24 @@ def _intent_routing_prompt(query: str) -> str:
     )
 
 
+def _livestock_triage_prompt(query: str) -> str:
+    return (
+        "Classify one livestock user message without answering it. "
+        "Return exactly one JSON object with status, schema_name, fallback_required, intent_candidate, confidence, "
+        "slots, risk_candidate, and risk_signals. Allowed intents: assistant_intro, general_qa, disease_consultation, "
+        "measurement_analysis, out_of_scope. Slots may only use species, age_stage, duration_days, temperature_c, "
+        "temperature_status, appetite_status, feces_status, respiratory_status, or group_outbreak; every slot must have "
+        "name, value, confidence, and an exact source_span copied from the user message. Do not diagnose or recommend treatment. "
+        "Risk must be low, medium, high, or emergency. "
+        f"User message: {query.strip()}"
+    )
+
+
 def _prompt_for_schema(query: str, schema_name: str) -> str:
     if schema_name == "intent_routing":
         return _intent_routing_prompt(query)
+    if schema_name == "livestock_triage":
+        return _livestock_triage_prompt(query)
     return _query_normalization_prompt(query)
 
 
@@ -373,6 +388,11 @@ def _system_prompt_for_schema(schema_name: str) -> str:
         return (
             "You route livestock assistant messages. Return exactly one JSON object and no prose. "
             "Never answer the user; only classify the message."
+        )
+    if normalized == "livestock_triage":
+        return (
+            "You classify livestock messages into intent, source-grounded slots, and risk. "
+            "Return exactly one JSON object and no prose. Never diagnose, prescribe, or answer the user."
         )
     return (
         "You normalize livestock questions for retrieval. "
@@ -384,6 +404,10 @@ def _system_prompt_for_schema(schema_name: str) -> str:
 def _normalize_schema_content(content: dict[str, Any], schema_name: str) -> dict[str, Any]:
     if schema_name == "intent_routing":
         return _normalize_intent_routing_content(content)
+    if schema_name == "livestock_triage":
+        if content.get("status") == "success" and content.get("intent_candidate"):
+            content["fallback_required"] = False
+        return content
     if schema_name != "query_normalization":
         return content
     if content.get("status") == "success" and str(content.get("normalized_query", "")).strip():

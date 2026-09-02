@@ -127,6 +127,8 @@ class SafetyPrecheck:
                 "food_safety": self.food_safety_keywords,
             },
         )
+        if "group_outbreak" in s3_tags and not self._contains_unnegated_any(normalized, self.group_outbreak_keywords):
+            s3_tags.remove("group_outbreak")
         if s3_tags:
             return SafetyPrecheckResult(
                 level="S3",
@@ -161,3 +163,15 @@ class SafetyPrecheck:
 
     def _contains_any(self, text: str, keywords: tuple[str, ...]) -> bool:
         return any(keyword.lower() in text for keyword in keywords)
+
+    def _contains_unnegated_any(self, text: str, keywords: tuple[str, ...]) -> bool:
+        negations = ("no", "not", "without", "没有", "无", "未")
+        for keyword in keywords:
+            start = 0
+            normalized_keyword = keyword.lower()
+            while (index := text.find(normalized_keyword, start)) >= 0:
+                prefix = text[max(0, index - 20) : index].rstrip()
+                if not any(prefix.endswith(negation) for negation in negations):
+                    return True
+                start = index + len(normalized_keyword)
+        return False
