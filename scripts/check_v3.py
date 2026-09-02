@@ -491,9 +491,9 @@ def _check_stage_h() -> list[str]:
     frontend_tests = _read_text("tests/integration/test_frontend_contract.py")
     for required_text in (
         "AgentRuntimeEvalRunner",
-        "graph_baseline",
+        "router_off",
         "router_shadow",
-        "router_low_risk",
+        "router_on",
         "Agent Runtime Evaluation Summary",
     ):
         if required_text not in v3_runner:

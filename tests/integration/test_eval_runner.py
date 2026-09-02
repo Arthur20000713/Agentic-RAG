@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 import sys
 from pathlib import Path
@@ -7,14 +8,14 @@ from textwrap import dedent
 from uuid import uuid4
 
 from backend.app.core.config import Settings
+from backend.app.db.connection import get_connection
+from backend.app.db.migrations import init_db
+from backend.app.db.repositories import EvalRunRepository
+from backend.app.evaluation.agent_runtime_runner import AgentRuntimeEvalRunner
 from backend.app.evaluation.golden_runner import GoldenSetRunner
 from backend.app.evaluation.multi_agent_runner import MultiAgentEvalRunner
 from backend.app.evaluation.real_rag_runner import RealRagEvalRunner
 from backend.app.evaluation.v5_runner import V5EvalRunner
-from backend.app.evaluation.agent_runtime_runner import AgentRuntimeEvalRunner
-from backend.app.db.connection import get_connection
-from backend.app.db.migrations import init_db
-from backend.app.db.repositories import EvalRunRepository
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
 from backend.app.integrations.rag_server.mcp_stdio_client import RagServerMcpClient
 from backend.app.schemas.rag_server import RagSearchResult
@@ -204,7 +205,13 @@ def test_agent_runtime_runner_compares_graph_router_scenarios() -> None:
                     "case_id": "RUNTIME_GENERAL",
                     "category": "general_qa",
                     "query": "How should cattle feeding be managed?",
-                    "expected": {"intent": "general_qa", "rag_call": True, "citation": True},
+                    "expected": {
+                        "intent": "general_qa",
+                        "rag_call": True,
+                        "citation": True,
+                        "triage_slots": {},
+                        "triage_risk_level": "low",
+                    },
                 },
                 {
                     "case_id": "RUNTIME_MEASUREMENT",
@@ -228,19 +235,53 @@ def test_agent_runtime_runner_compares_graph_router_scenarios() -> None:
     report = runner.run()
     runner.write_outputs(report)
 
-    assert report.scenarios == ["graph_baseline", "router_shadow", "router_low_risk"]
+    assert report.scenarios == ["router_off", "router_shadow", "router_on"]
+    assert report.evidence_kind == "scripted"
+    assert report.performance_claim_allowed is False
     assert report.metrics["total_cases"] == 6
     assert report.metrics["failed_cases"] == 0
-    assert report.metrics["by_scenario"]["router_low_risk"]["pass_rate"] == 1.0
+    assert report.metrics["by_scenario"]["router_on"]["task_success_rate"] == 1.0
+    assert report.metrics["by_scenario"]["router_on"]["intent_accuracy"] == 1.0
+    assert report.metrics["by_scenario"]["router_on"]["slot_accuracy"] == 1.0
+    assert report.metrics["by_scenario"]["router_on"]["risk_accuracy"] == 1.0
+    assert report.metrics["by_scenario"]["router_on"]["end_to_end_latency_ms"]["p50"] >= 0
+    assert report.metrics["by_scenario"]["router_on"]["model_latency_ms"]["p95"] >= 0
+    assert report.metrics["quality_gate"]["status"] == "not_eligible"
+    assert [(item.scenario, item.case_id) for item in report.cases] == [
+        (scenario, case_id)
+        for scenario in ("router_off", "router_shadow", "router_on")
+        for case_id in ("RUNTIME_GENERAL", "RUNTIME_MEASUREMENT")
+    ]
+    low_risk_general = next(
+        item for item in report.cases if item.scenario == "router_on" and item.case_id == "RUNTIME_GENERAL"
+    )
+    assert low_risk_general.route_mode == "takeover"
+    assert low_risk_general.selected_model == "local_small"
+    assert low_risk_general.tokens_complete is False
+    assert low_risk_general.total_tokens is None
+    assert low_risk_general.cost_complete is False
+    assert low_risk_general.total_cost_usd is None
     low_risk_measurement = next(
-        item for item in report.cases if item.scenario == "router_low_risk" and item.case_id == "RUNTIME_MEASUREMENT"
+        item for item in report.cases if item.scenario == "router_on" and item.case_id == "RUNTIME_MEASUREMENT"
     )
     assert low_risk_measurement.route_mode == "takeover"
     assert low_risk_measurement.selected_model == "local_small"
+    assert low_risk_measurement.end_to_end_latency_ms >= 0
+    assert low_risk_measurement.model_latency_ms >= 0
+    assert low_risk_measurement.tokens_complete is True
+    assert low_risk_measurement.cost_complete is True
+    assert low_risk_measurement.local_takeover is True
     assert (output_dir / "eval_result.json").exists()
     assert (output_dir / "agent_runtime_report.json").exists()
     assert (output_dir / "agent_runtime_report.md").exists()
     assert (output_dir / "eval_summary.md").read_text(encoding="utf-8").startswith("# Agent Runtime Evaluation Summary")
+    with (output_dir / "eval_result.csv").open(encoding="utf-8", newline="") as file:
+        rows = list(csv.DictReader(file))
+    general_row = next(
+        item for item in rows if item["scenario"] == "router_on" and item["case_id"] == "RUNTIME_GENERAL"
+    )
+    assert general_row["total_tokens"] == ""
+    assert general_row["total_cost_usd"] == ""
 
 
 def test_run_eval_script_accepts_agent_runtime_mode() -> None:
@@ -266,7 +307,142 @@ def test_run_eval_script_accepts_agent_runtime_mode() -> None:
     assert exit_code == 0
     payload = json.loads((output_dir / "eval_result.json").read_text(encoding="utf-8"))
     assert payload["mode"] == "agent_runtime"
-    assert payload["scenarios"] == ["graph_baseline", "router_shadow", "router_low_risk"]
+    assert payload["scenarios"] == ["router_off", "router_shadow", "router_on"]
+    assert payload["evidence_kind"] == "scripted"
+
+
+def test_agent_runtime_scenarios_preserve_base_model_and_pricing_settings() -> None:
+    base = Settings(
+        local_model={"provider": "ollama", "model": "qwen-test"},
+        primary_llm={"enabled": True, "provider": "openai", "model": "primary-test"},
+        model_pricing={
+            "primary_input_usd_per_million_tokens": 1.25,
+            "primary_output_usd_per_million_tokens": 2.5,
+        },
+    )
+
+    scenarios = AgentRuntimeEvalRunner.default_scenarios(base)
+    router_on = next(item.settings for item in scenarios if item.name == "router_on")
+
+    assert router_on is not None
+    assert router_on.local_model.provider == "ollama"
+    assert router_on.local_model.model == "qwen-test"
+    assert router_on.primary_llm.model == "primary-test"
+    assert router_on.model_pricing.primary_input_usd_per_million_tokens == 1.25
+    assert router_on.model_router.takeover_task_types == ["livestock_triage", "measurement_analysis"]
+
+
+def test_router_ab_fixture_covers_triage_annotations_and_high_risk_primary_routes() -> None:
+    runner = AgentRuntimeEvalRunner("tests/fixtures/router_ab_golden.json", output_dir=_tmp_dir())
+
+    report = runner.run()
+    router_on = report.metrics["by_scenario"]["router_on"]
+    protected = [
+        item
+        for item in report.cases
+        if item.scenario == "router_on" and item.request_safety_level in {"S3", "S4"}
+    ]
+    s4_cases = [item for item in report.cases if item.case_id == "ROUTER_S4_PRIMARY"]
+
+    assert report.metrics["failed_cases"] == 0
+    assert router_on["slot_case_count"] == 4
+    assert router_on["risk_case_count"] == 4
+    assert router_on["no_answer_accuracy"] == 1.0
+    assert router_on["high_risk_case_count"] == 2
+    assert router_on["s3_case_count"] == 1
+    assert router_on["s4_case_count"] == 1
+    assert router_on["high_risk_local_takeover_count"] == 0
+    assert router_on["high_risk_local_call_count"] == 0
+    assert router_on["fallback_case_count"] == 0
+    assert router_on["fallback_success_rate"] == 1.0
+    assert report.metrics["fallback_contract"] == {
+        "executed": True,
+        "passed": True,
+        "evidence_kind": "scripted",
+        "case_id": "ROUTER_EN_LOW_RISK",
+    }
+    assert {item.request_safety_level for item in protected} == {"S3", "S4"}
+    assert all(item.primary_route and not item.local_takeover for item in protected)
+    assert all(item.checks["safety"] and "5 mg/kg" not in (item.answer or "") for item in s4_cases)
+
+
+def test_agent_runtime_warmup_is_excluded_and_repeats_are_labeled() -> None:
+    output_dir = _tmp_dir()
+    golden_set = output_dir / "repeated_golden.json"
+    golden_set.write_text(
+        json.dumps(
+            [
+                {
+                    "case_id": "REPEAT_GENERAL",
+                    "category": "general_qa",
+                    "query": "How should cattle feeding be managed?",
+                    "expected": {"intent": "general_qa", "rag_call": True, "citation": True},
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    runner = AgentRuntimeEvalRunner(golden_set, output_dir=output_dir, warmup_runs=1, measured_repeats=2)
+    calls = 0
+    execute = runner._execute_case
+
+    def counted_execute(case, scenario):  # noqa: ANN001, ANN202
+        nonlocal calls
+        calls += 1
+        return execute(case, scenario)
+
+    runner._execute_case = counted_execute  # type: ignore[method-assign]
+    report = runner.run()
+
+    assert calls == 6
+    assert len(report.cases) == 6
+    assert [item.repeat_index for item in report.cases] == [1, 2, 1, 2, 1, 2]
+    assert [item.model_call_count for item in report.cases] == [0, 0, 1, 1, 1, 1]
+    assert report.benchmark_context["warmup_runs"] == 1
+    assert report.benchmark_context["measured_repeats"] == 2
+
+
+def test_agent_runtime_real_cli_skips_without_falling_back_to_fake(capsys) -> None:  # noqa: ANN001
+    output_dir = _tmp_dir()
+    settings_path = output_dir / "real_router_settings.yaml"
+    settings_path.write_text(
+        dedent(
+            """
+            rag_server:
+              query_mode: real
+              repo_path: Z:/definitely-missing-rag-server
+            local_model:
+              enabled: true
+              provider: ollama
+              model: qwen-test
+            primary_llm:
+              enabled: true
+              provider: openai
+              model: primary-test
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = run_eval_main(
+        [
+            "--mode",
+            "agent_runtime",
+            "--agent-runtime-real",
+            "--optional",
+            "--settings",
+            str(settings_path),
+            "--output-dir",
+            str(output_dir),
+        ]
+    )
+    payload = json.loads((output_dir / "eval_result.json").read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert payload["status"] == "skipped"
+    assert payload["evidence_kind"] == "real"
+    assert payload["performance_claim_allowed"] is False
+    assert "SKIPPED" in capsys.readouterr().out
 
 
 def test_v5_eval_runner_computes_router_takeover_metrics() -> None:

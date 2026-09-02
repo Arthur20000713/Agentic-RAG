@@ -8,7 +8,11 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from backend.app.agent.graph import run_disease_graph, run_general_qa_graph, run_measurement_graph
+from backend.app.agent.graph import (
+    run_disease_graph,
+    run_general_qa_graph,
+    run_measurement_graph,
+)
 from backend.app.agent.state import MultiAgentState
 from backend.app.core.config import PROJECT_ROOT
 from backend.app.evaluation.metrics import compute_metrics
@@ -16,7 +20,6 @@ from backend.app.integrations.rag_server.base import RagServerClient
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
 from backend.app.schemas.agent import IntentType, RiskLevel
 from backend.app.schemas.measurement import MeasurementInput
-
 
 GoldenCategory = Literal[
     "general_qa",
@@ -38,6 +41,8 @@ class ExpectedChecks(BaseModel):
     follow_up: bool | None = None
     structure: bool | None = None
     risk_level: RiskLevel | None = None
+    triage_slots: dict[str, str | int | float | bool] | None = None
+    triage_risk_level: RiskLevel | None = None
 
 
 class GoldenCase(BaseModel):

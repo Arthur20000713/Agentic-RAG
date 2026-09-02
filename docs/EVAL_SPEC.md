@@ -104,3 +104,25 @@ Release harness:
 ```
 
 Real RAG, real local-model smoke, and LoRA dataset/adapter checks are enabled only with explicit script flags.
+
+## Model Router A/B Evaluation
+
+The agent-runtime runner executes each golden case in the same order under three fixed scenarios:
+
+- `router_off`: router and local triage disabled.
+- `router_shadow`: local triage runs, while the primary/rule path remains authoritative.
+- `router_on`: low-risk `livestock_triage` and measurement formatting may use local takeover; protected tasks and high-risk requests remain primary.
+
+The default `tests/fixtures/router_ab_golden.json` set includes bilingual triage annotations, grounded numeric/negated slots, no-answer handling, and S3/S4 primary-only cases. After the measured cases, the runner performs a separate controlled local-model failure contract check with Fake RAG and primary models disabled. That check is labeled `scripted` and excluded from latency, token, cost, and triage-accuracy samples.
+
+```powershell
+.venv\Scripts\python.exe scripts\run_eval.py --mode agent_runtime --golden-set tests\fixtures\router_ab_golden.json --output-dir reports\router_ab
+```
+
+`--settings` is applied to agent-runtime model providers, pricing, and other base settings before the three router overrides are built.
+
+Each case records task success, end-to-end and summed model latency, token completeness and known totals, API-token-only cost, fallback use, route, local takeover, and primary escalation. Scenario summaries include intent/slot/risk accuracy when annotated, P50/P95 latency, token and cost totals, fallback success, safety, high-risk takeover violations, and routing rates. Unknown provider usage or pricing remains `null`; known subtotals are reported separately and are never presented as complete totals.
+
+The default fake RAG/mock-model run is marked `evidence_kind=scripted` and `performance_claim_allowed=false`. Its quality gate is `not_eligible`: it validates behavior and metric calculations but cannot authorize production takeover or support real performance claims. Real evidence must use a non-fake RAG client, non-mock local and primary model settings, and pass all gates: router-on task success is no worse than router-off, intent/slot/risk thresholds pass, safety is 100%, high-risk local takeover is zero, and every fallback case still succeeds.
+
+Use `--agent-runtime-real --optional` for the explicit real path. It defaults to one discarded warm-up run per scenario and three measured repeats; override them with `--warmup-runs` and `--repeats`. Missing real dependencies produce a `skipped` report and never fall back to Fake RAG. Real gate failure returns a nonzero exit code.
