@@ -318,13 +318,131 @@ R7 完成记录见 `docs/AGENTIC_RETRIEVAL_COMPLETION_REPORT.md`。真实 RAG ad
 
 ## 6. 阶段四：Model Router 与评测
 
-Agentic Retrieval 完成后细化，最小验收边界如下：
+### 6.1 当前基线与真实缺口
 
-- 本地小模型候选任务仅限 intent、slot、risk 等低成本结构化判断。
-- planning/reasoning 使用能力更强的主模型；安全策略可以强制升级模型。
-- 路由失败可回退，记录 selected model、fallback reason、latency、tokens 和估算 cost。
-- 以固定 golden set 比较 router on/off 的 task success、P50/P95 latency、tokens 和 cost。
-- 只有 task success 不低于基线且安全集不退化，才允许默认启用。
+项目已有 V5 `ModelRouter`、disabled/shadow/takeover 模式、`LocalModelClient`、Ollama/Transformers
+后端、路由日志和 agent runtime runner。intent 在允许 takeover 时可由本地模型执行；主模型已用于
+TaskPlanner、QueryDecomposer、DiseaseUnderstanding 和 grounded answer。现有安全策略禁止 S3/S4 和
+final answer 交给本地模型。
+
+这些能力不能直接视为本阶段已完成：
+
+- Transformers 后端只正式支持 query normalization 与 intent，slot/risk 没有安全的生产接线。
+- 生产配置的 takeover allowlist 不包含 intent/slot/risk；measurement 在 allowlist 中但 Transformers
+  后端不支持该 schema，配置与实际能力不一致。
+- 现有 agent runtime runner 使用 mock local client，虽比较 router 场景 task success，却不能证明真实
+  Qwen 质量或速度。
+- local/primary payload 只零散记录 latency；Primary Chat Completions 的 usage 未规范化，Transformers
+  与 Ollama token 数也未进入统一契约。
+- 没有按场景聚合 P50/P95 latency、input/output/total tokens 和估算 cost，无法量化路由收益。
+
+本阶段扩展现有组件，不建立第二套路由器、客户端或评测框架。
+
+### 6.2 任务分工与路由策略
+
+#### 本地小模型
+
+intent、slot、risk 合并为一次 `livestock_triage` 结构化调用，避免同一请求连续运行三次本地模型。
+输出包括 intent candidate、显式 slot、每个 slot 的原文 span、risk candidate、risk signals 和 confidence。
+
+- 只有原文可定位的 slot 才能进入受信 triage context；模型补全、诊断和历史 Memory 回显全部丢弃。
+- risk candidate 只能上调规则结果或触发主模型升级，不能下调 `SafetyPrecheck` 或确定性疾病规则结果。
+- S3/S4、剂量/处方、停药期、确定性诊断等输入在本地调用前强制升级到主模型/规则安全路径。
+- 本地输出不生成用户可见答案，不成为 RAG evidence、citation、Memory 事实或最终安全结论。
+- 本地失败、超时、非法 JSON、低 confidence 或 guard 失败时回退现有规则 intent 与主模型路径，并记录
+  稳定 fallback reason。
+
+#### 主模型
+
+以下任务始终选用 `primary`，不能由配置 allowlist 降级到本地模型：
+
+- `planning`：TaskPlanner；
+- `reasoning`：DiseaseUnderstanding、QueryDecomposer、EvidenceGrade 候选和 GroundedAnswer；
+- `final_answer`：任何用户可见的模型生成内容；
+- S3/S4 或本地 triage 请求升级后的结构化判断。
+
+ModelRouter 的 task taxonomy 显式包含 `livestock_triage`、`planning`、`reasoning` 和 `final_answer`。
+服务端 policy 是最终权限边界，配置不能绕过强制主模型任务和安全等级。
+
+### 6.3 Schema、用量和成本口径
+
+新增 checkpoint-safe 的统一模型调用记录，最少包含：
+
+- operation/call ID、task type、provider、model、selected model、route mode；
+- status、fallback reason、latency ms；
+- input tokens、output tokens、total tokens；
+- input/output/total estimated cost USD；
+- usage source：provider、tokenizer、estimate 或 unavailable。
+
+Primary client 从兼容 Chat Completions 的 `usage.prompt_tokens/completion_tokens/total_tokens` 读取真实用量。
+Ollama 使用 `prompt_eval_count/eval_count`；Transformers 使用实际 tokenizer input 和 generated token 长度。
+provider 未返回 token 时允许显式 `unavailable`，不得填 0 冒充已测。
+
+成本按配置的每百万 input/output token 单价计算并保存单价快照。未配置价格时 cost 为 `null`；本地模型
+默认 API token cost 为 0，但报告必须标注不包含电力、硬件折旧和运维成本，不能宣称总拥有成本为 0。
+禁止把 API key、完整 prompt、chain-of-thought 或 Memory 内容写入 usage/trace。
+
+### 6.4 Graph、checkpoint 与可观测性
+
+- triage 位于 Memory search 后、Planner 前，但输入排除 `long_term_memory`；本轮原始 query 始终是
+  intent/slot/risk guard 的权威来源。
+- 接受的 triage context 只供 Planner/疾病上下文使用，不进入 aggregate hits 或 citations。
+- 模型调用记录存入 `MultiAgentState` 的有界列表并随 checkpoint 保存；同一 operation key 在 resume 后不
+  重复计入，新 turn 清空旧调用记录。
+- trace/debug 只返回调用摘要与 totals。现有 model route log 继续记录 route decision；不为本阶段复制一张
+  语义相同的路由表。
+- shadow 模式执行本地 triage 并记录质量/延迟，但主路径仍使用现有规则/primary 结果；takeover 模式只有
+  在质量门禁通过后才可启用。
+
+### 6.5 A/B 评测设计
+
+扩展现有 `AgentRuntimeEvalRunner`，使用同一固定 golden set 顺序比较：
+
+1. `router_off`：本地 triage 关闭，现有规则/primary 基线；
+2. `router_shadow`：运行本地 triage但不影响输出；
+3. `router_on`：低风险 triage takeover，高风险和 planning/reasoning 仍走 primary。
+
+每个 case 记录 task success、端到端 latency、模型 latency、tokens、cost、fallback 和 route。报告按场景输出：
+
+- task success 与 intent/slot/risk 子任务准确率；
+- P50/P95 端到端 latency 和模型 latency；
+- input/output/total tokens；
+- 每 case 平均及总 estimated cost；
+- fallback rate、local takeover rate、primary escalation rate；
+- safety pass rate 和 no-answer/citation 回归指标。
+
+计时使用 `perf_counter`。真实 benchmark 先 warm up 本地模型，warm-up 不计入分位数；每个场景的 measured
+repeats 和硬件/模型/配置写入报告。Fake/scripted A/B 只验证指标计算与功能矩阵，不得当作真实性能数据。
+
+默认启用条件：router_on task success 不低于 router_off，intent/slot/risk 均达到门禁，安全集 100%，
+高风险无本地 takeover，且 fallback 后任务仍成功。Latency/tokens/cost 无论改善与否都如实报告，不以降低
+质量换取成本。
+
+### 6.6 小任务与提交门禁
+
+| 编号 | 小任务 | 主要产物 | 目标验证 | 状态 |
+|---|---|---|---|---|
+| MR0 | 审计与规范 | 本阶段 DEV_SPEC、基线/边界/指标口径 | 现有 Model Router 相关测试；`git diff --check` | 已完成 |
+| MR1 | 路由与 usage schema | task taxonomy、triage/usage/cost schema、强制主模型 policy | 合法/非法 schema；planning/reasoning/S3/S4 永不本地接管 | 未开始 |
+| MR2 | 本地 triage | intent+slot+risk 单调用、span/confidence guard、mock/Transformers/Ollama | 中英文、否定/数字、幻觉 slot、risk 不降级、超时/schema fallback | 未开始 |
+| MR3 | Graph 与主模型接线 | triage 节点/context、Planner/reasoning route、checkpoint/reset | shadow/takeover/escalation；resume 不重复；Memory/evidence 隔离 | 未开始 |
+| MR4 | 模型用量遥测 | provider/tokenizer usage、定价快照、trace totals | token 来源、null cost、精确 cost、fallback 和敏感字段负例 | 未开始 |
+| MR5 | A/B 评测 | 扩展 AgentRuntimeEvalRunner、分位数/tokens/cost 报告、质量 gate | router off/shadow/on 同集比较；Fake 不冒充 real | 未开始 |
+| MR6 | 系统验收与完成报告 | scripted E2E、真实 Qwen smoke/benchmark、全量回归、报告 | task success/latency/tokens/cost 与安全回归可追溯 | 未开始 |
+
+每个小任务先补失败测试，再写最小实现，运行精确回归，审核 staged diff，独立 commit 并 push。
+
+### 6.7 验收标准
+
+- 一次低风险 triage 同时输出 intent、grounded slots 和 risk candidate；本地模型不生成回答。
+- hallucinated slot、无原文 span、低 confidence 和语义冲突全部 fail closed。
+- 本地 risk 永不降低规则/Safety 风险；S3/S4 与强制 primary task 的本地调用数为 0。
+- planning/reasoning/final answer 的 route decision 和实际 client 一致，禁止“记录 primary、实际调用 local”。
+- 本地失败后主路径可完成且 fallback reason、latency、tokens/cost 口径可审计。
+- checkpoint resume 不重复调用/计费；新 turn 无旧 triage 或 usage 泄漏。
+- router off/shadow/on 报告使用相同 case 集，输出 success、P50/P95、tokens、cost 和安全指标。
+- 真实 Qwen 结果与 Fake/scripted 结果分栏；外部主模型未授权或不可用时明确 skipped，不生成伪造成本。
+- internal-v1、legacy、Memory、Planner、Agentic Retrieval、Safety 和非真实 RAG 全量回归不退化。
 
 ## 7. 最终完成定义
 
