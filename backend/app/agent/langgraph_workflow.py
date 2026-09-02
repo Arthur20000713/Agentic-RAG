@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 import re
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
+from hashlib import sha256
 from typing import Any, cast
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -48,8 +50,11 @@ from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
 from backend.app.model.base import BaseModelClient
 from backend.app.model.intent_router import IntentRoutingResult, route_intent_with_model
 from backend.app.model.livestock_triage import LivestockTriage
+from backend.app.model.local_client import LocalModelClient
+from backend.app.model.primary_llm import PrimaryLLMClient
 from backend.app.model.query_normalizer import normalize_query_with_router
 from backend.app.model.router import ModelRouter, ModelRouteRequest
+from backend.app.model.usage import append_model_call_records, summarize_model_calls
 from backend.app.schemas.agent import AgentToolError, IntentType, RetrievedContext
 from backend.app.schemas.measurement import MeasurementInput
 from backend.app.schemas.planning import ExecutionFailure, PlanStep
@@ -97,6 +102,17 @@ class AgentGraphRuntime:
     animal_profile: dict[str, Any] | None = None
     memory_scope_authoritative: bool = False
     unsafe_draft_for_test: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.primary_llm_client is None:
+            self.primary_llm_client = PrimaryLLMClient(self.settings)
+        shared_local: BaseModelClient | None = None
+        for name in ("query_normalizer_client", "intent_router_client", "livestock_triage_client"):
+            if getattr(self, name) is not None:
+                continue
+            if shared_local is None:
+                shared_local = LocalModelClient(self.settings)
+            setattr(self, name, shared_local)
 
 
 def build_chat_graph(
@@ -240,6 +256,7 @@ def _reset_transient_turn_state(state: MultiAgentState) -> None:
     state.evidence_status = None
     state.agentic_retrieval = None
     state.livestock_triage = None
+    state.model_call_records = []
     state.disease_assessment = None
     state.measurement_report = None
     state.draft_answer = None
@@ -308,12 +325,13 @@ async def _router_node(
 ) -> dict[str, Any]:
     state = _state(raw_state)
     context = _context(runtime)
-    await _maybe_normalize_query(state, context)
+    with _model_usage_scope(context, _model_operation_prefix(state, "router")):
+        await _maybe_normalize_query(state, context)
 
-    route_override = _triage_takeover_route(state)
-    if route_override is None and context.forced_intent != "measurement_analysis" and context.measurement is None:
-        route_override = await _maybe_route_intent_with_model(state, context)
-    SupervisorAgent().route(state, route_override=route_override)
+        route_override = _triage_takeover_route(state)
+        if route_override is None and context.forced_intent != "measurement_analysis" and context.measurement is None:
+            route_override = await _maybe_route_intent_with_model(state, context)
+        SupervisorAgent().route(state, route_override=route_override)
 
     forced_intent = context.forced_intent
     if context.measurement is not None:
@@ -325,6 +343,7 @@ async def _router_node(
 
     if context.forced_intent == "measurement_analysis" or context.measurement is not None:
         _record_model_router_shadow(state, context.settings)
+    _sync_model_call_records(state, context)
     return _dump(state)
 
 
@@ -337,10 +356,12 @@ async def _livestock_triage_node(
     if not FeatureFlagService(context.settings).model_router_enabled:
         return _dump(state)
 
-    outcome = await LivestockTriage(
-        context.settings,
-        client=context.livestock_triage_client,
-    ).run(state.user_query)
+    with _model_usage_scope(context, _model_operation_prefix(state, "triage")):
+        outcome = await LivestockTriage(
+            context.settings,
+            client=context.livestock_triage_client,
+        ).run(state.user_query)
+    _sync_model_call_records(state, context)
     if outcome.status == "not_run" and outcome.fallback_reason not in {"high_risk_requires_primary"}:
         return _dump(state)
     state.livestock_triage = outcome
@@ -354,6 +375,7 @@ async def _livestock_triage_node(
             "fallback_reason": outcome.fallback_reason,
         }
     )
+    _attach_model_usage_summary(state)
     return _dump(state)
 
 
@@ -384,14 +406,16 @@ async def _direct_node(
 ) -> dict[str, Any]:
     state = _state(raw_state)
     context = _context(runtime)
-    if FeatureFlagService(context.settings).primary_llm_enabled:
-        await DirectAnswerAgent(
-            settings=context.settings,
-            primary_llm_client=context.primary_llm_client,
-        ).run(state)
-    else:
-        state.draft_answer = fallback_direct_answer(state.intent)
-        state.evidence_status = "empty"
+    with _model_usage_scope(context, _model_operation_prefix(state, "direct")):
+        if FeatureFlagService(context.settings).primary_llm_enabled:
+            await DirectAnswerAgent(
+                settings=context.settings,
+                primary_llm_client=context.primary_llm_client,
+            ).run(state)
+        else:
+            state.draft_answer = fallback_direct_answer(state.intent)
+            state.evidence_status = "empty"
+    _sync_model_call_records(state, context)
     return _dump(state)
 
 
@@ -406,11 +430,13 @@ async def _planner_node(
         if not valid:
             _record_invalid_plan(state, error_code or "PLANNER_TOOL_NOT_ALLOWED")
             return _dump(state)
-    await SupervisorAgent().plan(
-        state,
-        settings=context.settings,
-        primary_llm_client=context.primary_llm_client,
-    )
+    with _model_usage_scope(context, _model_operation_prefix(state, "planner")):
+        await SupervisorAgent().plan(
+            state,
+            settings=context.settings,
+            primary_llm_client=context.primary_llm_client,
+        )
+    _sync_model_call_records(state, context)
     return _dump(state)
 
 
@@ -432,7 +458,10 @@ async def _executor_node(
         ),
         safe_fallback=_execute_safe_fallback,
     )
-    await ExecutorAgent(handlers).execute_next(state)
+    prefix = _model_operation_prefix(state, f"executor_{state.execution_count + 1}")
+    with _model_usage_scope(context, prefix):
+        await ExecutorAgent(handlers).execute_next(state)
+    _sync_model_call_records(state, context)
     return _dump(state)
 
 
@@ -1350,6 +1379,56 @@ def _last_disease_understanding(state: MultiAgentState) -> dict[str, Any] | None
         if isinstance(record, dict) and isinstance(record.get("understanding"), dict):
             return record["understanding"]
     return None
+
+
+@contextmanager
+def _model_usage_scope(context: AgentGraphRuntime, operation_prefix: str) -> Iterator[None]:
+    with ExitStack() as stack:
+        for client in _telemetry_clients(context):
+            scope = getattr(client, "telemetry_scope", None)
+            if callable(scope):
+                stack.enter_context(scope(operation_prefix))
+        yield
+
+
+def _sync_model_call_records(state: MultiAgentState, context: AgentGraphRuntime) -> None:
+    for client in _telemetry_clients(context):
+        drain = getattr(client, "drain_model_call_records", None)
+        if not callable(drain):
+            continue
+        records = [record for record in drain() if hasattr(record, "operation_key")]
+        append_model_call_records(state.model_call_records, records)
+    _attach_model_usage_summary(state)
+
+
+def _attach_model_usage_summary(state: MultiAgentState) -> None:
+    if not state.model_call_records:
+        return
+    summary = summarize_model_calls(state.model_call_records)
+    state.tool_results["model_usage_totals"] = summary
+    if state.agent_trace:
+        state.agent_trace[-1]["model_usage"] = summary
+
+
+def _telemetry_clients(context: AgentGraphRuntime) -> list[Any]:
+    clients: list[Any] = []
+    seen: set[int] = set()
+    for client in (
+        context.primary_llm_client,
+        context.query_normalizer_client,
+        context.intent_router_client,
+        context.livestock_triage_client,
+    ):
+        if client is None or id(client) in seen:
+            continue
+        seen.add(id(client))
+        clients.append(client)
+    return clients
+
+
+def _model_operation_prefix(state: MultiAgentState, node: str) -> str:
+    identity = f"{state.session_id}\0{state.request_id or ''}\0{state.user_query}"
+    return f"model_{sha256(identity.encode('utf-8')).hexdigest()[:16]}:{node}"
 
 
 def _state(value: MultiAgentState | dict[str, Any]) -> MultiAgentState:

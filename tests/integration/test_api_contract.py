@@ -6,10 +6,15 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from backend.app.agent.state import MultiAgentState
 from backend.app.core.config import Settings, load_settings
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
 from backend.app.main import create_app
-from backend.app.agent.state import MultiAgentState
+from backend.app.schemas.model_routing import (
+    ModelCallRecord,
+    ModelCostEstimate,
+    ModelTokenUsage,
+)
 from backend.app.services.chat_service import build_agent_runtime_debug_payload
 
 
@@ -159,6 +164,32 @@ def test_chat_api_uses_langgraph_runtime() -> None:
     assert payload["data"]["agent_runtime_debug"]["planning"]["status"] == "completed"
     assert payload["data"]["agent_runtime_debug"]["verifier"]["passed"] is True
     assert payload["data"]["agent_runtime_debug"]["safety"]["passed"] is True
+
+
+def test_agent_runtime_debug_exposes_only_model_usage_totals() -> None:
+    state = MultiAgentState(session_id="s_usage", user_query="private prompt")
+    state.model_call_records = [
+        ModelCallRecord(
+            operation_key="s_usage:planner:1",
+            task_type="planning",
+            provider="test",
+            model="primary-test",
+            selected_model="primary",
+            route_mode="primary",
+            status="success",
+            latency_ms=7,
+            usage=ModelTokenUsage(source="provider", input_tokens=10, output_tokens=2, total_tokens=12),
+            cost=ModelCostEstimate(pricing_configured=False),
+        )
+    ]
+
+    model_usage = build_agent_runtime_debug_payload(Settings(), state=state)["model_usage"]
+
+    assert model_usage["call_count"] == 1
+    assert model_usage["known_total_tokens"] == 12
+    assert model_usage["total_cost_usd"] is None
+    assert "private prompt" not in str(model_usage)
+    assert "model_call_records" not in model_usage
 
 
 def test_chat_api_answers_assistant_intro_without_rag_or_domain_refusal() -> None:

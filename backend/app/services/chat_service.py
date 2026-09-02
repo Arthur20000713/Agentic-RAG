@@ -9,6 +9,7 @@ from backend.app.agent.graph import run_chat_graph
 from backend.app.agent.state import MultiAgentState
 from backend.app.core.config import PROJECT_ROOT, Settings
 from backend.app.integrations.rag_server.base import RagServerClient
+from backend.app.model.usage import summarize_model_calls
 from backend.app.schemas.api import ChatRequest
 from backend.app.services.feature_flag_service import FeatureFlagService
 from backend.app.services.session_context_service import SessionContextService
@@ -94,6 +95,7 @@ def build_agent_runtime_debug_payload(
                 "model_fallbacks": list(state.tool_results.get("model_fallbacks") or []),
                 "planning": _planning_debug_summary(state),
                 "agentic_retrieval": _agentic_retrieval_debug_summary(state),
+                "model_usage": summarize_model_calls(state.model_call_records),
             }
         )
     return payload

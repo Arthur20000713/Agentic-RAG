@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from backend.app.core.config import Settings
@@ -13,6 +14,8 @@ from backend.app.model.local_backends import (
     OllamaBackend,
     TransformersBackend,
 )
+from backend.app.model.usage import ModelCallRecorder, unavailable_usage
+from backend.app.schemas.model_routing import ModelCallRecord
 
 PRIMARY_ONLY_SCHEMA_NAMES = {
     "direct_answer_draft",
@@ -27,6 +30,14 @@ PRIMARY_ONLY_SCHEMA_NAMES = {
     "retrieval_rewrite",
     "task_plan",
 }
+SAFE_LOCAL_ERROR_CODES = {
+    "LOCAL_MODEL_GENERATION_ERROR",
+    "LOCAL_MODEL_HTTP_ERROR",
+    "LOCAL_MODEL_IMPORT_ERROR",
+    "LOCAL_MODEL_SCHEMA_ERROR",
+    "LOCAL_MODEL_SCHEMA_UNSUPPORTED",
+    "LOCAL_MODEL_TIMEOUT",
+}
 
 
 class LocalModelClient(BaseModelClient):
@@ -36,6 +47,13 @@ class LocalModelClient(BaseModelClient):
         self.settings = settings or Settings()
         self.provider = self.settings.local_model.provider
         self._backend_cache: dict[str, BaseLocalBackend] = {}
+        self._telemetry = ModelCallRecorder(self.settings, "local_small")
+
+    def telemetry_scope(self, operation_prefix: str):
+        return self._telemetry.scope(operation_prefix)
+
+    def drain_model_call_records(self) -> list[ModelCallRecord]:
+        return self._telemetry.drain()
 
     async def generate_json(
         self,
@@ -44,6 +62,7 @@ class LocalModelClient(BaseModelClient):
         schema_name: str,
         context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        request_started_at = time.perf_counter()
         normalized_schema = schema_name.strip().lower()
         if normalized_schema == "final_answer":
             if self.provider != "mock" and not self.settings.local_model.allow_final_answer:
@@ -68,24 +87,37 @@ class LocalModelClient(BaseModelClient):
             }
 
         if self.provider == "mock":
-            return self._generate_mock_json(prompt, normalized_schema, context)
+            payload = self._generate_mock_json(prompt, normalized_schema, context)
+            self._telemetry.record(
+                schema_name=normalized_schema,
+                provider=self.provider,
+                model=self.settings.local_model.model or "mock",
+                status="success",
+                latency_ms=max(0, int((time.perf_counter() - request_started_at) * 1000)),
+                usage=unavailable_usage(),
+            )
+            return payload
 
         endpoint = self.settings.local_model.endpoint
         model = self.settings.local_model.model
         if not model or (self.provider != "transformers" and not endpoint):
-            return self._fallback(
+            result = self._fallback(
                 normalized_schema,
                 error_code="LOCAL_MODEL_CONFIG_ERROR",
                 reason=self._config_error_reason(),
             )
+            self._record_preflight_fallback(normalized_schema, "LOCAL_MODEL_CONFIG_ERROR", request_started_at)
+            return result
 
         backend = self._select_backend()
         if backend is None:
-            return self._fallback(
+            result = self._fallback(
                 normalized_schema,
                 error_code="LOCAL_MODEL_PROVIDER_UNSUPPORTED",
                 reason=f"unsupported local model provider: {self.provider}",
             )
+            self._record_preflight_fallback(normalized_schema, "LOCAL_MODEL_PROVIDER_UNSUPPORTED", request_started_at)
+            return result
         adapter = self._select_lora_adapter(normalized_schema)
         options = self._lora_options(adapter)
 
@@ -113,6 +145,21 @@ class LocalModelClient(BaseModelClient):
         if response.reason:
             payload.setdefault("reason", response.reason)
         payload.setdefault("latency_ms", response.latency_ms)
+        self._telemetry.record(
+            schema_name=normalized_schema,
+            provider=backend.provider,
+            model=model,
+            status=(
+                "error"
+                if response.status == "error"
+                else "fallback"
+                if response.fallback_required
+                else "success"
+            ),
+            latency_ms=response.latency_ms,
+            usage=response.usage,
+            fallback_reason=_safe_local_fallback_reason(response),
+        )
         return payload
 
     def _select_backend(self) -> BaseLocalBackend | None:
@@ -125,6 +172,17 @@ class LocalModelClient(BaseModelClient):
             self._backend_cache[self.provider] = TransformersBackend()
             return self._backend_cache[self.provider]
         return None
+
+    def _record_preflight_fallback(self, schema_name: str, reason: str, started_at: float) -> None:
+        self._telemetry.record(
+            schema_name=schema_name,
+            provider=self.provider,
+            model=self.settings.local_model.model or "unknown",
+            status="fallback",
+            latency_ms=max(0, int((time.perf_counter() - started_at) * 1000)),
+            usage=unavailable_usage(),
+            fallback_reason=reason,
+        )
 
     def _select_lora_adapter(self, schema_name: str) -> ModelRegistryEntry | None:
         if not self.settings.lora.inference_enabled:
@@ -234,3 +292,13 @@ class LocalModelClient(BaseModelClient):
 
     def _detect_language(self, text: str) -> str:
         return "zh" if any("\u4e00" <= char <= "\u9fff" for char in text) else "en"
+
+
+def _safe_local_fallback_reason(response: LocalBackendResponse) -> str | None:
+    if response.error_code in SAFE_LOCAL_ERROR_CODES:
+        return response.error_code
+    if response.status == "error":
+        return "LOCAL_MODEL_ERROR"
+    if response.fallback_required:
+        return "LOCAL_MODEL_FALLBACK"
+    return None

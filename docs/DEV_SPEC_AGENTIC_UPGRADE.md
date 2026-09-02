@@ -391,6 +391,9 @@ provider 未返回 token 时允许显式 `unavailable`，不得填 0 冒充已�
   重复计入，新 turn 清空旧调用记录。
 - trace/debug 只返回调用摘要与 totals。现有 model route log 继续记录 route decision；不为本阶段复制一张
   语义相同的路由表。
+- operation key 由会话、请求和本轮原始 query 的摘要加 node/schema/call index 组成，不保存这些原文。
+  已写入 checkpoint 的节点恢复时保持幂等；若 provider 已收费但进程在节点 checkpoint 前崩溃，外部调用
+  可能重试，这一支付幂等边界不作虚假保证。
 - shadow 模式执行本地 triage 并记录质量/延迟，但主路径仍使用现有规则/primary 结果；takeover 模式只有
   在质量门禁通过后才可启用。
 
@@ -426,7 +429,7 @@ repeats 和硬件/模型/配置写入报告。Fake/scripted A/B 只验证指标�
 | MR1 | 路由与 usage schema | task taxonomy、triage/usage/cost schema、强制主模型 policy | 合法/非法 schema；planning/reasoning/S3/S4 永不本地接管 | 已完成 |
 | MR2 | 本地 triage | intent+slot+risk 单调用、span/confidence guard、mock/Transformers/Ollama | 中英文、否定/数字、幻觉 slot、risk 不降级、超时/schema fallback | 已完成 |
 | MR3 | Graph 与主模型接线 | triage 节点/context、Planner/reasoning route、checkpoint/reset | shadow/takeover/escalation；resume 不重复；Memory/evidence 隔离 | 已完成 |
-| MR4 | 模型用量遥测 | provider/tokenizer usage、定价快照、trace totals | token 来源、null cost、精确 cost、fallback 和敏感字段负例 | 未开始 |
+| MR4 | 模型用量遥测 | provider/tokenizer usage、定价快照、trace totals | token 来源、null cost、精确 cost、fallback 和敏感字段负例 | 已完成 |
 | MR5 | A/B 评测 | 扩展 AgentRuntimeEvalRunner、分位数/tokens/cost 报告、质量 gate | router off/shadow/on 同集比较；Fake 不冒充 real | 未开始 |
 | MR6 | 系统验收与完成报告 | scripted E2E、真实 Qwen smoke/benchmark、全量回归、报告 | task success/latency/tokens/cost 与安全回归可追溯 | 未开始 |
 

@@ -11,6 +11,7 @@ from backend.app.schemas.agent import (
     RetrievedContext,
     RiskLevel,
 )
+from backend.app.schemas.model_routing import ModelCallRecord
 from backend.app.schemas.planning import (
     MAX_REPLANS,
     ExecutionFailure,
@@ -41,6 +42,7 @@ class MultiAgentState(BaseModel):
     evidence_status: EvidenceStatus | None = None
     agentic_retrieval: AgenticRetrievalState | None = None
     livestock_triage: LivestockTriageOutcome | None = None
+    model_call_records: list[ModelCallRecord] = Field(default_factory=list, max_length=64)
     disease_assessment: dict[str, Any] | None = None
     measurement_report: dict[str, Any] | None = None
     draft_answer: str | None = None

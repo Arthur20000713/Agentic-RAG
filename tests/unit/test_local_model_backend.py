@@ -48,7 +48,11 @@ def test_ollama_backend_builds_json_generation_payload() -> None:
         captured["url"] = url
         captured["payload"] = payload
         captured["timeout_seconds"] = timeout_seconds
-        return {"response": '{"normalized_query": "weaning feed"}'}
+        return {
+            "response": '{"normalized_query": "weaning feed"}',
+            "prompt_eval_count": 12,
+            "eval_count": 4,
+        }
 
     backend = OllamaBackend(transport=fake_transport)
     request = LocalBackendRequest(
@@ -74,6 +78,12 @@ def test_ollama_backend_builds_json_generation_payload() -> None:
     assert response.status == "success"
     assert response.fallback_required is False
     assert response.content["normalized_query"] == "weaning feed"
+    assert response.usage.model_dump() == {
+        "source": "provider",
+        "input_tokens": 12,
+        "output_tokens": 4,
+        "total_tokens": 16,
+    }
 
 
 def test_ollama_backend_returns_structured_timeout_failure() -> None:
@@ -122,6 +132,7 @@ def test_transformers_backend_builds_query_normalization_prompt() -> None:
     assert response.status == "success"
     assert response.provider == "transformers"
     assert response.content["normalized_query"] == "calf weaning feed"
+    assert response.usage.source == "unavailable"
 
 
 def test_transformers_backend_normalizes_successful_query_fallback_flag() -> None:
@@ -250,10 +261,16 @@ def test_transformers_backend_accepts_chat_template_batch_encoding() -> None:
         model="Qwen/Qwen2.5-0.5B-Instruct",
     )
 
-    raw_text = backend._generate_text("prompt", request)
+    response = asyncio.run(backend.generate(request))
 
-    assert "calf feed" in raw_text
+    assert "calf feed" in (response.raw_text or "")
     assert model.received_attention_mask is not None
+    assert response.usage.model_dump() == {
+        "source": "tokenizer",
+        "input_tokens": 2,
+        "output_tokens": 1,
+        "total_tokens": 3,
+    }
 
 
 def test_transformers_backend_rejects_unsupported_schema() -> None:

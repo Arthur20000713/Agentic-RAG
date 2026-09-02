@@ -38,6 +38,28 @@ class RecordingBackend(BaseLocalBackend):
         )
 
 
+class SensitiveFallbackBackend(BaseLocalBackend):
+    provider = "ollama"
+
+    async def generate(self, request: LocalBackendRequest) -> LocalBackendResponse:
+        return LocalBackendResponse(
+            status="success",
+            schema_name=request.schema_name,
+            content={
+                "status": "success",
+                "schema_name": request.schema_name,
+                "fallback_required": True,
+                "error_code": "private prompt secret-value",
+                "reason": "private prompt Authorization=Bearer secret-value",
+            },
+            fallback_required=True,
+            provider=self.provider,
+            latency_ms=2,
+            error_code="private prompt secret-value",
+            reason="private prompt Authorization=Bearer secret-value",
+        )
+
+
 class RecordingClient(LocalModelClient):
     def __init__(self, settings: Settings, backend: BaseLocalBackend) -> None:
         super().__init__(settings=settings)
@@ -243,6 +265,32 @@ def test_local_model_client_returns_fallback_when_real_provider_config_missing()
     assert result["status"] == "error"
     assert result["fallback_required"] is True
     assert result["error_code"] == "LOCAL_MODEL_CONFIG_ERROR"
+    record = client.drain_model_call_records()[0]
+    assert record.status == "fallback"
+    assert record.usage.source == "unavailable"
+    assert record.fallback_reason == "LOCAL_MODEL_CONFIG_ERROR"
+
+
+def test_local_model_client_does_not_persist_backend_fallback_reason() -> None:
+    settings = Settings(
+        local_model={
+            "enabled": True,
+            "provider": "ollama",
+            "endpoint": "http://127.0.0.1:11434",
+            "model": "qwen2.5:7b-instruct",
+        }
+    )
+    client = RecordingClient(settings, SensitiveFallbackBackend())
+
+    asyncio.run(client.generate_json("private prompt", schema_name="slot_extraction"))
+    record = client.drain_model_call_records()[0]
+
+    assert record.status == "fallback"
+    assert record.fallback_reason == "LOCAL_MODEL_FALLBACK"
+    serialized = str(record.model_dump(mode="json"))
+    assert "private prompt" not in serialized
+    assert "Authorization" not in serialized
+    assert "secret-value" not in serialized
 
 
 def test_local_model_client_calls_transformers_backend_without_endpoint() -> None:

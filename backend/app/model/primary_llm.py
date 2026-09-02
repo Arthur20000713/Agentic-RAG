@@ -5,13 +5,19 @@ import json
 import os
 import time
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from backend.app.core.config import Settings
 from backend.app.model.local_schema import parse_local_json_response
-
+from backend.app.model.usage import (
+    ModelCallRecorder,
+    chat_completions_usage,
+    unavailable_usage,
+)
+from backend.app.schemas.model_routing import ModelCallRecord
 
 PrimaryLLMTransport = Callable[[str, dict[str, Any], dict[str, str], float], dict[str, Any]]
 
@@ -29,23 +35,37 @@ class PrimaryLLMClient:
     def __init__(self, settings: Settings | None = None, transport: PrimaryLLMTransport | None = None) -> None:
         self.settings = settings or Settings()
         self.transport = transport or _post_json
+        self._telemetry = ModelCallRecorder(self.settings, "primary")
+
+    def telemetry_scope(self, operation_prefix: str):
+        return self._telemetry.scope(operation_prefix)
+
+    def drain_model_call_records(self) -> list[ModelCallRecord]:
+        return self._telemetry.drain()
 
     async def generate_json(self, request: PrimaryLLMRequest) -> dict[str, Any]:
+        request_started_at = time.perf_counter()
         llm = self.settings.primary_llm
         schema_name = request.schema_name.strip().lower()
         if not llm.enabled:
-            return _fallback(schema_name, "PRIMARY_LLM_DISABLED", "primary LLM is disabled")
+            result = _fallback(schema_name, "PRIMARY_LLM_DISABLED", "primary LLM is disabled")
+            self._record_preflight_fallback(schema_name, "PRIMARY_LLM_DISABLED", request_started_at)
+            return result
         if llm.provider == "mock":
-            return _fallback(schema_name, "PRIMARY_LLM_MOCK_PROVIDER", "primary LLM mock provider has no generation")
+            result = _fallback(schema_name, "PRIMARY_LLM_MOCK_PROVIDER", "primary LLM mock provider has no generation")
+            self._record_preflight_fallback(schema_name, "PRIMARY_LLM_MOCK_PROVIDER", request_started_at)
+            return result
         if not llm.model or not llm.base_url:
-            return _fallback(schema_name, "PRIMARY_LLM_CONFIG_ERROR", "primary LLM model and base_url must be configured")
+            result = _fallback(schema_name, "PRIMARY_LLM_CONFIG_ERROR", "primary LLM model and base_url must be configured")
+            self._record_preflight_fallback(schema_name, "PRIMARY_LLM_CONFIG_ERROR", request_started_at)
+            return result
         api_key = self._api_key()
         if not api_key:
             payload = _fallback(schema_name, "PRIMARY_LLM_API_KEY_MISSING", "primary LLM API key environment variable is missing")
             payload["api_key_env"] = llm.api_key_env
+            self._record_preflight_fallback(schema_name, "PRIMARY_LLM_API_KEY_MISSING", request_started_at)
             return payload
 
-        started_at = time.perf_counter()
         url = llm.base_url.rstrip("/") + "/chat/completions"
         payload = {
             "model": llm.model,
@@ -58,22 +78,67 @@ class PrimaryLLMClient:
             "Authorization": f"Bearer {api_key}",
         }
         attempts = max(1, int(llm.max_retries) + 1)
+        overall_started_at = time.perf_counter()
         last_error: str | None = None
         for _ in range(attempts):
+            started_at = time.perf_counter()
+            raw: dict[str, Any] | None = None
             try:
                 raw = await asyncio.to_thread(self.transport, url, payload, headers, float(llm.timeout_seconds))
                 content = parse_local_json_response(_extract_chat_content(raw), schema_name)
                 content.setdefault("provider", llm.provider)
                 content.setdefault("model", llm.model)
                 content.setdefault("latency_ms", _latency_ms(started_at))
+                status = (
+                    "error"
+                    if content.get("status") == "error"
+                    else "fallback"
+                    if content.get("fallback_required") is True
+                    else "success"
+                )
+                self._telemetry.record(
+                    schema_name=schema_name,
+                    provider=llm.provider,
+                    model=llm.model,
+                    status=status,
+                    latency_ms=int(content["latency_ms"]),
+                    usage=chat_completions_usage(raw.get("usage")),
+                    fallback_reason=_safe_fallback_reason(content, status),
+                )
                 return content
             except Exception as exc:
-                last_error = str(exc) or exc.__class__.__name__
+                last_error = exc.__class__.__name__
+                usage = (
+                    chat_completions_usage(raw.get("usage"))
+                    if isinstance(raw, dict)
+                    else unavailable_usage()
+                )
+                self._telemetry.record(
+                    schema_name=schema_name,
+                    provider=llm.provider,
+                    model=llm.model,
+                    status="error",
+                    latency_ms=_latency_ms(started_at),
+                    usage=usage,
+                    fallback_reason="PRIMARY_LLM_TRANSPORT_ERROR",
+                )
         result = _fallback(schema_name, "PRIMARY_LLM_HTTP_ERROR", last_error or "primary LLM request failed")
         result["provider"] = llm.provider
         result["model"] = llm.model
-        result["latency_ms"] = _latency_ms(started_at)
+        result["latency_ms"] = _latency_ms(overall_started_at)
         return result
+
+    def _record_preflight_fallback(self, schema_name: str, reason: str, started_at: float) -> None:
+        llm = self.settings.primary_llm
+        self._telemetry.record(
+            schema_name=schema_name,
+            provider=llm.provider,
+            model=llm.model or "unknown",
+            status="fallback",
+            latency_ms=_latency_ms(started_at),
+            usage=unavailable_usage(),
+            fallback_reason=reason,
+        )
 
     def _api_key(self) -> str | None:
         return resolve_primary_llm_api_key(self.settings)
@@ -126,6 +191,14 @@ def _fallback(schema_name: str, error_code: str, reason: str) -> dict[str, Any]:
 
 def _latency_ms(started_at: float) -> int:
     return max(0, int((time.perf_counter() - started_at) * 1000))
+
+
+def _safe_fallback_reason(content: dict[str, Any], status: str) -> str | None:
+    if status == "error":
+        return "PRIMARY_LLM_ERROR"
+    if status == "fallback":
+        return "PRIMARY_LLM_FALLBACK"
+    return None
 
 
 def resolve_primary_llm_api_key(settings: Settings) -> str | None:

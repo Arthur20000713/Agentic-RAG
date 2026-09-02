@@ -6,11 +6,13 @@ import json
 import time
 import urllib.request
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from backend.app.model.local_schema import parse_local_json_response
-
+from backend.app.model.usage import ollama_usage, tokenizer_usage, unavailable_usage
+from backend.app.schemas.model_routing import ModelTokenUsage
 
 LocalTransport = Callable[[str, dict[str, Any], float], dict[str, Any]]
 
@@ -30,6 +32,12 @@ TransformersGenerator = Callable[[str, LocalBackendRequest], str]
 
 
 @dataclass(frozen=True)
+class LocalGeneration:
+    text: str
+    usage: ModelTokenUsage = field(default_factory=unavailable_usage)
+
+
+@dataclass(frozen=True)
 class LocalBackendResponse:
     status: str
     schema_name: str
@@ -37,6 +45,7 @@ class LocalBackendResponse:
     fallback_required: bool
     provider: str
     latency_ms: int
+    usage: ModelTokenUsage = field(default_factory=unavailable_usage)
     raw_text: str | None = None
     error_code: str | None = None
     reason: str | None = None
@@ -116,6 +125,7 @@ class OllamaBackend(BaseLocalBackend):
             fallback_required=bool(content.get("fallback_required")),
             provider=self.provider,
             latency_ms=_latency_ms(started),
+            usage=ollama_usage(raw),
             raw_text=raw_text,
             error_code=content.get("error_code"),
             reason=content.get("reason"),
@@ -183,8 +193,8 @@ class TransformersBackend(BaseLocalBackend):
 
         prompt = _prompt_for_schema(request.prompt, normalized_schema)
         try:
-            raw_text = await asyncio.wait_for(
-                asyncio.to_thread(self._generate_text, prompt, request),
+            generation = await asyncio.wait_for(
+                asyncio.to_thread(self._generate_with_usage, prompt, request),
                 timeout=request.timeout_seconds,
             )
         except TimeoutError as exc:
@@ -211,6 +221,7 @@ class TransformersBackend(BaseLocalBackend):
                 reason=str(exc) or exc.__class__.__name__,
             )
 
+        raw_text = generation.text
         content = parse_local_json_response(raw_text, normalized_schema)
         content = _normalize_schema_content(content, normalized_schema)
         return LocalBackendResponse(
@@ -220,6 +231,7 @@ class TransformersBackend(BaseLocalBackend):
             fallback_required=bool(content.get("fallback_required")),
             provider=self.provider,
             latency_ms=_latency_ms(started),
+            usage=generation.usage,
             raw_text=raw_text,
             error_code=content.get("error_code"),
             reason=content.get("reason"),
@@ -227,8 +239,11 @@ class TransformersBackend(BaseLocalBackend):
         )
 
     def _generate_text(self, prompt: str, request: LocalBackendRequest) -> str:
+        return self._generate_with_usage(prompt, request).text
+
+    def _generate_with_usage(self, prompt: str, request: LocalBackendRequest) -> LocalGeneration:
         if self._generator is not None:
-            return self._generator(prompt, request)
+            return LocalGeneration(text=self._generator(prompt, request))
 
         if self._model is None or self._tokenizer is None or self._loaded_model_name != request.model:
             try:
@@ -297,7 +312,10 @@ class TransformersBackend(BaseLocalBackend):
             generate_kwargs["temperature"] = temperature
         output_ids = model.generate(input_ids, **generate_kwargs)
         generated_ids = output_ids[0][len(input_ids[0]) :]
-        return tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
+        return LocalGeneration(
+            text=tokenizer.decode(generated_ids, skip_special_tokens=True).strip(),
+            usage=tokenizer_usage(len(input_ids[0]), len(generated_ids)),
+        )
 
 
 def _ollama_generate_url(endpoint: str) -> str:

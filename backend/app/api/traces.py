@@ -3,9 +3,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 
 from backend.app.core.response import ApiResponse
-from backend.app.services.feature_flag_service import FeatureFlagService
 from backend.app.services.chat_service import build_rag_status_payload
-
+from backend.app.services.feature_flag_service import FeatureFlagService
 
 router = APIRouter(prefix="/api/traces", tags=["traces"])
 
@@ -40,6 +39,7 @@ def agent_runtime_debug_summary(request: Request, request_id: str, agent_trace: 
         "route": _route_summary(trace_items),
         "safety": _safety_summary(trace_items),
         "planning": _planning_summary(trace_items),
+        "model_usage": _model_usage_summary(trace_items),
         "memory": _memory_summary(request, flags),
         "rag_status": build_rag_status_payload(request.app.state.settings),
         "agent_path": [str(item.get("node")) for item in trace_items if item.get("node")],
@@ -160,6 +160,32 @@ def _planning_summary(trace_items: list[dict]) -> dict:
         "final_decision": decision,
         "termination_code": termination_code,
     }
+
+
+def _model_usage_summary(trace_items: list[dict]) -> dict:
+    summaries = [item.get("model_usage") for item in trace_items if isinstance(item.get("model_usage"), dict)]
+    if not summaries:
+        return {"status": "not_available"}
+    latest = summaries[-1]
+    fields = (
+        "call_count",
+        "status_counts",
+        "model_counts",
+        "usage_source_counts",
+        "total_latency_ms",
+        "known_input_tokens",
+        "known_output_tokens",
+        "known_total_tokens",
+        "tokens_complete",
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
+        "known_total_cost_usd",
+        "cost_complete",
+        "total_cost_usd",
+        "cost_scope",
+    )
+    return {field: latest.get(field) for field in fields}
 
 
 def _memory_summary(request: Request, flags: dict) -> dict:

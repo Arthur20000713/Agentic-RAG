@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,8 @@ from backend.app.db.connection import get_connection
 from backend.app.db.migrations import init_db
 from backend.app.db.repositories import MemoryRepository
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
+from backend.app.model.local_client import LocalModelClient
+from backend.app.model.primary_llm import PrimaryLLMClient
 from backend.app.schemas.rag_server import RagSearchResult
 
 
@@ -52,6 +55,16 @@ class CountingTriageClient:
             "risk_candidate": "low",
             "risk_signals": [],
         }
+
+
+class CountingTelemetryTriageClient(LocalModelClient):
+    def __init__(self, settings: Settings) -> None:
+        super().__init__(settings)
+        self.call_count = 0
+
+    async def generate_json(self, prompt: str, *, schema_name: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
+        self.call_count += 1
+        return await super().generate_json(prompt, schema_name=schema_name, context=context)
 
 
 def _triage_settings(*, shadow_mode: bool = False) -> Settings:
@@ -191,9 +204,10 @@ def test_checkpointed_chat_turn_resets_transient_agent_state() -> None:
 
 def test_checkpoint_resume_does_not_repeat_completed_livestock_triage() -> None:
     checkpointer = InMemorySaver()
-    triage_client = CountingTriageClient()
+    settings = _triage_settings()
+    triage_client = CountingTelemetryTriageClient(settings)
     runtime = AgentGraphRuntime(
-        settings=_triage_settings(),
+        settings=settings,
         rag_client=FakeRagServerClient(),
         livestock_triage_client=triage_client,
     )
@@ -208,6 +222,7 @@ def test_checkpoint_resume_does_not_repeat_completed_livestock_triage() -> None:
         interrupted_graph = build_chat_graph(checkpointer=checkpointer, interrupt_after=["livestock_triage"])
         interrupted = await interrupted_graph.ainvoke(state, context=runtime, config=config)
         assert interrupted["livestock_triage"]["status"] == "accepted"
+        assert len(interrupted["model_call_records"]) == 1
         assert (await interrupted_graph.aget_state(config)).next == ("router",)
         return await resume_chat_graph(build_chat_graph(checkpointer=checkpointer), runtime=runtime, config=config)
 
@@ -216,11 +231,83 @@ def test_checkpoint_resume_does_not_repeat_completed_livestock_triage() -> None:
     assert triage_client.call_count == 1
     assert result.livestock_triage is not None
     assert result.livestock_triage.status == "accepted"
+    assert len(result.model_call_records) == 1
+    assert result.model_call_records[0].task_type == "livestock_triage"
+    assert result.model_call_records[0].usage.source == "unavailable"
+    assert result.model_call_records[0].cost.total_cost_usd is None
+
+
+def test_graph_records_primary_usage_and_exact_api_token_cost(monkeypatch) -> None:
+    monkeypatch.setenv("TEST_PRIMARY_API_KEY", "secret-value")
+    settings = Settings(
+        primary_llm={
+            "enabled": True,
+            "provider": "test",
+            "model": "primary-test",
+            "base_url": "https://example.invalid",
+            "api_key_env": "TEST_PRIMARY_API_KEY",
+        },
+        model_pricing={
+            "primary_input_usd_per_million_tokens": 2.0,
+            "primary_output_usd_per_million_tokens": 6.0,
+        },
+    )
+    plan = {
+        "goal": "Answer with evidence",
+        "steps": [
+            {
+                "step_id": "retrieve",
+                "action": "query_knowledge_hub",
+                "description": "Retrieve evidence",
+                "arguments": {"query_source": "normalized_query", "top_k": 4},
+                "completion_criteria": ["retrieval status is recorded"],
+            },
+            {
+                "step_id": "compose",
+                "action": "compose_grounded_answer",
+                "description": "Compose answer",
+                "depends_on": ["retrieve"],
+                "completion_criteria": ["draft answer is recorded"],
+            },
+        ],
+        "completion_criteria": ["answer is ready"],
+    }
+
+    def transport(url, payload, headers, timeout):  # noqa: ANN001, ANN202
+        return {
+            "choices": [{"message": {"content": json.dumps(plan)}}],
+            "usage": {"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120},
+        }
+
+    client = PrimaryLLMClient(settings, transport=transport)
+    runtime = AgentGraphRuntime(
+        settings=settings,
+        rag_client=FakeRagServerClient(),
+        primary_llm_client=client,
+    )
+    state = MultiAgentState(
+        session_id="session_primary_usage",
+        request_id="request_primary_usage",
+        user_query="How should cattle feeding be managed?",
+    )
+
+    raw = asyncio.run(build_chat_graph(interrupt_after=["planner"]).ainvoke(state, context=runtime))
+    result = MultiAgentState.model_validate(raw)
+
+    assert len(result.model_call_records) == 1
+    record = result.model_call_records[0]
+    assert record.task_type == "planning"
+    assert record.usage.total_tokens == 120
+    assert record.cost.total_cost_usd == 0.00032
+    assert result.tool_results["model_usage_totals"]["total_cost_usd"] == 0.00032
+    serialized = str(result.model_dump(mode="json"))
+    assert "secret-value" not in serialized
+    assert "Create the smallest valid task plan" not in serialized
 
 
 def test_new_checkpointed_turn_drops_old_triage_when_router_is_disabled() -> None:
     checkpointer = InMemorySaver()
-    triage_client = CountingTriageClient()
+    triage_client = CountingTelemetryTriageClient(_triage_settings())
 
     async def invoke() -> tuple[MultiAgentState, MultiAgentState]:
         first = await run_chat_graph(
@@ -246,6 +333,8 @@ def test_new_checkpointed_turn_drops_old_triage_when_router_is_disabled() -> Non
     assert first.livestock_triage is not None
     assert second.livestock_triage is None
     assert "livestock_triage" not in second.tool_results
+    assert len(first.model_call_records) == 1
+    assert second.model_call_records == []
 
 
 def test_sqlite_checkpoint_resume_does_not_repeat_completed_step(tmp_path: Path) -> None:

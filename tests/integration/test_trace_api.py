@@ -5,7 +5,11 @@ from fastapi.testclient import TestClient
 from backend.app.core.config import Settings
 from backend.app.db.connection import get_connection
 from backend.app.db.migrations import init_db
-from backend.app.db.repositories import AgentTraceRepository, MemoryRepository, RagTraceRepository
+from backend.app.db.repositories import (
+    AgentTraceRepository,
+    MemoryRepository,
+    RagTraceRepository,
+)
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
 from backend.app.main import create_app
 from backend.app.services.memory_service import MemoryEvent
@@ -180,6 +184,25 @@ def test_trace_api_returns_agent_runtime_debug_summary_for_route_safety_and_memo
                 "hard_blocked": True,
                 "violation_count": 1,
                 "latency_ms": 2,
+                "model_usage": {
+                    "call_count": 2,
+                    "status_counts": {"success": 2},
+                    "model_counts": {"primary": 1, "local_small": 1},
+                    "usage_source_counts": {"provider": 2},
+                    "total_latency_ms": 8,
+                    "known_input_tokens": 20,
+                    "known_output_tokens": 4,
+                    "known_total_tokens": 24,
+                    "tokens_complete": True,
+                    "input_tokens": 20,
+                    "output_tokens": 4,
+                    "total_tokens": 24,
+                    "known_total_cost_usd": 0.001,
+                    "cost_complete": True,
+                    "total_cost_usd": 0.001,
+                    "cost_scope": "api_token_only",
+                    "prompt": "must not escape",
+                },
             },
         ],
         status="blocked",
@@ -212,6 +235,11 @@ def test_trace_api_returns_agent_runtime_debug_summary_for_route_safety_and_memo
     assert summary["rag_status"]["collection"] == "default"
     assert summary["rag_status"]["quality_gate_status"] == "not_configured"
     assert summary["planning"] == {"status": "not_available"}
+    assert summary["model_usage"]["call_count"] == 2
+    assert summary["model_usage"]["total_tokens"] == 24
+    assert summary["model_usage"]["total_cost_usd"] == 0.001
+    assert summary["model_usage"]["cost_scope"] == "api_token_only"
+    assert "prompt" not in summary["model_usage"]
 
 
 def test_trace_api_summarizes_replan_without_exposing_payloads() -> None:
