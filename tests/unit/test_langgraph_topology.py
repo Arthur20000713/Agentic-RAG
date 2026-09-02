@@ -22,6 +22,7 @@ def test_chat_graph_is_a_real_compiled_state_graph_with_required_nodes_and_edges
     assert {
             "context",
             "memory_search",
+        "livestock_triage",
         "router",
         "direct",
         "planner",
@@ -36,7 +37,8 @@ def test_chat_graph_is_a_real_compiled_state_graph_with_required_nodes_and_edges
     assert {
         ("__start__", "context"),
             ("context", "memory_search"),
-            ("memory_search", "router"),
+            ("memory_search", "livestock_triage"),
+            ("livestock_triage", "router"),
         ("router", "direct"),
         ("router", "planner"),
         ("planner", "executor"),

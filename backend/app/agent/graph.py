@@ -59,6 +59,7 @@ async def run_chat_graph(
     settings: Settings | None = None,
     query_normalizer_client: BaseModelClient | None = None,
     intent_router_client: BaseModelClient | None = None,
+    livestock_triage_client: BaseModelClient | None = None,
     primary_llm_client: Any | None = None,
     conversation_history: list[dict[str, Any]] | None = None,
     initial_session_context: dict[str, Any] | None = None,
@@ -82,6 +83,7 @@ async def run_chat_graph(
         memory_service=memory_service,
         query_normalizer_client=query_normalizer_client,
         intent_router_client=intent_router_client,
+        livestock_triage_client=livestock_triage_client,
         intent_router=route_intent_with_model,
         primary_llm_client=primary_llm_client,
         conversation_history=list(conversation_history or []),
@@ -111,6 +113,7 @@ async def run_general_qa_graph(
     user_id: str | None = None,
     settings: Settings | None = None,
     query_normalizer_client: BaseModelClient | None = None,
+    livestock_triage_client: BaseModelClient | None = None,
     primary_llm_client: Any | None = None,
     conversation_history: list[dict[str, Any]] | None = None,
 ) -> MultiAgentState:
@@ -124,6 +127,7 @@ async def run_general_qa_graph(
         user_id=user_id,
         settings=settings,
         query_normalizer_client=query_normalizer_client,
+        livestock_triage_client=livestock_triage_client,
         primary_llm_client=primary_llm_client,
         conversation_history=conversation_history,
     )
@@ -146,6 +150,7 @@ async def run_disease_graph(
     unsafe_draft_for_test: str | None = None,
     settings: Settings | None = None,
     query_normalizer_client: BaseModelClient | None = None,
+    livestock_triage_client: BaseModelClient | None = None,
     primary_llm_client: Any | None = None,
     conversation_history: list[dict[str, Any]] | None = None,
 ) -> MultiAgentState:
@@ -166,6 +171,7 @@ async def run_disease_graph(
         store=store,
         settings=settings,
         query_normalizer_client=query_normalizer_client,
+        livestock_triage_client=livestock_triage_client,
         primary_llm_client=primary_llm_client,
         conversation_history=conversation_history,
         forced_intent="disease_consultation",

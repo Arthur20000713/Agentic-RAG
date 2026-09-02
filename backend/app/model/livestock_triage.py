@@ -177,4 +177,19 @@ def _triage_prompt(query: str) -> str:
     )
 
 
-__all__ = ["LivestockTriage", "LivestockTriageOutcome"]
+def takeover_triage_context(outcome: LivestockTriageOutcome | None) -> dict[str, Any] | None:
+    if (
+        outcome is None
+        or outcome.status != "accepted"
+        or outcome.triage is None
+        or outcome.route_decision.route_mode != "takeover"
+    ):
+        return None
+    return {
+        "intent_candidate": outcome.triage.intent_candidate,
+        "slots": [slot.model_dump(mode="json") for slot in outcome.triage.slots],
+        "risk_candidate": outcome.triage.risk_candidate,
+    }
+
+
+__all__ = ["LivestockTriage", "LivestockTriageOutcome", "takeover_triage_context"]

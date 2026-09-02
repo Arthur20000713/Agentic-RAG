@@ -4,6 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from backend.app.model.livestock_triage import LivestockTriageOutcome
 from backend.app.schemas.agent import (
     AgentToolError,
     IntentType,
@@ -39,6 +40,7 @@ class MultiAgentState(BaseModel):
     retrieved_contexts: list[RetrievedContext] = Field(default_factory=list)
     evidence_status: EvidenceStatus | None = None
     agentic_retrieval: AgenticRetrievalState | None = None
+    livestock_triage: LivestockTriageOutcome | None = None
     disease_assessment: dict[str, Any] | None = None
     measurement_report: dict[str, Any] | None = None
     draft_answer: str | None = None

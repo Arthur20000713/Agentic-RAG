@@ -7,6 +7,9 @@ from backend.app.agent.state import MultiAgentState
 from backend.app.agent.supervisor import SupervisorAgent
 from backend.app.agent.task_planner import TaskPlanner
 from backend.app.core.config import Settings
+from backend.app.model.livestock_triage import LivestockTriageOutcome
+from backend.app.model.router import ModelRouteDecision
+from backend.app.schemas.model_routing import LivestockTriageResult
 
 
 class ScriptedPlannerClient:
@@ -107,6 +110,50 @@ def test_task_planner_accepts_valid_model_plan_but_controls_identity_and_source(
     assert len(client.requests) == 1
     assert client.requests[0].schema_name == "task_plan"
     assert "long_term_memory" not in (client.requests[0].context or {})
+
+
+def test_task_planner_receives_only_accepted_takeover_triage_context() -> None:
+    client = ScriptedPlannerClient(_valid_model_plan())
+    state = _state("general_qa")
+    state.livestock_triage = LivestockTriageOutcome(
+        status="accepted",
+        triage=LivestockTriageResult(
+            intent_candidate="general_qa",
+            confidence=0.9,
+            slots=[],
+            risk_candidate="low",
+        ),
+        route_decision=ModelRouteDecision(selected_model="local_small", route_mode="takeover"),
+    )
+
+    outcome = asyncio.run(TaskPlanner(settings=_settings(enabled=True), primary_llm_client=client).plan(state))
+
+    assert outcome.fallback_used is False
+    assert client.requests[0].context["livestock_triage"] == {
+        "intent_candidate": "general_qa",
+        "slots": [],
+        "risk_candidate": "low",
+    }
+    assert "long_term_memory" not in client.requests[0].context
+
+
+def test_task_planner_excludes_shadow_triage_context() -> None:
+    client = ScriptedPlannerClient(_valid_model_plan())
+    state = _state("general_qa")
+    state.livestock_triage = LivestockTriageOutcome(
+        status="accepted",
+        triage=LivestockTriageResult(
+            intent_candidate="general_qa",
+            confidence=0.9,
+            slots=[],
+            risk_candidate="low",
+        ),
+        route_decision=ModelRouteDecision(selected_model="primary", route_mode="shadow", shadow_model="local_small"),
+    )
+
+    asyncio.run(TaskPlanner(settings=_settings(enabled=True), primary_llm_client=client).plan(state))
+
+    assert "livestock_triage" not in client.requests[0].context
 
 
 def test_task_planner_falls_back_when_model_shape_or_allowlist_is_invalid() -> None:

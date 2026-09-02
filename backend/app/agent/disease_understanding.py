@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, ValidationError
 from backend.app.agent.memory_tools import exclude_long_term_memory
 from backend.app.agent.state import MultiAgentState
 from backend.app.core.config import Settings
+from backend.app.model.livestock_triage import takeover_triage_context
 from backend.app.model.primary_llm import PrimaryLLMClient, PrimaryLLMRequest
 
 
@@ -68,15 +69,18 @@ class DiseaseUnderstandingAgent:
         return state
 
     def _call_llm(self, state: MultiAgentState) -> dict[str, Any]:
+        context: dict[str, Any] = {
+            "session_id": state.session_id,
+            "normalized_query": state.normalized_query,
+            "intent": state.intent,
+            "session_context": exclude_long_term_memory(state.session_context),
+        }
+        if triage_context := takeover_triage_context(state.livestock_triage):
+            context["livestock_triage"] = triage_context
         request = PrimaryLLMRequest(
             prompt=self._prompt(state),
             schema_name="disease_case_understanding",
-            context={
-                "session_id": state.session_id,
-                "normalized_query": state.normalized_query,
-                "intent": state.intent,
-                "session_context": exclude_long_term_memory(state.session_context),
-            },
+            context=context,
             system_prompt=(
                 "You understand livestock disease consultation messages. "
                 "Return exactly one flat JSON object matching disease_case_understanding. "

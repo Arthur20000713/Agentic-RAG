@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from backend.app.agent.state import MultiAgentState
 from backend.app.core.config import Settings
+from backend.app.model.livestock_triage import takeover_triage_context
 from backend.app.model.primary_llm import PrimaryLLMClient, PrimaryLLMRequest
 from backend.app.schemas.planning import PlanStep, TaskPlan
 
@@ -168,16 +169,19 @@ class TaskPlanner:
         return f"plan_{sha256(identity.encode('utf-8')).hexdigest()[:16]}"
 
     def _request(self, state: MultiAgentState) -> PrimaryLLMRequest:
+        context: dict[str, Any] = {
+            "intent": state.intent,
+            "normalized_query": state.normalized_query or state.user_query,
+        }
+        if triage_context := takeover_triage_context(state.livestock_triage):
+            context["livestock_triage"] = triage_context
         return PrimaryLLMRequest(
             prompt=(
                 "Create the smallest valid task plan for this livestock request. "
                 "Do not rewrite or decompose the query and do not add a second retrieval."
             ),
             schema_name="task_plan",
-            context={
-                "intent": state.intent,
-                "normalized_query": state.normalized_query or state.user_query,
-            },
+            context=context,
             system_prompt=(
                 "Return exactly one JSON task plan. Allowed actions are understand_disease, "
                 "query_knowledge_hub, and compose_grounded_answer. A general_qa plan must contain "

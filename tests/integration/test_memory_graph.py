@@ -34,6 +34,38 @@ class CountingRagClient(FakeRagServerClient):
         return await super().query(query, **kwargs)
 
 
+class CountingTriageClient:
+    def __init__(self) -> None:
+        self.call_count = 0
+
+    async def generate_json(self, prompt: str, *, schema_name: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
+        self.call_count += 1
+        assert schema_name == "livestock_triage"
+        assert context == {"user_query": "How should cattle feeding be managed?"}
+        return {
+            "status": "success",
+            "schema_name": "livestock_triage",
+            "fallback_required": False,
+            "intent_candidate": "general_qa",
+            "confidence": 0.9,
+            "slots": [],
+            "risk_candidate": "low",
+            "risk_signals": [],
+        }
+
+
+def _triage_settings(*, shadow_mode: bool = False) -> Settings:
+    return Settings(
+        model_router={
+            "enabled": True,
+            "shadow_mode": shadow_mode,
+            "allow_low_risk_takeover": True,
+            "takeover_task_types": ["livestock_triage"],
+        },
+        local_model={"enabled": True},
+    )
+
+
 def test_chat_graph_accepts_checkpointer_and_store() -> None:
     checkpointer = InMemorySaver()
     store = InMemoryStore()
@@ -155,6 +187,65 @@ def test_checkpointed_chat_turn_resets_transient_agent_state() -> None:
     assert second.rag_query is None
     assert second.draft_answer != first.draft_answer
     assert second.final_answer != first.final_answer
+
+
+def test_checkpoint_resume_does_not_repeat_completed_livestock_triage() -> None:
+    checkpointer = InMemorySaver()
+    triage_client = CountingTriageClient()
+    runtime = AgentGraphRuntime(
+        settings=_triage_settings(),
+        rag_client=FakeRagServerClient(),
+        livestock_triage_client=triage_client,
+    )
+    config = checkpoint_config("user_triage", "session_triage")
+    state = MultiAgentState(
+        session_id="session_triage",
+        request_id="request_triage",
+        user_query="How should cattle feeding be managed?",
+    )
+
+    async def invoke() -> MultiAgentState:
+        interrupted_graph = build_chat_graph(checkpointer=checkpointer, interrupt_after=["livestock_triage"])
+        interrupted = await interrupted_graph.ainvoke(state, context=runtime, config=config)
+        assert interrupted["livestock_triage"]["status"] == "accepted"
+        assert (await interrupted_graph.aget_state(config)).next == ("router",)
+        return await resume_chat_graph(build_chat_graph(checkpointer=checkpointer), runtime=runtime, config=config)
+
+    result = asyncio.run(invoke())
+
+    assert triage_client.call_count == 1
+    assert result.livestock_triage is not None
+    assert result.livestock_triage.status == "accepted"
+
+
+def test_new_checkpointed_turn_drops_old_triage_when_router_is_disabled() -> None:
+    checkpointer = InMemorySaver()
+    triage_client = CountingTriageClient()
+
+    async def invoke() -> tuple[MultiAgentState, MultiAgentState]:
+        first = await run_chat_graph(
+            "How should cattle feeding be managed?",
+            session_id="session_triage_reset",
+            user_id="user_triage_reset",
+            checkpointer=checkpointer,
+            settings=_triage_settings(),
+            livestock_triage_client=triage_client,
+        )
+        second = await run_chat_graph(
+            "Tell me a short joke.",
+            session_id="session_triage_reset",
+            user_id="user_triage_reset",
+            checkpointer=checkpointer,
+            settings=Settings(),
+            livestock_triage_client=triage_client,
+        )
+        return first, second
+
+    first, second = asyncio.run(invoke())
+
+    assert first.livestock_triage is not None
+    assert second.livestock_triage is None
+    assert "livestock_triage" not in second.tool_results
 
 
 def test_sqlite_checkpoint_resume_does_not_repeat_completed_step(tmp_path: Path) -> None:

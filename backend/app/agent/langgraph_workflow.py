@@ -47,6 +47,7 @@ from backend.app.integrations.rag_server.base import RagServerClient
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
 from backend.app.model.base import BaseModelClient
 from backend.app.model.intent_router import IntentRoutingResult, route_intent_with_model
+from backend.app.model.livestock_triage import LivestockTriage
 from backend.app.model.query_normalizer import normalize_query_with_router
 from backend.app.model.router import ModelRouter, ModelRouteRequest
 from backend.app.schemas.agent import AgentToolError, IntentType, RetrievedContext
@@ -85,6 +86,7 @@ class AgentGraphRuntime:
     memory_service: MemoryService | None = None
     query_normalizer_client: BaseModelClient | None = None
     intent_router_client: BaseModelClient | None = None
+    livestock_triage_client: BaseModelClient | None = None
     intent_router: Callable[..., Awaitable[IntentRoutingResult]] | None = None
     primary_llm_client: Any | None = None
     conversation_history: list[dict[str, Any]] = field(default_factory=list)
@@ -106,6 +108,7 @@ def build_chat_graph(
     builder = StateGraph(MultiAgentState, context_schema=AgentGraphRuntime)
     builder.add_node("context", _context_node)
     builder.add_node("memory_search", _memory_search_node)
+    builder.add_node("livestock_triage", _livestock_triage_node)
     builder.add_node("router", _router_node)
     builder.add_node("direct", _direct_node)
     builder.add_node("planner", _planner_node)
@@ -119,7 +122,8 @@ def build_chat_graph(
 
     builder.add_edge(START, "context")
     builder.add_edge("context", "memory_search")
-    builder.add_edge("memory_search", "router")
+    builder.add_edge("memory_search", "livestock_triage")
+    builder.add_edge("livestock_triage", "router")
     builder.add_conditional_edges(
         "router",
         _chat_route,
@@ -235,6 +239,7 @@ def _reset_transient_turn_state(state: MultiAgentState) -> None:
     state.retrieved_contexts = []
     state.evidence_status = None
     state.agentic_retrieval = None
+    state.livestock_triage = None
     state.disease_assessment = None
     state.measurement_report = None
     state.draft_answer = None
@@ -305,8 +310,8 @@ async def _router_node(
     context = _context(runtime)
     await _maybe_normalize_query(state, context)
 
-    route_override = None
-    if context.forced_intent != "measurement_analysis" and context.measurement is None:
+    route_override = _triage_takeover_route(state)
+    if route_override is None and context.forced_intent != "measurement_analysis" and context.measurement is None:
         route_override = await _maybe_route_intent_with_model(state, context)
     SupervisorAgent().route(state, route_override=route_override)
 
@@ -321,6 +326,56 @@ async def _router_node(
     if context.forced_intent == "measurement_analysis" or context.measurement is not None:
         _record_model_router_shadow(state, context.settings)
     return _dump(state)
+
+
+async def _livestock_triage_node(
+    raw_state: MultiAgentState | dict[str, Any],
+    runtime: Runtime[AgentGraphRuntime],
+) -> dict[str, Any]:
+    state = _state(raw_state)
+    context = _context(runtime)
+    if not FeatureFlagService(context.settings).model_router_enabled:
+        return _dump(state)
+
+    outcome = await LivestockTriage(
+        context.settings,
+        client=context.livestock_triage_client,
+    ).run(state.user_query)
+    if outcome.status == "not_run" and outcome.fallback_reason not in {"high_risk_requires_primary"}:
+        return _dump(state)
+    state.livestock_triage = outcome
+    state.tool_results["livestock_triage"] = outcome.model_dump(mode="json")
+    state.agent_trace.append(
+        {
+            "node": "livestock_triage",
+            "status": outcome.status,
+            "route_mode": outcome.route_decision.route_mode,
+            "selected_model": outcome.route_decision.selected_model,
+            "fallback_reason": outcome.fallback_reason,
+        }
+    )
+    return _dump(state)
+
+
+def _triage_takeover_route(state: MultiAgentState) -> IntentRoutingResult | None:
+    outcome = state.livestock_triage
+    if (
+        outcome is None
+        or outcome.status != "accepted"
+        or outcome.triage is None
+        or outcome.route_decision.route_mode != "takeover"
+    ):
+        return None
+    intent = outcome.triage.intent_candidate
+    return IntentRoutingResult(
+        intent=intent,
+        confidence=outcome.triage.confidence,
+        reason="accepted local livestock triage",
+        should_use_rag=intent in {"general_qa", "disease_consultation"},
+        fallback_used=False,
+        selected_model="local_small",
+        route_mode="takeover",
+    )
 
 
 async def _direct_node(

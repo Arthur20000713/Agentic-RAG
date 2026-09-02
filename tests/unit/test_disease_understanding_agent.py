@@ -5,7 +5,10 @@ from typing import Any
 from backend.app.agent.disease_understanding import DiseaseUnderstandingAgent
 from backend.app.agent.state import MultiAgentState
 from backend.app.core.config import Settings
+from backend.app.model.livestock_triage import LivestockTriageOutcome
 from backend.app.model.primary_llm import PrimaryLLMRequest
+from backend.app.model.router import ModelRouteDecision
+from backend.app.schemas.model_routing import LivestockTriageResult
 
 
 class FakePrimaryLLM:
@@ -102,6 +105,34 @@ def test_disease_understanding_shadow_mode_uses_shadow_key() -> None:
     assert "disease_understanding_shadow" in state.tool_results
     assert "disease_understanding" not in state.tool_results
     assert state.tool_results["disease_understanding_shadow"]["understanding"]["observed_signs"] == ["cough"]
+
+
+def test_disease_understanding_receives_only_takeover_triage_context() -> None:
+    llm = FakePrimaryLLM(
+        {
+            "status": "success",
+            "schema_name": "disease_case_understanding",
+            "case_summary": "Calf has diarrhea.",
+            "observed_signs": ["diarrhea"],
+            "confidence": 0.9,
+        }
+    )
+    state = MultiAgentState(session_id="s_triage", user_query="calf has diarrhea", intent="disease_consultation")
+    state.livestock_triage = LivestockTriageOutcome(
+        status="accepted",
+        triage=LivestockTriageResult(
+            intent_candidate="disease_consultation",
+            confidence=0.9,
+            slots=[],
+            risk_candidate="medium",
+        ),
+        route_decision=ModelRouteDecision(selected_model="local_small", route_mode="takeover"),
+    )
+
+    DiseaseUnderstandingAgent(settings=_settings(), primary_llm_client=llm).run(state)
+
+    assert llm.requests[0].context["livestock_triage"]["intent_candidate"] == "disease_consultation"
+    assert "long_term_memory" not in llm.requests[0].context["session_context"]
 
 
 def test_disease_understanding_invalid_schema_falls_back_without_errors() -> None:
