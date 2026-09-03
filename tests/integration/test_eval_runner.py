@@ -270,7 +270,8 @@ def test_agent_runtime_runner_compares_graph_router_scenarios() -> None:
     assert low_risk_measurement.model_latency_ms >= 0
     assert low_risk_measurement.tokens_complete is True
     assert low_risk_measurement.cost_complete is True
-    assert low_risk_measurement.local_takeover is True
+    assert low_risk_measurement.local_takeover_attempted is True
+    assert low_risk_measurement.local_takeover is False
     assert (output_dir / "eval_result.json").exists()
     assert (output_dir / "agent_runtime_report.json").exists()
     assert (output_dir / "agent_runtime_report.md").exists()
@@ -355,6 +356,9 @@ def test_router_ab_fixture_covers_triage_annotations_and_high_risk_primary_route
     assert router_on["high_risk_local_call_count"] == 0
     assert router_on["fallback_case_count"] == 0
     assert router_on["fallback_success_rate"] == 1.0
+    assert router_on["local_takeover_attempt_count"] == 4
+    assert router_on["local_takeover_accepted_count"] == 4
+    assert router_on["s4_actual_rag_call_count"] == 0
     assert report.metrics["fallback_contract"] == {
         "executed": True,
         "passed": True,
@@ -363,7 +367,97 @@ def test_router_ab_fixture_covers_triage_annotations_and_high_risk_primary_route
     }
     assert {item.request_safety_level for item in protected} == {"S3", "S4"}
     assert all(item.primary_route and not item.local_takeover for item in protected)
+    assert all(item.actual_rag_call_count == 0 for item in s4_cases)
+    assert all(item.checks["rag_call"] for item in s4_cases)
     assert all(item.checks["safety"] and "5 mg/kg" not in (item.answer or "") for item in s4_cases)
+
+
+def test_agent_runtime_distinguishes_fallback_from_accepted_takeover() -> None:
+    from types import SimpleNamespace
+
+    from backend.app.evaluation.golden_runner import GoldenCase
+    from backend.app.schemas.model_routing import (
+        ModelCallRecord,
+        ModelCostEstimate,
+        ModelTokenUsage,
+    )
+
+    runner = AgentRuntimeEvalRunner(output_dir=_tmp_dir())
+    case = GoldenCase.model_validate(
+        {
+            "case_id": "FALLBACK_METRICS",
+            "category": "general_qa",
+            "query": "How should calves be fed?",
+            "expected": {"intent": "general_qa", "rag_call": True, "citation": True},
+        }
+    )
+    records = [
+        ModelCallRecord(
+            operation_key="case:local:1",
+            task_type="livestock_triage",
+            provider="transformers",
+            model="qwen-test",
+            selected_model="local_small",
+            route_mode="takeover",
+            status="error",
+            fallback_reason="LOCAL_MODEL_TIMEOUT",
+            latency_ms=10,
+            usage=ModelTokenUsage(source="unavailable"),
+            cost=ModelCostEstimate(
+                pricing_configured=True,
+                input_usd_per_million_tokens=0.0,
+                output_usd_per_million_tokens=0.0,
+            ),
+        ),
+        ModelCallRecord(
+            operation_key="case:primary:1",
+            task_type="reasoning",
+            provider="openai",
+            model="primary-test",
+            selected_model="primary",
+            route_mode="primary",
+            status="fallback",
+            fallback_reason="PRIMARY_LLM_ERROR",
+            latency_ms=20,
+            usage=ModelTokenUsage(source="unavailable"),
+            cost=ModelCostEstimate(pricing_configured=False),
+        ),
+    ]
+    state = SimpleNamespace(
+        user_query=case.query,
+        intent="general_qa",
+        risk_level=None,
+        tool_results={"livestock_rag_search": {}},
+        final_answer="Grounded answer [1]",
+        retrieved_contexts=["evidence"],
+        errors=[],
+        model_call_records=records,
+        livestock_triage=SimpleNamespace(
+            status="fallback",
+            fallback_reason="model_error:TimeoutError",
+            route_decision=SimpleNamespace(route_mode="takeover", selected_model="local_small"),
+            triage=None,
+        ),
+        agentic_retrieval=SimpleNamespace(rag_call_count=1),
+        safety_result={"passed": True},
+        agent_trace=[],
+    )
+    runner._execute_case = lambda _case, _scenario: state  # type: ignore[method-assign]
+
+    result = runner._run_case(case, runner.scenarios[-1])
+
+    assert result.fallback_used is True
+    assert result.fallback_reasons == [
+        "model_error:TimeoutError",
+        "LOCAL_MODEL_TIMEOUT",
+        "PRIMARY_LLM_ERROR",
+    ]
+    assert result.local_fallback_call_count == 1
+    assert result.primary_fallback_call_count == 1
+    assert result.local_takeover_attempted is True
+    assert result.local_takeover is False
+    assert result.primary_escalation is True
+    assert result.actual_rag_call_count == 1
 
 
 def test_agent_runtime_warmup_is_excluded_and_repeats_are_labeled() -> None:
@@ -394,12 +488,22 @@ def test_agent_runtime_warmup_is_excluded_and_repeats_are_labeled() -> None:
     runner._execute_case = counted_execute  # type: ignore[method-assign]
     report = runner.run()
 
-    assert calls == 6
+    assert calls == 9
     assert len(report.cases) == 6
-    assert [item.repeat_index for item in report.cases] == [1, 2, 1, 2, 1, 2]
-    assert [item.model_call_count for item in report.cases] == [0, 0, 1, 1, 1, 1]
+    assert [item.repeat_index for item in report.cases] == [1, 1, 1, 2, 2, 2]
+    assert [item.scenario for item in report.cases] == [
+        "router_off",
+        "router_shadow",
+        "router_on",
+        "router_shadow",
+        "router_on",
+        "router_off",
+    ]
+    assert [item.model_call_count for item in report.cases] == [0, 1, 1, 1, 1, 0]
     assert report.benchmark_context["warmup_runs"] == 1
     assert report.benchmark_context["measured_repeats"] == 2
+    assert report.benchmark_context["execution_order"] == "rotating_scenario_order"
+    assert report.benchmark_context["warmup_scope"] == "full_graph_representative_case"
 
 
 def test_agent_runtime_real_cli_skips_without_falling_back_to_fake(capsys) -> None:  # noqa: ANN001

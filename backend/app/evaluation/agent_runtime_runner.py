@@ -25,14 +25,16 @@ from backend.app.evaluation.golden_runner import (
     GoldenSetRunner,
 )
 from backend.app.evaluation.metrics import compute_metrics
+from backend.app.evaluation.real_rag_preflight import RealRagPreflightRunner
 from backend.app.evaluation.router_ab_quality_gate import (
     evaluate_router_ab_quality_gate,
 )
 from backend.app.integrations.rag_server.base import RagServerClient
 from backend.app.integrations.rag_server.fake_client import FakeRagServerClient
+from backend.app.integrations.rag_server.mcp_stdio_client import RagServerMcpClient
 from backend.app.model.base import BaseModelClient
-from backend.app.model.livestock_triage import LivestockTriage
 from backend.app.model.local_client import LocalModelClient
+from backend.app.model.primary_llm import resolve_primary_llm_api_key
 from backend.app.model.usage import summarize_model_calls
 
 
@@ -63,11 +65,19 @@ class AgentRuntimeCaseResult(EvaluationCaseResult):
     total_cost_usd: float | None = Field(default=None, ge=0)
     cost_scope: Literal["api_token_only"] = "api_token_only"
     fallback_used: bool = False
+    fallback_reasons: list[str] = Field(default_factory=list)
+    local_success_call_count: int = Field(default=0, ge=0)
+    primary_success_call_count: int = Field(default=0, ge=0)
+    primary_reasoning_success_call_count: int = Field(default=0, ge=0)
+    local_fallback_call_count: int = Field(default=0, ge=0)
+    primary_fallback_call_count: int = Field(default=0, ge=0)
+    local_takeover_attempted: bool = False
     local_takeover: bool = False
     local_call: bool = False
     primary_route: bool = False
     primary_call: bool = False
     primary_escalation: bool = False
+    actual_rag_call_count: int = Field(default=0, ge=0)
     request_safety_level: SafetyLevel = "S0"
     triage_intent_correct: bool | None = None
     triage_slot_correct: bool | None = None
@@ -78,6 +88,7 @@ class AgentRuntimeEvaluationReport(BaseModel):
     mode: str = "agent_runtime"
     evidence_kind: Literal["scripted", "real"] = "scripted"
     performance_claim_allowed: bool = False
+    claim_eligibility: dict[str, bool] = Field(default_factory=dict)
     benchmark_context: dict[str, Any] = Field(default_factory=dict)
     scenarios: list[str]
     metrics: dict[str, Any]
@@ -114,6 +125,7 @@ class AgentRuntimeEvalRunner:
             raise ValueError("warmup_runs must be non-negative and measured_repeats must be positive")
         self.warmup_runs = warmup_runs
         self.measured_repeats = measured_repeats
+        self.rag_preflight_status = "not_run"
         if evidence_kind == "real":
             self._validate_real_evidence()
         self.evidence_kind = evidence_kind
@@ -137,8 +149,8 @@ class AgentRuntimeEvalRunner:
         return GoldenSetRunner(self.golden_set_path, output_dir=self.output_dir, rag_client=self.rag_client).load_cases()
 
     def _validate_real_evidence(self) -> None:
-        if isinstance(self.rag_client, FakeRagServerClient):
-            raise ValueError("real evidence requires a non-fake RAG client")
+        if not isinstance(self.rag_client, RagServerMcpClient):
+            raise ValueError("real evidence requires a real MCP RAG client")
         router_on = next((item.settings for item in self.scenarios if item.name == "router_on"), None)
         if (
             router_on is None
@@ -150,21 +162,30 @@ class AgentRuntimeEvalRunner:
             raise ValueError("real evidence requires non-mock local and primary model settings")
         if self.warmup_runs < 1 or self.measured_repeats < 3:
             raise ValueError("real evidence requires warmup_runs >= 1 and measured_repeats >= 3")
+        if not resolve_primary_llm_api_key(router_on):
+            raise ValueError("real evidence requires configured primary model credentials")
 
     def run(self) -> AgentRuntimeEvaluationReport:
+        if self.evidence_kind == "real":
+            self._run_real_rag_preflight()
         cases = self.load_cases()
         results: list[AgentRuntimeCaseResult] = []
-        for scenario in self.scenarios:
-            if cases and (scenario.settings or Settings()).model_router.enabled:
+        if cases:
+            for scenario in self.scenarios:
                 for _ in range(self.warmup_runs):
-                    self._warmup_local_triage(cases[0], scenario)
-            for repeat_index in range(1, self.measured_repeats + 1):
+                    self._run_case(cases[0], scenario)
+        for repeat_index in range(1, self.measured_repeats + 1):
+            offset = (repeat_index - 1) % len(self.scenarios)
+            ordered_scenarios = self.scenarios[offset:] + self.scenarios[:offset]
+            for scenario in ordered_scenarios:
                 results.extend(self._run_case(case, scenario, repeat_index) for case in cases)
         metrics = self._compute_metrics(results)
         metrics["fallback_contract"] = self._run_fallback_contract(cases)
+        claim_eligibility = self._claim_eligibility(metrics)
         report = AgentRuntimeEvaluationReport(
             evidence_kind=self.evidence_kind,
-            performance_claim_allowed=self.evidence_kind == "real",
+            performance_claim_allowed=all(claim_eligibility.values()),
+            claim_eligibility=claim_eligibility,
             benchmark_context=self._benchmark_context(),
             scenarios=[scenario.name for scenario in self.scenarios],
             metrics=metrics,
@@ -172,6 +193,20 @@ class AgentRuntimeEvalRunner:
         )
         report.metrics["quality_gate"] = evaluate_router_ab_quality_gate(report).model_dump()
         return report
+
+    def _run_real_rag_preflight(self) -> None:
+        settings = next(item.settings for item in self.scenarios if item.name == "router_on")
+        preflight = asyncio.run(
+            RealRagPreflightRunner(
+                settings or Settings(),
+                output_dir=self.output_dir,
+                client=self.rag_client,
+            ).run()
+        )
+        self.rag_preflight_status = preflight.status
+        if preflight.status != "passed":
+            detail = preflight.error_code or preflight.error_message or "unknown error"
+            raise ValueError(f"real RAG preflight failed: {detail}")
 
     def write_outputs(self, report: AgentRuntimeEvaluationReport) -> None:
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -196,12 +231,29 @@ class AgentRuntimeEvalRunner:
         selected_model = self._route_decision_value(state, "selected_model") or self._default_route_value(
             scenario, "selected_model"
         )
-        fallback_used = self._fallback_used(state)
         triage = getattr(state, "livestock_triage", None)
+        local_success_count = self._model_call_count(records, "local_small", {"success"})
+        primary_success_count = self._model_call_count(records, "primary", {"success"})
+        primary_reasoning_success_count = sum(
+            record.selected_model == "primary"
+            and record.status == "success"
+            and record.task_type in {"planning", "reasoning", "final_answer"}
+            for record in records
+        )
+        local_fallback_count = self._model_call_count(records, "local_small", {"fallback", "error"})
+        primary_fallback_count = self._model_call_count(records, "primary", {"fallback", "error"})
+        triage_fallback = getattr(triage, "status", None) == "fallback"
+        fallback_used = triage_fallback or local_fallback_count > 0 or primary_fallback_count > 0
         local_call = any(record.selected_model == "local_small" for record in records) or getattr(
             triage, "status", None
         ) in {"accepted", "fallback"}
         primary_call = any(record.selected_model == "primary" for record in records)
+        local_takeover_attempted = route_mode == "takeover" and selected_model == "local_small"
+        local_takeover_accepted = (
+            local_takeover_attempted
+            and not triage_fallback
+            and local_success_count > 0
+        )
         triage_quality = self._triage_quality(case, state)
         request_safety_level = SafetyPrecheck().classify(state.user_query).level
         return AgentRuntimeCaseResult(
@@ -233,11 +285,19 @@ class AgentRuntimeEvalRunner:
             cost_complete=usage["cost_complete"],
             total_cost_usd=usage["total_cost_usd"],
             fallback_used=fallback_used,
-            local_takeover=route_mode == "takeover" and selected_model == "local_small",
+            fallback_reasons=self._fallback_reasons(state, records),
+            local_success_call_count=local_success_count,
+            primary_success_call_count=primary_success_count,
+            primary_reasoning_success_call_count=primary_reasoning_success_count,
+            local_fallback_call_count=local_fallback_count,
+            primary_fallback_call_count=primary_fallback_count,
+            local_takeover_attempted=local_takeover_attempted,
+            local_takeover=local_takeover_accepted,
             local_call=local_call,
             primary_route=route_mode == "primary" and selected_model == "primary",
             primary_call=primary_call,
-            primary_escalation=fallback_used and primary_call,
+            primary_escalation=(triage_fallback or local_fallback_count > 0) and primary_call,
+            actual_rag_call_count=self._actual_rag_call_count(state),
             request_safety_level=request_safety_level,
             **triage_quality,
         )
@@ -285,14 +345,6 @@ class AgentRuntimeEvalRunner:
             self._triage_clients[scenario.name] = LocalModelClient(scenario.settings or Settings())
         return self._triage_clients[scenario.name]
 
-    def _warmup_local_triage(self, case: GoldenCase, scenario: AgentRuntimeEvalScenario) -> None:
-        settings = scenario.settings or Settings()
-        client = self._triage_client(scenario)
-        asyncio.run(LivestockTriage(settings, client=client).run(case.query))
-        drain = getattr(client, "drain_model_call_records", None)
-        if drain is not None:
-            drain()
-
     def _run_fallback_contract(self, cases: list[GoldenCase]) -> dict[str, Any]:
         scenario = next((item for item in self.scenarios if item.name == "router_on"), None)
         case = next(
@@ -330,7 +382,7 @@ class AgentRuntimeEvalRunner:
     def _evaluate_state(self, case: GoldenCase, state: Any) -> dict[str, bool]:
         checks: dict[str, bool] = {"intent": state.intent == case.expected.intent}
         if case.expected.rag_call is not None:
-            checks["rag_call"] = ("livestock_rag_search" in state.tool_results) == case.expected.rag_call
+            checks["rag_call"] = (self._actual_rag_call_count(state) > 0) == case.expected.rag_call
         if case.expected.citation is not None:
             checks["citation"] = ("[1]" in (state.final_answer or "")) == case.expected.citation
         if case.expected.no_answer is not None:
@@ -357,6 +409,9 @@ class AgentRuntimeEvalRunner:
         return {
             "warmup_runs": self.warmup_runs,
             "measured_repeats": self.measured_repeats,
+            "rag_preflight_status": self.rag_preflight_status,
+            "execution_order": "rotating_scenario_order",
+            "warmup_scope": "full_graph_representative_case",
             "platform": platform.system(),
             "platform_release": platform.release(),
             "machine": platform.machine(),
@@ -375,6 +430,41 @@ class AgentRuntimeEvalRunner:
             },
         }
 
+    def _claim_eligibility(self, metrics: dict[str, Any]) -> dict[str, bool]:
+        scenarios = metrics.get("by_scenario", {})
+        required_scenarios = ("router_off", "router_shadow", "router_on")
+        runtime_verified = (
+            self.evidence_kind == "real"
+            and self.rag_preflight_status == "passed"
+            and self.warmup_runs >= 1
+            and self.measured_repeats >= 3
+            and metrics.get("failed_cases") == 0
+            and all(
+                scenarios.get(name, {}).get("primary_reasoning_success_call_count", 0) > 0
+                for name in required_scenarios
+            )
+            and all(
+                scenarios.get(name, {}).get("actual_rag_call_count", 0) > 0
+                for name in required_scenarios
+            )
+            and scenarios.get("router_shadow", {}).get("local_success_call_count", 0) > 0
+            and scenarios.get("router_on", {}).get("local_takeover_accepted_count", 0) > 0
+        )
+        tokens_complete = runtime_verified and all(
+            scenarios.get(name, {}).get("tokens_complete") is True
+            for name in required_scenarios
+        )
+        cost_complete = tokens_complete and all(
+            scenarios.get(name, {}).get("cost_complete") is True
+            for name in required_scenarios
+        )
+        return {
+            "task_success": runtime_verified,
+            "latency": runtime_verified,
+            "tokens": tokens_complete,
+            "cost": cost_complete,
+        }
+
     def _scenario_metrics(self, items: list[AgentRuntimeCaseResult]) -> dict[str, Any]:
         task_metrics = compute_metrics(items)
         total = len(items)
@@ -387,6 +477,7 @@ class AgentRuntimeEvalRunner:
         known_total = sum(item.known_total_tokens for item in items)
         known_cost = sum(item.known_total_cost_usd for item in items)
         high_risk_items = [item for item in items if item.request_safety_level in {"S3", "S4"}]
+        s4_items = [item for item in items if item.request_safety_level == "S4"]
         high_risk_takeovers = sum(item.local_takeover for item in high_risk_items)
         high_risk_local_calls = sum(item.local_call for item in high_risk_items)
         task_success_rate = _rate(passed, total)
@@ -424,6 +515,16 @@ class AgentRuntimeEvalRunner:
             "fallback_rate": _rate(len(fallback_items), total),
             "fallback_success_rate": _rate(sum(item.passed for item in fallback_items), len(fallback_items)),
             "fallback_case_count": len(fallback_items),
+            "local_success_call_count": sum(item.local_success_call_count for item in items),
+            "primary_success_call_count": sum(item.primary_success_call_count for item in items),
+            "primary_reasoning_success_call_count": sum(
+                item.primary_reasoning_success_call_count for item in items
+            ),
+            "local_fallback_call_count": sum(item.local_fallback_call_count for item in items),
+            "primary_fallback_call_count": sum(item.primary_fallback_call_count for item in items),
+            "local_takeover_attempt_count": sum(item.local_takeover_attempted for item in items),
+            "local_takeover_accepted_count": sum(item.local_takeover for item in items),
+            "local_takeover_attempt_rate": _rate(sum(item.local_takeover_attempted for item in items), total),
             "local_takeover_rate": _rate(sum(item.local_takeover for item in items), total),
             "local_call_rate": _rate(sum(item.local_call for item in items), total),
             "primary_route_rate": _rate(sum(item.primary_route for item in items), total),
@@ -434,6 +535,8 @@ class AgentRuntimeEvalRunner:
             "s4_case_count": sum(item.request_safety_level == "S4" for item in items),
             "high_risk_local_takeover_count": high_risk_takeovers,
             "high_risk_local_call_count": high_risk_local_calls,
+            "actual_rag_call_count": sum(item.actual_rag_call_count for item in items),
+            "s4_actual_rag_call_count": sum(item.actual_rag_call_count for item in s4_items),
         }
 
     def _safety_check(self, case: GoldenCase, state: Any) -> bool:
@@ -494,14 +597,23 @@ class AgentRuntimeEvalRunner:
             return "disabled"
         return "shadow" if settings.model_router.shadow_mode else "primary"
 
-    def _fallback_used(self, state: Any) -> bool:
+    def _actual_rag_call_count(self, state: Any) -> int:
+        retrieval = getattr(state, "agentic_retrieval", None)
+        count = getattr(retrieval, "rag_call_count", 0)
+        return count if isinstance(count, int) and not isinstance(count, bool) and count >= 0 else 0
+
+    def _model_call_count(self, records: list[Any], model: str, statuses: set[str]) -> int:
+        return sum(record.selected_model == model and record.status in statuses for record in records)
+
+    def _fallback_reasons(self, state: Any, records: list[Any]) -> list[str]:
         triage = getattr(state, "livestock_triage", None)
-        if getattr(triage, "status", None) == "fallback":
-            return True
-        return any(
-            record.selected_model == "local_small" and record.status in {"fallback", "error"}
-            for record in getattr(state, "model_call_records", [])
+        reasons = [getattr(triage, "fallback_reason", None)]
+        reasons.extend(
+            record.fallback_reason or f"{record.selected_model}_{record.status}"
+            for record in records
+            if record.status in {"fallback", "error"}
         )
+        return list(dict.fromkeys(reason for reason in reasons if reason))
 
     def _triage_quality(self, case: GoldenCase, state: Any) -> dict[str, bool | None]:
         outcome = getattr(state, "livestock_triage", None)
@@ -551,11 +663,14 @@ class AgentRuntimeEvalRunner:
                     "total_tokens",
                     "total_cost_usd",
                     "fallback_used",
+                    "fallback_reasons",
+                    "local_takeover_attempted",
                     "local_takeover",
                     "local_call",
                     "primary_route",
                     "primary_call",
                     "primary_escalation",
+                    "actual_rag_call_count",
                     "checks",
                     "errors",
                 ],
@@ -579,11 +694,14 @@ class AgentRuntimeEvalRunner:
                         "total_tokens": item.total_tokens if item.tokens_complete else "",
                         "total_cost_usd": item.total_cost_usd if item.cost_complete else "",
                         "fallback_used": item.fallback_used,
+                        "fallback_reasons": "|".join(item.fallback_reasons),
+                        "local_takeover_attempted": item.local_takeover_attempted,
                         "local_takeover": item.local_takeover,
                         "local_call": item.local_call,
                         "primary_route": item.primary_route,
                         "primary_call": item.primary_call,
                         "primary_escalation": item.primary_escalation,
+                        "actual_rag_call_count": item.actual_rag_call_count,
                         "checks": json.dumps(item.checks, ensure_ascii=False, sort_keys=True),
                         "errors": "|".join(item.errors),
                     }

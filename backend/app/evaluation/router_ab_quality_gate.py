@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 
 class RouterABQualityThresholds(BaseModel):
+    required_task_success_rate: float = 1.0
     min_intent_accuracy: float = 0.95
     min_slot_accuracy: float = 0.95
     min_risk_accuracy: float = 0.95
@@ -40,10 +41,16 @@ def evaluate_router_ab_quality_gate(
             reasons=["scripted evidence cannot enable router takeover"],
         )
     if payload.get("performance_claim_allowed") is not True:
+        eligibility = payload.get("claim_eligibility")
+        reasons = ["report is not eligible for performance claims"]
+        if isinstance(eligibility, dict) and (
+            eligibility.get("tokens") is not True or eligibility.get("cost") is not True
+        ):
+            reasons.append("complete token and cost evidence is required")
         return RouterABQualityGateResult(
             passed=False,
             status="not_eligible",
-            reasons=["report is not eligible for performance claims"],
+            reasons=reasons,
         )
 
     limits = thresholds or RouterABQualityThresholds()
@@ -53,6 +60,37 @@ def evaluate_router_ab_quality_gate(
     router_shadow = scenarios.get("router_shadow") if isinstance(scenarios.get("router_shadow"), dict) else {}
     router_on = scenarios.get("router_on") if isinstance(scenarios.get("router_on"), dict) else {}
     reasons: list[str] = []
+
+    benchmark_context = payload.get("benchmark_context")
+    if not isinstance(benchmark_context, dict) or benchmark_context.get("rag_preflight_status") != "passed":
+        reasons.append("real RAG preflight did not pass")
+    for name in ("router_off", "router_shadow", "router_on"):
+        success_count = scenarios.get(name, {}).get("primary_reasoning_success_call_count")
+        if not _number(success_count) or success_count < 1:
+            reasons.append(f"{name} primary reasoning success is missing")
+    accepted_takeovers = router_on.get("local_takeover_accepted_count")
+    if not _number(accepted_takeovers) or accepted_takeovers < 1:
+        reasons.append("router_on accepted local takeover is missing")
+    shadow_local_success = router_shadow.get("local_success_call_count")
+    if not _number(shadow_local_success) or shadow_local_success < 1:
+        reasons.append("router_shadow local triage success is missing")
+
+    for name in ("router_off", "router_shadow", "router_on"):
+        scenario = scenarios.get(name, {})
+        _minimum(reasons, scenario, "task_success_rate", limits.required_task_success_rate, prefix=name)
+        rag_calls = scenario.get("actual_rag_call_count")
+        if not _number(rag_calls) or rag_calls < 1:
+            reasons.append(f"{name} actual RAG call count is missing")
+        high_risk_calls = scenario.get("high_risk_local_call_count")
+        if not _number(high_risk_calls):
+            reasons.append(f"{name} high_risk_local_call_count is unavailable")
+        elif high_risk_calls > 0:
+            reasons.append(f"{name} high_risk_local_call_count {high_risk_calls} > 0")
+        s4_rag_calls = scenario.get("s4_actual_rag_call_count")
+        if not _number(s4_rag_calls):
+            reasons.append(f"{name} S4 actual RAG call count is unavailable")
+        elif s4_rag_calls > 0:
+            reasons.append(f"{name} S4 actual RAG call count {s4_rag_calls} > 0")
 
     off_success = router_off.get("task_success_rate")
     on_success = router_on.get("task_success_rate")
@@ -84,11 +122,6 @@ def evaluate_router_ab_quality_gate(
         reasons.append("router_on high_risk_local_takeover_count is unavailable")
     elif high_risk_takeovers > 0:
         reasons.append(f"router_on high_risk_local_takeover_count {high_risk_takeovers} > 0")
-    high_risk_local_calls = router_on.get("high_risk_local_call_count")
-    if not _number(high_risk_local_calls):
-        reasons.append("router_on high_risk_local_call_count is unavailable")
-    elif high_risk_local_calls > 0:
-        reasons.append(f"router_on high_risk_local_call_count {high_risk_local_calls} > 0")
 
     fallback_contract = metrics.get("fallback_contract")
     if not isinstance(fallback_contract, dict) or fallback_contract.get("passed") is not True:
@@ -103,12 +136,19 @@ def evaluate_router_ab_quality_gate(
     )
 
 
-def _minimum(reasons: list[str], metrics: dict[str, Any], name: str, minimum: float) -> None:
+def _minimum(
+    reasons: list[str],
+    metrics: dict[str, Any],
+    name: str,
+    minimum: float,
+    *,
+    prefix: str = "router_on",
+) -> None:
     value = metrics.get(name)
     if not _number(value):
-        reasons.append(f"router_on {name} is unavailable")
+        reasons.append(f"{prefix} {name} is unavailable")
     elif value < minimum:
-        reasons.append(f"router_on {name} {value} < {minimum}")
+        reasons.append(f"{prefix} {name} {value} < {minimum}")
 
 
 def _number(value: Any) -> bool:
