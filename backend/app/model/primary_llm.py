@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from backend.app.core.config import Settings
+from backend.app.core.config import PROJECT_ROOT, Settings
 from backend.app.model.local_schema import parse_local_json_response
 from backend.app.model.usage import (
     ModelCallRecorder,
@@ -70,8 +70,6 @@ class PrimaryLLMClient:
         payload = {
             "model": llm.model,
             "messages": self._messages(request),
-            "temperature": 0,
-            "response_format": {"type": "json_object"},
         }
         headers = {
             "Content-Type": "application/json",
@@ -206,6 +204,9 @@ def resolve_primary_llm_api_key(settings: Settings) -> str | None:
     if not env_name:
         return None
     value = os.getenv(env_name)
+    if value:
+        return value
+    value = _read_dotenv_value(PROJECT_ROOT / ".env", env_name)
     if value:
         return value
     repo_path = settings.rag_server.repo_path

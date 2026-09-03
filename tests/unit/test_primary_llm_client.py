@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 
+import backend.app.model.primary_llm as primary_llm_module
 from backend.app.core.config import Settings
 from backend.app.model.primary_llm import PrimaryLLMClient, PrimaryLLMRequest
 
@@ -60,7 +61,8 @@ def test_primary_llm_client_calls_openai_compatible_json_api(monkeypatch) -> Non
     assert result["provider"] == "deepseek"
     assert result["model"] == "deepseek-v4-flash"
     assert transport.calls[0][0] == "https://api.deepseek.com/chat/completions"
-    assert transport.calls[0][1]["response_format"] == {"type": "json_object"}
+    assert "response_format" not in transport.calls[0][1]
+    assert "temperature" not in transport.calls[0][1]
     assert transport.calls[0][2]["Authorization"] == "Bearer secret-value"
     assert "secret-value" not in str(result)
     assert "usage" not in result
@@ -142,6 +144,41 @@ def test_primary_llm_client_reads_same_key_from_rag_server_env_file(monkeypatch,
     assert result["status"] == "success"
     assert transport.calls[0][2]["Authorization"] == "Bearer secret-from-rag-server"
     assert "secret-from-rag-server" not in str(result)
+
+
+def test_primary_llm_client_prefers_project_env_file_over_rag_server_env(monkeypatch, tmp_path) -> None:
+    monkeypatch.delenv("A6API_API_KEY", raising=False)
+    project_root = tmp_path / "app"
+    rag_server = tmp_path / "RAG-SERVER"
+    project_root.mkdir()
+    rag_server.mkdir()
+    (project_root / ".env").write_text("A6API_API_KEY=project-secret\n", encoding="utf-8")
+    (rag_server / ".env").write_text("A6API_API_KEY=rag-secret\n", encoding="utf-8")
+    monkeypatch.setattr(primary_llm_module, "PROJECT_ROOT", project_root)
+    settings = Settings(
+        rag_server={"repo_path": str(rag_server)},
+        primary_llm={
+            "enabled": True,
+            "provider": "openai",
+            "model": "gpt-5.6-luna",
+            "base_url": "https://api.a6api.com",
+            "api_key_env": "A6API_API_KEY",
+        },
+    )
+    transport = RecordingTransport(
+        {"choices": [{"message": {"content": '{"status":"success"}'}}]}
+    )
+
+    result = asyncio.run(
+        PrimaryLLMClient(settings=settings, transport=transport).generate_json(
+            PrimaryLLMRequest(prompt="Return success", schema_name="reasoning")
+        )
+    )
+
+    assert result["status"] == "success"
+    assert transport.calls[0][2]["Authorization"] == "Bearer project-secret"
+    assert "project-secret" not in str(result)
+    assert "rag-secret" not in str(result)
 
 
 def test_primary_llm_client_marks_missing_provider_usage_unavailable(monkeypatch) -> None:

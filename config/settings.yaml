@@ -40,10 +40,10 @@ local_model:
   temperature: 0
 primary_llm:
   enabled: true
-  provider: deepseek
-  model: deepseek-v4-flash
-  base_url: https://api.deepseek.com
-  api_key_env: DEEPSEEK_API_KEY
+  provider: openai
+  model: gpt-5.6-luna
+  base_url: https://api.a6api.com
+  api_key_env: A6API_API_KEY
   timeout_seconds: 30
   max_retries: 1
 disease_llm:

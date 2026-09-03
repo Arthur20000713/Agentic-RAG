@@ -240,10 +240,10 @@ def test_product_settings_keep_langgraph_runtime_without_slow_chat_local_takeove
     assert settings.local_model.provider == "transformers"
     assert settings.local_model.model == "Qwen/Qwen2.5-0.5B-Instruct"
     assert settings.local_model.allow_final_answer is False
-    assert settings.primary_llm.provider == "deepseek"
-    assert settings.primary_llm.model == "deepseek-v4-flash"
-    assert settings.primary_llm.base_url == "https://api.deepseek.com"
-    assert settings.primary_llm.api_key_env == "DEEPSEEK_API_KEY"
+    assert settings.primary_llm.provider == "openai"
+    assert settings.primary_llm.model == "gpt-5.6-luna"
+    assert settings.primary_llm.base_url == "https://api.a6api.com"
+    assert settings.primary_llm.api_key_env == "A6API_API_KEY"
     assert settings.disease_llm.shadow_mode is False
 
 
