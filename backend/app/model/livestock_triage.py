@@ -83,7 +83,7 @@ class LivestockTriage:
 
         try:
             raw = await self.client.generate_json(
-                _triage_prompt(user_query),
+                user_query,
                 schema_name="livestock_triage",
                 context={"user_query": user_query},
             )
@@ -162,19 +162,6 @@ def _downgrades_rule_intent(rule_intent: str, candidate: str) -> bool:
 
 def _fallback(decision: ModelRouteDecision, reason: str) -> LivestockTriageOutcome:
     return LivestockTriageOutcome(status="fallback", route_decision=decision, fallback_reason=reason)
-
-
-def _triage_prompt(query: str) -> str:
-    return (
-        "Classify one livestock user message. Return JSON only and do not answer the user. "
-        "Keys: status, schema_name, fallback_required, intent_candidate, confidence, slots, risk_candidate, risk_signals. "
-        "Allowed intents: assistant_intro, general_qa, disease_consultation, measurement_analysis, out_of_scope. "
-        "Allowed slot names: species, age_stage, duration_days, temperature_c, temperature_status, appetite_status, "
-        "feces_status, respiratory_status, group_outbreak. Each slot needs name, value, exact source_span copied from the "
-        "user message, and confidence. Never infer a diagnosis, treatment, prescription, or facts not in the user message. "
-        "Risk must be low, medium, high, or emergency. "
-        f"User message: {query}"
-    )
 
 
 def takeover_triage_context(outcome: LivestockTriageOutcome | None) -> dict[str, Any] | None:

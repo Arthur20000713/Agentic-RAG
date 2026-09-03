@@ -210,6 +210,8 @@ def test_transformers_backend_builds_livestock_triage_prompt() -> None:
 
     assert "source_span" in str(captured["prompt"])
     assert "do not diagnose" in str(captured["prompt"]).casefold()
+    assert str(captured["prompt"]).count("Classify one livestock user message") == 1
+    assert str(captured["prompt"]).endswith("User message: calf fever 40.2C")
     assert response.status == "success"
     assert response.content["intent_candidate"] == "disease_consultation"
     assert response.content["fallback_required"] is False

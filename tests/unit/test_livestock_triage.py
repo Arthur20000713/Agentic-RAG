@@ -79,7 +79,7 @@ def test_low_risk_triage_accepts_grounded_chinese_slots_in_one_call() -> None:
             {"user_query": "犊牛体温40.2°C，有发热"},
         )
     ]
-    assert "User message: 犊牛体温40.2°C，有发热" in client.calls[0][0]
+    assert client.calls[0][0] == "犊牛体温40.2°C，有发热"
     assert "long_term_memory" not in client.calls[0][0]
 
 
