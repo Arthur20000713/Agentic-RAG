@@ -46,6 +46,11 @@ primary_llm:
   api_key_env: A6API_API_KEY
   timeout_seconds: 90
   max_retries: 1
+model_pricing:
+  primary_input_usd_per_million_tokens: 1.0
+  primary_output_usd_per_million_tokens: 1.0
+  local_input_usd_per_million_tokens: 0.0
+  local_output_usd_per_million_tokens: 0.0
 disease_llm:
   enabled: true
   shadow_mode: false

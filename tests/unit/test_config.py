@@ -244,6 +244,10 @@ def test_product_settings_keep_langgraph_runtime_without_slow_chat_local_takeove
     assert settings.primary_llm.model == "gpt-5.6-luna"
     assert settings.primary_llm.base_url == "https://api.a6api.com"
     assert settings.primary_llm.api_key_env == "A6API_API_KEY"
+    assert settings.model_pricing.primary_input_usd_per_million_tokens == 1.0
+    assert settings.model_pricing.primary_output_usd_per_million_tokens == 1.0
+    assert settings.model_pricing.local_input_usd_per_million_tokens == 0.0
+    assert settings.model_pricing.local_output_usd_per_million_tokens == 0.0
     assert settings.disease_llm.shadow_mode is False
 
 
