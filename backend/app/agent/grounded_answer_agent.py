@@ -17,6 +17,17 @@ from backend.app.model.primary_llm import PrimaryLLMClient, PrimaryLLMRequest
 from backend.app.schemas.rag_server import RagSearchResult
 
 RAG_TOOL_NAME = "livestock_rag_search"
+_NON_SUBSTANTIVE_QUERY_TOKENS = {
+    "a",
+    "an",
+    "base",
+    "cattle",
+    "empty",
+    "knowledge",
+    "livestock",
+    "question",
+    "the",
+}
 
 
 class GroundedAnswerPayload(BaseModel):
@@ -76,6 +87,15 @@ class GroundedAnswerAgent:
                 state,
                 status="no_answer",
                 fallback_reason=f"rag_status:{rag_result.status if rag_result else 'missing'}",
+                started_at=started_at,
+            )
+            return state
+
+        if _lacks_substantive_request(state.user_query):
+            self._use_no_answer(
+                state,
+                status="no_answer",
+                fallback_reason="query_lacks_substantive_request",
                 started_at=started_at,
             )
             return state
@@ -367,3 +387,8 @@ def _wrap_reference_answer(query: str, answer: str) -> str:
 def _has_valid_evidence_citation(answer: str, *, evidence_count: int) -> bool:
     indexes = [int(value) for value in re.findall(r"\[(\d+)\]", answer)]
     return any(1 <= index <= evidence_count for index in indexes)
+
+
+def _lacks_substantive_request(query: str) -> bool:
+    tokens = re.findall(r"[a-z]+", query.casefold())
+    return bool(tokens) and all(token in _NON_SUBSTANTIVE_QUERY_TOKENS for token in tokens)

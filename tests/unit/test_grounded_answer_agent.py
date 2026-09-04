@@ -214,6 +214,35 @@ def test_grounded_answer_agent_synthesizes_answer_from_rag_context() -> None:
     assert state.agent_trace[-1]["node"] == "grounded_answer_agent"
 
 
+def test_grounded_answer_agent_rejects_domain_only_query_after_retrieval() -> None:
+    llm = FakePrimaryLLM(
+        {
+            "status": "success",
+            "schema_name": "grounded_rag_answer",
+            "answer_draft": "Unrelated cattle guidance [1].",
+            "evidence_sufficient": True,
+            "fallback_required": False,
+        }
+    )
+    state = _state()
+    state.user_query = "empty cattle knowledge-base question"
+    state.normalized_query = state.user_query
+
+    asyncio.run(GroundedAnswerAgent(_settings(), primary_llm_client=llm).run(state))
+
+    assert llm.requests == []
+    assert state.draft_answer == NO_ANSWER_TEXT
+    assert state.evidence_status == "low_confidence"
+    assert state.retrieved_contexts == []
+    assert state.tool_results["grounded_answer_agent"] == {
+        "status": "no_answer",
+        "schema_name": "grounded_rag_answer",
+        "fallback_used": False,
+        "fallback_reason": "query_lacks_substantive_request",
+        "reference_only": False,
+    }
+
+
 def test_grounded_answer_agent_uses_reference_only_answer_when_model_rejects_evidence() -> None:
     llm = SequentialFakePrimaryLLM(
         [
