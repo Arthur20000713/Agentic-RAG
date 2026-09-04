@@ -28,15 +28,15 @@ model_router:
     - S4
 local_model:
   enabled: true
-  provider: transformers
-  endpoint:
-  model: Qwen/Qwen2.5-0.5B-Instruct
-  timeout_seconds: 60
+  provider: ollama
+  endpoint: http://127.0.0.1:11434
+  model: qwen2.5:7b
+  timeout_seconds: 90
   max_retries: 1
   allow_final_answer: false
   device: auto
   torch_dtype: auto
-  max_new_tokens: 96
+  max_new_tokens: 256
   temperature: 0
 primary_llm:
   enabled: true

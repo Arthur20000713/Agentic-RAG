@@ -237,8 +237,8 @@ def test_product_settings_keep_langgraph_runtime_without_slow_chat_local_takeove
     assert "intent_routing" not in settings.model_router.takeover_task_types
     assert "query_normalization" not in settings.model_router.takeover_task_types
     assert "measurement_analysis" in settings.model_router.takeover_task_types
-    assert settings.local_model.provider == "transformers"
-    assert settings.local_model.model == "Qwen/Qwen2.5-0.5B-Instruct"
+    assert settings.local_model.provider == "ollama"
+    assert settings.local_model.model == "qwen2.5:7b"
     assert settings.local_model.allow_final_answer is False
     assert settings.primary_llm.provider == "openai"
     assert settings.primary_llm.model == "gpt-5.6-luna"
