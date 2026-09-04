@@ -44,7 +44,7 @@ primary_llm:
   model: gpt-5.6-luna
   base_url: https://api.a6api.com
   api_key_env: A6API_API_KEY
-  timeout_seconds: 30
+  timeout_seconds: 90
   max_retries: 1
 disease_llm:
   enabled: true
