@@ -28,6 +28,21 @@ ALLOWED_TRIAGE_SLOT_NAMES = {
 RISK_RANK = {"low": 0, "medium": 1, "high": 2, "emergency": 3}
 MINIMUM_RISK_BY_SAFETY_LEVEL = {"S0": "low", "S1": "low", "S2": "medium", "S3": "high", "S4": "emergency"}
 NEGATION_MARKERS = ("no", "not", "without", "none", "没有", "无", "未")
+CHINESE_DIGITS = {
+    "零": 0,
+    "〇": 0,
+    "一": 1,
+    "二": 2,
+    "两": 2,
+    "三": 3,
+    "四": 4,
+    "五": 5,
+    "六": 6,
+    "七": 7,
+    "八": 8,
+    "九": 9,
+}
+CHINESE_INTEGER_PATTERN = re.compile(r"[零〇一二两三四五六七八九十]+")
 
 
 class LivestockTriageOutcome(BaseModel):
@@ -150,8 +165,25 @@ def _value_is_grounded(value: str | float | bool, source_span: str) -> bool:
         return is_negative is (not value)
     if isinstance(value, (int, float)):
         number = re.escape(str(value))
-        return bool(re.search(rf"(?<![0-9.]){number}(?![0-9.])", normalized_span))
+        if re.search(rf"(?<![0-9.]){number}(?![0-9.])", normalized_span):
+            return True
+        numeric_value = float(value)
+        if not numeric_value.is_integer():
+            return False
+        return any(
+            _parse_chinese_integer(token) == int(numeric_value)
+            for token in CHINESE_INTEGER_PATTERN.findall(source_span)
+        )
     return value.casefold() in normalized_span
+
+
+def _parse_chinese_integer(text: str) -> int | None:
+    if "十" not in text:
+        return CHINESE_DIGITS.get(text)
+    left, right = text.split("十", 1)
+    tens = CHINESE_DIGITS.get(left, 1 if not left else -1)
+    ones = CHINESE_DIGITS.get(right, 0 if not right else -1)
+    return tens * 10 + ones if tens >= 0 and ones >= 0 else None
 
 
 def _downgrades_rule_intent(rule_intent: str, candidate: str) -> bool:

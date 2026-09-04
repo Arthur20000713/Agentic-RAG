@@ -628,7 +628,10 @@ class AgentRuntimeEvalRunner:
         slot_correct: bool | None = None
         if case.expected.triage_slots is not None:
             actual_slots = {slot.name: slot.value for slot in triage.slots} if triage is not None else {}
-            slot_correct = actual_slots == case.expected.triage_slots
+            slot_correct = all(
+                actual_slots.get(name) == value
+                for name, value in case.expected.triage_slots.items()
+            )
         risk_correct: bool | None = None
         if case.expected.triage_risk_level is not None:
             risk_correct = triage is not None and triage.risk_candidate == case.expected.triage_risk_level

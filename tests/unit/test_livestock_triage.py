@@ -134,6 +134,27 @@ def test_negated_group_outbreak_is_a_trusted_false_slot_not_an_s3_signal() -> No
     assert client.calls
 
 
+def test_chinese_numeric_slot_is_grounded_by_its_source_span() -> None:
+    client = RecordingClient(
+        _payload(
+            slots=[
+                {
+                    "name": "duration_days",
+                    "value": 2,
+                    "source_span": "两天",
+                    "confidence": 0.9,
+                }
+            ]
+        )
+    )
+
+    outcome = asyncio.run(LivestockTriage(_settings(), client=client).run("犊牛腹泻两天"))
+
+    assert outcome.status == "accepted"
+    assert outcome.triage is not None
+    assert outcome.triage.slots[0].value == 2.0
+
+
 @pytest.mark.parametrize(
     "payload",
     [

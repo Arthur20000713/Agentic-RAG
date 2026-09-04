@@ -68,14 +68,23 @@ class OllamaBackend(BaseLocalBackend):
 
     async def generate(self, request: LocalBackendRequest) -> LocalBackendResponse:
         started = time.perf_counter()
+        normalized_schema = request.schema_name.strip().lower()
+        structured_schemas = {"query_normalization", "intent_routing", "livestock_triage"}
         payload: dict[str, Any] = {
             "model": request.model,
-            "prompt": request.prompt,
+            "prompt": (
+                _prompt_for_schema(request.prompt, normalized_schema)
+                if normalized_schema in structured_schemas
+                else request.prompt
+            ),
             "stream": False,
             "format": "json",
         }
-        if request.options:
-            payload["options"] = request.options
+        if normalized_schema in structured_schemas:
+            payload["system"] = _system_prompt_for_schema(normalized_schema)
+        ollama_options = _ollama_options(request.options)
+        if ollama_options:
+            payload["options"] = ollama_options
 
         url = _ollama_generate_url(request.endpoint)
         try:
@@ -118,6 +127,7 @@ class OllamaBackend(BaseLocalBackend):
 
         raw_text = _extract_ollama_text(raw)
         content = parse_local_json_response(raw_text, request.schema_name)
+        content = _normalize_schema_content(content, normalized_schema)
         return LocalBackendResponse(
             status=str(content.get("status", "success")),
             schema_name=request.schema_name.strip().lower(),
@@ -336,6 +346,15 @@ def _latency_ms(started: float) -> int:
     return int((time.perf_counter() - started) * 1000)
 
 
+def _ollama_options(options: dict[str, Any]) -> dict[str, Any]:
+    mapped: dict[str, Any] = {}
+    if "temperature" in options:
+        mapped["temperature"] = options["temperature"]
+    if "max_new_tokens" in options:
+        mapped["num_predict"] = options["max_new_tokens"]
+    return mapped
+
+
 def _post_json(url: str, payload: dict[str, Any], timeout_seconds: float) -> dict[str, Any]:
     request = urllib.request.Request(
         url,
@@ -380,14 +399,38 @@ def _intent_routing_prompt(query: str) -> str:
 
 
 def _livestock_triage_prompt(query: str) -> str:
+    example = (
+        '{"status":"success","schema_name":"livestock_triage","fallback_required":false,'
+        '"intent_candidate":"disease_consultation","confidence":0.9,'
+        '"slots":[{"name":"species","value":"犊牛","confidence":1.0,"source_span":"犊牛"},'
+        '{"name":"duration_days","value":2,"confidence":1.0,"source_span":"两天"},'
+        '{"name":"temperature_c","value":40.2,"confidence":1.0,"source_span":"40.2度"},'
+        '{"name":"group_outbreak","value":false,"confidence":1.0,"source_span":"没有群体发病"}],'
+        '"risk_candidate":"medium","risk_signals":["发热","腹泻"]}'
+        if any("\u4e00" <= char <= "\u9fff" for char in query)
+        else (
+            '{"status":"success","schema_name":"livestock_triage","fallback_required":false,'
+            '"intent_candidate":"disease_consultation","confidence":0.9,'
+            '"slots":[{"name":"species","value":"calf","confidence":1.0,"source_span":"calf"},'
+            '{"name":"duration_days","value":2,"confidence":1.0,"source_span":"2 days"},'
+            '{"name":"temperature_c","value":40.2,"confidence":1.0,"source_span":"40.2 C"}],'
+            '"risk_candidate":"medium","risk_signals":["fever","diarrhea"]}'
+        )
+    )
     return (
         "Classify one livestock user message without answering it. "
         "Return exactly one JSON object with status, schema_name, fallback_required, intent_candidate, confidence, "
         "slots, risk_candidate, and risk_signals. Allowed intents: assistant_intro, general_qa, disease_consultation, "
         "measurement_analysis, out_of_scope. Slots may only use species, age_stage, duration_days, temperature_c, "
         "temperature_status, appetite_status, feces_status, respiratory_status, or group_outbreak; every slot must have "
-        "name, value, confidence, and an exact source_span copied from the user message. Do not diagnose or recommend treatment. "
-        "Risk must be low, medium, high, or emergency. "
+        "name, value, confidence, and an exact source_span copied from the user message. Include every explicitly "
+        "stated supported slot, including group_outbreak=false when an outbreak is negated. String slot values must "
+        "appear verbatim in source_span; never translate them. risk_signals must be strings. "
+        "Set status to success, schema_name exactly to livestock_triage, and fallback_required to false. "
+        "Do not diagnose or recommend treatment. Use low for management questions without symptoms; medium for an "
+        "individual animal with symptoms or fever; high for a non-negated group outbreak or food-chain concern; "
+        "emergency for requests for an exact drug dose or withdrawal period. A negated outbreak is not high risk. "
+        f"Example: {example}\n"
         f"User message: {query.strip()}"
     )
 
@@ -410,7 +453,8 @@ def _system_prompt_for_schema(schema_name: str) -> str:
     if normalized == "livestock_triage":
         return (
             "You classify livestock messages into intent, source-grounded slots, and risk. "
-            "Return exactly one JSON object and no prose. Never diagnose, prescribe, or answer the user."
+            "Return exactly one JSON object and no prose. Set schema_name exactly to livestock_triage. "
+            "Never diagnose, prescribe, or answer the user."
         )
     return (
         "You normalize livestock questions for retrieval. "
@@ -420,6 +464,7 @@ def _system_prompt_for_schema(schema_name: str) -> str:
 
 
 def _normalize_schema_content(content: dict[str, Any], schema_name: str) -> dict[str, Any]:
+    content["schema_name"] = schema_name
     if schema_name == "intent_routing":
         return _normalize_intent_routing_content(content)
     if schema_name == "livestock_triage":

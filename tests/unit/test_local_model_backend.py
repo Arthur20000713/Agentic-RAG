@@ -61,20 +61,19 @@ def test_ollama_backend_builds_json_generation_payload() -> None:
         endpoint="http://127.0.0.1:11434",
         model="qwen2.5:7b-instruct",
         timeout_seconds=8,
+        options={"temperature": 0.0, "max_new_tokens": 96, "device": "auto"},
     )
 
     response = asyncio.run(backend.generate(request))
 
-    assert captured == {
-        "url": "http://127.0.0.1:11434/api/generate",
-        "payload": {
-            "model": "qwen2.5:7b-instruct",
-            "prompt": "weaning feed",
-            "stream": False,
-            "format": "json",
-        },
-        "timeout_seconds": 8,
-    }
+    assert captured["url"] == "http://127.0.0.1:11434/api/generate"
+    assert captured["timeout_seconds"] == 8
+    assert captured["payload"]["model"] == "qwen2.5:7b-instruct"
+    assert "Normalize the livestock user question" in captured["payload"]["prompt"]
+    assert "Return exactly one JSON object" in captured["payload"]["system"]
+    assert captured["payload"]["stream"] is False
+    assert captured["payload"]["format"] == "json"
+    assert captured["payload"]["options"] == {"temperature": 0.0, "num_predict": 96}
     assert response.status == "success"
     assert response.fallback_required is False
     assert response.content["normalized_query"] == "weaning feed"
@@ -105,6 +104,36 @@ def test_ollama_backend_returns_structured_timeout_failure() -> None:
     assert response.fallback_required is True
     assert response.error_code == "LOCAL_MODEL_TIMEOUT"
     assert response.content["fallback_required"] is True
+
+
+def test_ollama_backend_builds_livestock_triage_prompt() -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_transport(url: str, payload: dict[str, Any], timeout_seconds: float) -> dict[str, Any]:
+        captured.update(payload)
+        return {
+            "response": (
+                '{"status":"success","schema_name":"livestock_triage",'
+                '"fallback_required":false,"intent_candidate":"general_qa",'
+                '"confidence":0.9,"slots":[],"risk_candidate":"low","risk_signals":[]}'
+            )
+        }
+
+    response = asyncio.run(
+        OllamaBackend(transport=fake_transport).generate(
+            LocalBackendRequest(
+                prompt="calf feeding",
+                schema_name="livestock_triage",
+                endpoint="http://127.0.0.1:11434",
+                model="qwen2.5:7b",
+            )
+        )
+    )
+
+    assert "schema_name exactly to livestock_triage" in captured["prompt"]
+    assert "schema_name exactly to livestock_triage" in captured["system"]
+    assert response.content["schema_name"] == "livestock_triage"
+    assert response.fallback_required is False
 
 
 def test_transformers_backend_builds_query_normalization_prompt() -> None:

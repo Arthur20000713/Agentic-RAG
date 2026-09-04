@@ -460,6 +460,48 @@ def test_agent_runtime_distinguishes_fallback_from_accepted_takeover() -> None:
     assert result.actual_rag_call_count == 1
 
 
+def test_agent_runtime_slot_accuracy_allows_additional_grounded_slots() -> None:
+    from types import SimpleNamespace
+
+    from backend.app.evaluation.golden_runner import GoldenCase
+
+    case = GoldenCase.model_validate(
+        {
+            "case_id": "TRIAGE_SLOT_SUBSET",
+            "category": "disease_consultation",
+            "query": "calf diarrhea for 2 days",
+            "expected": {
+                "intent": "disease_consultation",
+                "rag_call": True,
+                "triage_slots": {"species": "calf", "duration_days": 2},
+                "triage_risk_level": "medium",
+            },
+        }
+    )
+    state = SimpleNamespace(
+        livestock_triage=SimpleNamespace(
+            status="accepted",
+            triage=SimpleNamespace(
+                intent_candidate="disease_consultation",
+                slots=[
+                    SimpleNamespace(name="species", value="calf"),
+                    SimpleNamespace(name="duration_days", value=2),
+                    SimpleNamespace(name="feces_status", value="diarrhea"),
+                ],
+                risk_candidate="medium",
+            ),
+        )
+    )
+
+    quality = AgentRuntimeEvalRunner(output_dir=_tmp_dir())._triage_quality(case, state)
+
+    assert quality == {
+        "triage_intent_correct": True,
+        "triage_slot_correct": True,
+        "triage_risk_correct": True,
+    }
+
+
 def test_agent_runtime_warmup_is_excluded_and_repeats_are_labeled() -> None:
     output_dir = _tmp_dir()
     golden_set = output_dir / "repeated_golden.json"
