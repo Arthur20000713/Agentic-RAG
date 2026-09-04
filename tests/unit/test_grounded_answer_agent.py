@@ -294,6 +294,34 @@ def test_grounded_answer_agent_accepts_schema_named_answer_alias() -> None:
     assert state.tool_results["grounded_answer_agent"]["status"] == "success"
 
 
+def test_grounded_answer_agent_uses_traceable_fallback_when_model_omits_citation() -> None:
+    llm = FakePrimaryLLM(
+        {
+            "status": "success",
+            "schema_name": "grounded_rag_answer",
+            "answer_draft": "Keep the feeding schedule stable and provide clean water.",
+            "evidence_sufficient": True,
+            "fallback_required": False,
+        }
+    )
+    state = _state()
+
+    asyncio.run(GroundedAnswerAgent(_settings(), primary_llm_client=llm).run(state))
+    VerifierAgent().verify(state)
+    ResponseAgent().render(state)
+
+    assert "Keep the feeding schedule stable and provide clean water." in state.final_answer
+    assert "[1]" in state.final_answer
+    assert "rag://livestock/doc/chunk_1" in state.final_answer
+    assert state.verification_result is not None
+    assert state.verification_result["passed"] is True
+    assert state.tool_results["grounded_answer_agent"]["status"] == "fallback"
+    assert (
+        state.tool_results["grounded_answer_agent"]["fallback_reason"]
+        == "model_answer_missing_citation"
+    )
+
+
 def test_grounded_answer_agent_keeps_supported_partial_answer() -> None:
     llm = FakePrimaryLLM(
         {

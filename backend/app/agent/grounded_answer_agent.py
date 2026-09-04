@@ -149,6 +149,20 @@ class GroundedAnswerAgent:
             )
             return state
 
+        if payload.evidence_sufficient and not _has_valid_evidence_citation(
+            payload.answer_draft,
+            evidence_count=len(rag_result.hits),
+        ):
+            state.draft_answer = AnswerGenerator().compose_with_citations(rag_result)
+            self._record(
+                state,
+                status="fallback",
+                fallback_used=True,
+                fallback_reason="model_answer_missing_citation",
+                started_at=started_at,
+            )
+            return state
+
         if not payload.evidence_sufficient and not _has_valid_evidence_citation(
             payload.answer_draft,
             evidence_count=len(rag_result.hits),
