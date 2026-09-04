@@ -16,6 +16,7 @@ from backend.app.integrations.rag_server.mcp_stdio_client import (
     RagServerMcpClient,
     RagServerMcpError,
     parse_collection_names_from_text,
+    parse_collection_stats_from_text,
     parse_document_summary_from_text,
 )
 from backend.app.services.trace_service import TraceService
@@ -164,6 +165,20 @@ def test_parse_collection_names_handles_real_rag_server_markdown() -> None:
     """
 
     assert parse_collection_names_from_text(text) == ["default"]
+
+
+def test_parse_collection_stats_handles_real_rag_server_markdown() -> None:
+    text = """
+    ## Available Collections (2 total)
+
+    1. **livestock_v4_2** - 0 documents
+    2. **raw_txt_ollama** - 2215 documents
+    """
+
+    assert parse_collection_stats_from_text(text) == {
+        "livestock_v4_2": 0,
+        "raw_txt_ollama": 2215,
+    }
 
 
 def test_parse_document_summary_handles_real_rag_server_markdown() -> None:

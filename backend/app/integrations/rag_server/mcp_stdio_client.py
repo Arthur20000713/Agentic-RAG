@@ -78,6 +78,20 @@ def parse_collection_names_from_text(text: str) -> list[str]:
     return names
 
 
+def parse_collection_stats_from_text(text: str) -> dict[str, int]:
+    stats: dict[str, int] = {}
+    pattern = re.compile(
+        r"^\s*\d+\.\s+\*\*(?P<name>[^*]+)\*\*\s+-\s+"
+        r"(?P<count>\d[\d,]*)\s+documents?\s*$",
+        re.IGNORECASE,
+    )
+    for line in text.splitlines():
+        match = pattern.match(line)
+        if match:
+            stats[match.group("name").strip()] = int(match.group("count").replace(",", ""))
+    return stats
+
+
 def parse_document_summary_from_text(text: str, *, doc_id: str) -> dict[str, Any]:
     title_match = re.search(r"^## Document:\s*(.+)$", text, flags=re.MULTILINE)
     source_match = re.search(r"^\*\*Source:\*\*\s*(.+)$", text, flags=re.MULTILINE)

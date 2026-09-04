@@ -17,7 +17,12 @@ def _tmp_dir() -> Path:
     return path
 
 
-def _make_mock_rag_server(root: Path, *, collections: list[str] | None = None, collections_text: str | None = None) -> Path:
+def _make_mock_rag_server(
+    root: Path,
+    *,
+    collections: list[str] | list[dict[str, object]] | None = None,
+    collections_text: str | None = None,
+) -> Path:
     server_dir = root / "src" / "mcp_server"
     config_dir = root / "config"
     server_dir.mkdir(parents=True, exist_ok=True)
@@ -243,6 +248,57 @@ def test_preflight_treats_no_collections_text_as_empty_and_missing_target() -> N
     assert report.status == "failed"
     assert report.collections == []
     assert report.error_code == "RAG_COLLECTION_NOT_FOUND"
+
+
+def test_preflight_rejects_empty_collection_from_markdown_stats() -> None:
+    work_dir = _tmp_dir()
+    repo_path = _make_mock_rag_server(
+        work_dir / "mock_rag_server",
+        collections_text="1. **livestock_v4_2** - 0 documents",
+    )
+    output_dir = work_dir / "reports"
+    settings = Settings(
+        rag_server={
+            "query_mode": "real",
+            "repo_path": str(repo_path),
+            "python_executable": sys.executable,
+            "collection": "livestock_v4_2",
+            "timeout_seconds": 2,
+        }
+    )
+
+    report = asyncio.run(RealRagPreflightRunner(settings, output_dir=output_dir).run())
+    payload = json.loads((output_dir / "real_rag_preflight.json").read_text(encoding="utf-8"))
+
+    assert report.status == "failed"
+    assert report.error_code == "RAG_COLLECTION_EMPTY"
+    assert report.target_document_count == 0
+    assert payload["target_document_count"] == 0
+
+
+def test_preflight_accepts_non_empty_collection_from_structured_stats() -> None:
+    work_dir = _tmp_dir()
+    repo_path = _make_mock_rag_server(
+        work_dir / "mock_rag_server",
+        collections=[{"name": "livestock_v4_2", "document_count": 18}],
+    )
+    output_dir = work_dir / "reports"
+    settings = Settings(
+        rag_server={
+            "query_mode": "real",
+            "repo_path": str(repo_path),
+            "python_executable": sys.executable,
+            "collection": "livestock_v4_2",
+            "timeout_seconds": 2,
+        }
+    )
+
+    report = asyncio.run(RealRagPreflightRunner(settings, output_dir=output_dir).run())
+
+    assert report.status == "passed"
+    assert report.error_code is None
+    assert report.collections == ["livestock_v4_2"]
+    assert report.target_document_count == 18
 
 
 def test_preflight_uses_direct_collection_fallback_when_stdio_returns_empty() -> None:
