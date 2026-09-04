@@ -1,0 +1,30 @@
+Cold Stress in Dairy Calves | University of Wisconsin-Madison Extension
+
+Source ID: wisconsin_cold_stress_calves
+Source URL: https://dairy.extension.wisc.edu/articles/cold-stress-in-dairy-calves/
+Retrieved: 2026-09-04
+Source snapshot SHA256: 2a68e1678416235511815709ac92def1bd70d5df74b85dbd69b3bdfe07e83c75
+Review status: machine-assisted summary checked against the cited source; human sign-off pending.
+Topics: cold stress, newborn drying, bedding, calf jackets, feeding, water, ventilation
+
+English summary
+
+Young calves lose heat faster than older animals and have limited fat reserves. The source gives a lower critical temperature near 48 degrees Fahrenheit for calves under one month and near 32 degrees Fahrenheit for older calves. Below that range, more feed energy is used to maintain body temperature and less remains for growth and immune function.
+
+Newborn calves should be dried and warmed promptly. Housing should provide deep, clean, dry straw bedding that supports nesting, protection from wind and precipitation, good drainage, and ventilation without a direct draft. Clean, dry calf jackets can help selected young calves, but fit, moisture, skin rubbing, and overheating during warmer periods must be checked.
+
+Cold-weather feeding management includes dependable access to warm, unfrozen water and enough energy for the higher maintenance requirement. Any change to milk volume, feeding frequency, milk-replacer concentration, starter, or supplemental fat should follow product directions and the farm's nutrition and veterinary plan. Indoor housing still needs air exchange because respiratory problems can increase when ventilation is reduced.
+
+中文摘要
+
+幼龄犊牛比大龄牛散热更快，脂肪储备也有限。资料给出的下临界温度参考值约为：一个月龄以内 48°F，大龄犊牛 32°F。低于该范围时，更多饲料能量会用于维持体温，留给生长和免疫功能的能量减少。
+
+新生犊牛应及时擦干并保温。圈舍需要深厚、清洁、干燥且能形成卧窝的稻草垫料，同时避风防雨、排水良好，并保持无直接穿堂风的通风。清洁干燥的犊牛马甲可帮助部分幼龄犊牛，但要检查尺寸、受潮、皮肤摩擦，以及天气转暖时是否出汗过热。
+
+寒冷季节应持续提供温暖且不结冰的饮水，并为增加的维持需要提供足够能量。牛奶供应量、饲喂频次、代乳粉浓度、开食料或补充脂肪的任何改变，都应遵循产品说明以及本场营养师和兽医方案。室内圈舍仍需换气，因为减少通风可能增加呼吸道问题。
+
+Safety boundary / 安全边界
+
+These are management principles, not an individual treatment prescription. A weak, hypothermic, dehydrated, or non-feeding calf needs prompt trained assessment.
+
+以上是管理原则，不是个体治疗处方。出现虚弱、低体温、脱水或拒食时，需要尽快由专业人员评估。

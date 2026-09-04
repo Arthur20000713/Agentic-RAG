@@ -1,0 +1,30 @@
+Calf Health Basics | University of Georgia Cooperative Extension
+
+Source ID: uga_raising_dairy_heifers
+Source URL: https://fieldreport.caes.uga.edu/publications/B1500/calf-health-basics/
+Retrieved: 2026-09-04
+Source snapshot SHA256: 866b838dec6ca82dcb11a75a50e50445678d55e352947c41c3149feb181dea2a
+Review status: machine-assisted summary checked against the cited source; human sign-off pending.
+Topics: calf observation, behavior, feces, hydration, respiration, veterinary protocols, records
+
+English summary
+
+The publication asks caregivers to learn each calf's normal behavior and physical state so they can recognize change early. Useful routine observations include alertness, appetite and drinking speed, willingness to move, head and ear position, eye appearance, fecal consistency and color, breathing pattern, and signs of dehydration. Diet, regrouping, handling, temperature, humidity, mud, and other environmental changes can temporarily alter observations, so findings should be interpreted in context and compared with other calves in the same area.
+
+Hydration checks can include skin tenting, sunken eyes, and the moisture and warmth of oral and nasal mucous membranes. Respiratory assessment starts with observing chest movement without disturbing the calf; abnormal effort, crackles, or wheezes require trained assessment. Fecal changes are more concerning when they occur without a feed change or together with dullness, reduced intake, blood, weakness, or dehydration.
+
+The source emphasizes a working relationship with a veterinarian. Farms should maintain written prevention, observation, escalation, and treatment protocols developed with that veterinarian, plus records of findings and actions. Scoring systems structure observations but do not independently establish a diagnosis.
+
+中文摘要
+
+该资料强调先熟悉每头犊牛平时的正常行为和身体状态，才能尽早识别变化。日常可观察精神和警觉性、食欲与饮奶速度、活动意愿、头耳姿势、眼部外观、粪便稠度和颜色、呼吸模式以及脱水迹象。日粮变化、转群、操作、温湿度、泥泞等外部因素也会暂时改变观察结果，因此要结合环境，并与同区域其他犊牛比较。
+
+脱水观察可包括皮肤回弹、眼窝是否凹陷，以及口鼻黏膜是否湿润温暖。呼吸评估应先在不惊扰犊牛的情况下观察胸腹起伏；呼吸费力、爆裂音或哮鸣音需要专业评估。若没有换料却出现明显粪便变化，或同时伴随精神沉郁、采食下降、便血、虚弱、脱水，应提高处置优先级。
+
+资料要求牛场与兽医建立稳定合作，并由兽医共同制定书面的预防、观察、升级处理和治疗流程，同时保留观察与处置记录。健康评分工具用于结构化观察，不能单独完成诊断。
+
+Safety boundary / 安全边界
+
+No score, message, or single vital sign is sufficient for a guaranteed diagnosis or a prescription. Urgent or worsening signs require veterinary assessment.
+
+任何单一评分、消息描述或生命体征都不足以保证诊断或开具处方；紧急或持续恶化的表现需要兽医评估。

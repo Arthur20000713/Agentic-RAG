@@ -1,0 +1,30 @@
+Biosecurity: The Ounce of Prevention | Penn State Extension
+
+Source ID: penn_state_biosecurity_prevention
+Source URL: https://extension.psu.edu/biosecurity-the-ounce-of-prevention
+Retrieved: 2026-09-04
+Source snapshot SHA256: bf47713e55ff69b6eabcbdf671c2f37bdebf3d7a1fe358917503ab68064c0368
+Review status: machine-assisted summary checked against the cited source; human sign-off pending.
+Topics: cattle biosecurity, isolation, visitors, trailers, work order, sick pens, veterinarian
+
+English summary
+
+The source separates structural biosecurity from operational biosecurity. Structural controls include physical separation that prevents newly arrived animals from having nose-to-nose contact with resident cattle. Operational controls are the procedures followed every day, such as cleaning trailers, controlling movements between farms, and using dedicated clothing and boots.
+
+Visitors, contractors, and shared labor can carry pathogens on footwear, clothing, vehicles, and equipment. Farms can reduce this risk with controlled entry, clean footwear or boot covers, cleaning and disinfection, and dedicated farm clothing. Within the farm, stable groups and consistent neighboring pens reduce new contacts. Work order matters: handle young or otherwise high-risk healthy cattle before mature groups and avoid moving from sick cattle to healthy or newly arrived cattle without changing protective clothing and cleaning or disinfecting equipment and footwear.
+
+New arrivals and sick animals should be physically separated and managed under written protocols. A veterinarian should help adapt arrival, testing, vaccination, observation, and response procedures to the source and risk of each group.
+
+中文摘要
+
+资料把生物安全分为结构性和操作性两类。结构性措施包括物理隔离，例如避免新进牛与原有牛群鼻对鼻接触；操作性措施是每天持续执行的流程，例如清洗运输拖车、控制跨场移动、使用牛场专用衣物和靴子。
+
+访客、承包商、共用劳动力、车辆和设备都可能携带病原。牛场可通过受控入口、干净鞋靴或鞋套、清洗消毒及场内专用衣物降低风险。场内应尽量保持牛群和相邻栏位稳定；作业顺序也很关键，应先处理幼龄或其他高风险的健康牛，再处理成年牛，处理病牛后若还要接触健康牛或新进牛，应先更换防护衣物并清洁消毒鞋靴和设备。
+
+新进牛和病牛应物理隔离并按书面流程管理。到场、检测、免疫、观察和响应流程应由兽医结合每批牛的来源与风险制定。
+
+Safety boundary / 安全边界
+
+Biosecurity reduces risk but cannot guarantee that disease will not occur. Mild signs are not a reason to mix sick animals with healthy groups.
+
+生物安全只能降低风险，不能保证疾病不会发生；症状较轻也不是把病牛直接混入健康牛群的理由。

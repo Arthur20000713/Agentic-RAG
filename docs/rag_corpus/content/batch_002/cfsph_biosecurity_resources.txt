@@ -1,0 +1,30 @@
+Farm Biosecurity Resources | Iowa State University CFSPH
+
+Source ID: cfsph_biosecurity_resources
+Source URL: https://www.cfsph.iastate.edu/biosecurity/
+Retrieved: 2026-09-04
+Source snapshot SHA256: af2faf6ff7da70413171e7b8763b765f5e322779b8169dcf9c9181d190881e0e
+Review status: machine-assisted summary checked against the cited resource index; human sign-off pending.
+Topics: movement risk, biosecurity checklist, written plan, training, vehicles, equipment, wildlife
+
+English summary
+
+CFSPH presents farm biosecurity as a repeatable planning process rather than a single disinfectant or barrier. Step 1 is to identify movements that can carry disease onto, off, or within a farm. Relevant movements include animals, people, vehicles, equipment, feed, supplies, manure, carcasses, wildlife, and rodents. The exact pathways and controls should be documented for each operation.
+
+Step 2 is a checklist that records existing strengths and gaps. Step 3 is a written, farm-specific biosecurity plan that assigns actions and supports training. The resource index provides livestock and poultry checklists and plan templates, plus dedicated material on protecting herds, vehicles and equipment, wildlife and rodent control, and staff training.
+
+A practical cattle workflow therefore maps movement routes, separates new or sick animals, controls visitors and vehicles, cleans equipment between risk groups, manages wildlife and rodents, documents responsibilities, trains workers, and reviews the plan when facilities, suppliers, disease risks, or animal flows change.
+
+中文摘要
+
+CFSPH 把农场生物安全定义为可重复执行的规划流程，而不是某一种消毒剂或单一屏障。第一步是识别可能把疾病带入、带出或在场内传播的移动，包括动物、人员、车辆、设备、饲料、物资、粪污、尸体、野生动物和啮齿动物，并为本场记录具体路径和控制点。
+
+第二步使用清单记录已有优势和缺口；第三步形成书面的本场生物安全计划，明确行动和培训要求。资源目录提供畜禽检查表、计划模板，以及牛群保护、车辆与设备、野生动物和鼠害控制、员工培训等专项资料。
+
+因此，牛场的实际流程应包括绘制移动路线、隔离新进或患病动物、管理访客和车辆、在不同风险群体间清洁设备、控制野生动物和鼠害、记录责任人、培训员工，并在设施、供应商、疾病风险或动物流向改变时复审计划。
+
+Scope / 适用范围
+
+The cited page is a resource index. It supports process design and points to detailed tools; it does not prove that every linked control applies unchanged to every farm or outbreak.
+
+引用页面是资源入口，适合支持流程设计并定位详细工具；它不能证明每个链接中的措施都可不加调整地用于所有牛场或疫情。

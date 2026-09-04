@@ -1,0 +1,26 @@
+Pre-weaning calf health | University of Minnesota Extension
+
+Source ID: umn_preweaning_calf_health
+Source URL: https://extension.umn.edu/agriculture/animals-and-livestock/dairy/pre-weaning-calf-health
+Retrieved: 2026-09-04
+Source snapshot SHA256: 0bf96d0db818ffbabce5aa32612ccc29cfdad05035861c2f1fa366bfe6f35301
+Review status: machine-assisted summary checked against the cited source; human sign-off pending.
+Topics: pre-weaning calf health, colostrum, average daily gain, scours, pneumonia, records
+
+English summary
+
+Pre-weaning health and growth affect both immediate calf welfare and later herd performance. The source reports associations between treatment for pneumonia or scours and poorer long-term outcomes, so illness events should be detected early and recorded rather than treated as isolated incidents. Farms should consistently record birth weight, weaning weight, average daily gain, appetite, behavior, fecal changes, respiratory signs, and any treatment or veterinary contact.
+
+Colostrum quality, cleanliness, amount, and timing are central management controls. Calories above maintenance support growth and immune function, while cold weather increases maintenance energy needs. Individual measurements are more useful than visual impressions alone; the source presents doubling birth weight by weaning as a practical growth goal, not as a guarantee for every calf.
+
+中文摘要
+
+断奶前犊牛健康和生长既影响当前福利，也会影响后续牛群生产表现。资料指出，曾因肺炎或腹泻接受处理的犊牛与较差的长期结局存在关联，因此应尽早发现异常，并连续记录，而不能把每次疾病当成孤立事件。建议按个体记录出生重、断奶重、日增重、采食和精神行为、粪便变化、呼吸道表现，以及治疗和兽医联系情况。
+
+初乳的质量、清洁度、饲喂量和时机是关键管理环节。超过维持需要的能量有助于生长和免疫功能，寒冷天气则会提高维持能量需求。客观称重和连续记录通常比肉眼估计可靠；“断奶时达到出生重约两倍”是来源提出的管理目标，不是对每头犊牛的保证。
+
+Safety boundary / 安全边界
+
+This source supports observation and management guidance. It does not justify diagnosing a calf or choosing prescription drugs without a veterinarian. Severe diarrhea, dehydration, breathing difficulty, weakness, or rapid deterioration requires prompt veterinary assessment.
+
+本资料用于一般观察与管理建议，不能据此远程确诊，也不能替代兽医决定处方药。严重腹泻、脱水、呼吸困难、虚弱或快速恶化时，应尽快联系兽医。

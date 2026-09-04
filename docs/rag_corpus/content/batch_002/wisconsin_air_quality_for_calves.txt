@@ -1,0 +1,30 @@
+Air Quality in Calf Housing | University of Wisconsin-Madison Extension
+
+Source ID: wisconsin_air_quality_for_calves
+Source URL: https://dairy.extension.wisc.edu/articles/air-quality-in-calf-housing/
+Retrieved: 2026-09-04
+Source snapshot SHA256: db5676d35fd0e1102f18508119bfc1cf63f5f14c7dc4022581f75ec0a2d92391
+Review status: machine-assisted summary checked against the cited source; human sign-off pending.
+Topics: calf housing, ventilation, ammonia, bedding, respiratory risk, drafts
+
+English summary
+
+Calf housing should be clean, dry, comfortable, and ventilated without exposing calves to direct drafts. Individual hutches can reduce direct contact and make observation easier, while indoor and group housing require adequate air exchange and stocking management. Closing vents to conserve heat can unintentionally worsen air quality; housing decisions must balance ventilation, weather protection, bedding, and calf-level airflow.
+
+Ammonia from wet, contaminated bedding irritates the respiratory tract and is associated with respiratory risk. The source notes that adverse calf effects may occur around levels people can first smell and recommends keeping ammonia below 5 ppm when possible. Human smell alone becomes unreliable after prolonged exposure, so farms with concerns can use objective measurements and inspect low-airflow pockets.
+
+Controls include sufficient natural or mechanical ventilation, fresh air delivered at calf level without drafts, dry bedding, drainage, removal of accumulated urine and feces, and complete cleaning between groups. Respiratory observations should be interpreted together with housing air quality rather than treated as proof of one specific disease.
+
+中文摘要
+
+犊牛圈舍应保持清洁、干燥、舒适，并在不让冷风直接吹到犊牛的前提下通风。个体犊牛舍能减少直接接触并方便观察；室内或群养圈舍则更依赖足够的换气和合理密度。为了保温而关闭通风口可能意外恶化空气质量，因此圈舍管理要同时权衡通风、避风防雨、垫料和犊牛高度的气流。
+
+潮湿、受污染垫料释放的氨会刺激呼吸道，并与呼吸道风险相关。来源指出，在人刚能闻到氨味的低浓度附近，犊牛健康就可能受到影响，条件允许时应把氨控制在 5 ppm 以下。人员长时间暴露后嗅觉会变得不可靠，存在疑虑时应采用客观检测并检查低气流死角。
+
+控制措施包括充分的自然或机械通风、在犊牛高度输送无穿堂风的新鲜空气、保持垫料干燥和排水、清除积累的尿粪，以及批次间彻底清洁。呼吸道观察应结合圈舍空气质量解释，不能据此直接证明某一种疾病。
+
+Safety boundary / 安全边界
+
+Cough, nasal discharge, fever, or difficult breathing still requires veterinary assessment; ventilation changes are not a substitute for clinical care.
+
+咳嗽、鼻液、发热或呼吸困难仍需要兽医评估，改善通风不能替代临床处置。

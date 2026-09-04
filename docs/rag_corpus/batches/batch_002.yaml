@@ -2,68 +2,69 @@ batch_id: batch_002
 collection: livestock_v4_2
 manifest: docs/rag_corpus/manifests/livestock_v4_2.yaml
 created_at: "2026-05-18"
-status: planned
-description: "V4.2 second livestock corpus batch. Files are planned local human summaries, not committed source full text."
+rebuilt_at: "2026-09-04"
+status: ready
+description: "Reproducible V4.2 bilingual summaries checked against official sources. Machine-assisted review is recorded in content/batch_002/provenance.yaml; human sign-off remains pending."
 sources:
   - source_id: umn_preweaning_calf_health
     ingestion_mode: summary_only
-    local_file: 'C:\tmp\livestock_corpus\batch_002\umn_preweaning_calf_health.md'
+    local_file: docs/rag_corpus/content/batch_002/umn_preweaning_calf_health.txt
     expected_topics: [calf_health, diarrhea, respiratory, observation]
-    status: planned
+    status: machine_assisted_source_checked
 
   - source_id: uga_raising_dairy_heifers
     ingestion_mode: summary_only
-    local_file: 'C:\tmp\livestock_corpus\batch_002\uga_raising_dairy_heifers.md'
+    local_file: docs/rag_corpus/content/batch_002/uga_raising_dairy_heifers.txt
     expected_topics: [calf_feeding, colostrum, weaning, records]
-    status: planned
+    status: machine_assisted_source_checked
 
-  - source_id: usda_aphis_scours_dairy_calves
+  - source_id: usda_aphis_heifer_calf_health_2007
     ingestion_mode: summary_only
-    local_file: 'C:\tmp\livestock_corpus\batch_002\usda_aphis_scours_dairy_calves.md'
+    local_file: docs/rag_corpus/content/batch_002/usda_aphis_heifer_calf_health_2007.txt
     expected_topics: [diarrhea, epidemiology, calf_health]
-    status: planned
+    status: machine_assisted_source_checked
 
   - source_id: usda_aphis_preweaned_calf_management
     ingestion_mode: summary_only
-    local_file: 'C:\tmp\livestock_corpus\batch_002\usda_aphis_preweaned_calf_management.md'
+    local_file: docs/rag_corpus/content/batch_002/usda_aphis_preweaned_calf_management.txt
     expected_topics: [preweaned_calf, feeding, health_records, management]
-    status: planned
+    status: machine_assisted_source_checked
 
-  - source_id: penn_state_biosecurity_cattle_farms
+  - source_id: penn_state_biosecurity_prevention
     ingestion_mode: summary_only
-    local_file: 'C:\tmp\livestock_corpus\batch_002\penn_state_biosecurity_cattle_farms.md'
+    local_file: docs/rag_corpus/content/batch_002/penn_state_biosecurity_prevention.txt
     expected_topics: [biosecurity, isolation, visitors, cattle_farms]
-    status: planned
+    status: machine_assisted_source_checked
 
   - source_id: penn_state_monitoring_dairy_heifer_growth
     ingestion_mode: summary_only
-    local_file: 'C:\tmp\livestock_corpus\batch_002\penn_state_monitoring_dairy_heifer_growth.md'
+    local_file: docs/rag_corpus/content/batch_002/penn_state_monitoring_dairy_heifer_growth.txt
     expected_topics: [growth_monitoring, body_weight, withers_height, records]
-    status: planned
+    status: machine_assisted_source_checked
 
   - source_id: wisconsin_water_for_dairy_calves
     ingestion_mode: summary_only
-    local_file: 'C:\tmp\livestock_corpus\batch_002\wisconsin_water_for_dairy_calves.md'
+    local_file: docs/rag_corpus/content/batch_002/wisconsin_water_for_dairy_calves.txt
     expected_topics: [water, calf_feeding, intake]
-    status: planned
+    status: machine_assisted_source_checked
 
   - source_id: wisconsin_air_quality_for_calves
     ingestion_mode: summary_only
-    local_file: 'C:\tmp\livestock_corpus\batch_002\wisconsin_air_quality_for_calves.md'
+    local_file: docs/rag_corpus/content/batch_002/wisconsin_air_quality_for_calves.txt
     expected_topics: [air_quality, ventilation, respiratory_health, housing]
-    status: planned
+    status: machine_assisted_source_checked
 
   - source_id: wisconsin_cold_stress_calves
     ingestion_mode: summary_only
-    local_file: 'C:\tmp\livestock_corpus\batch_002\wisconsin_cold_stress_calves.md'
+    local_file: docs/rag_corpus/content/batch_002/wisconsin_cold_stress_calves.txt
     expected_topics: [cold_stress, calf_feeding, environment, health_observation]
-    status: planned
+    status: machine_assisted_source_checked
 
   - source_id: cfsph_biosecurity_resources
     ingestion_mode: summary_only
-    local_file: 'C:\tmp\livestock_corpus\batch_002\cfsph_biosecurity_resources.md'
+    local_file: docs/rag_corpus/content/batch_002/cfsph_biosecurity_resources.txt
     expected_topics: [biosecurity, disease_prevention, farm_protocols]
-    status: planned
+    status: machine_assisted_source_checked
 quality_gate:
   min_pass_rate: 0.90
   min_no_answer_accuracy: 0.95

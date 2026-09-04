@@ -1,0 +1,60 @@
+version: 1
+batch_id: batch_002
+generated_at: "2026-09-04"
+review_status: machine_assisted_source_checked_pending_human_signoff
+distribution: summary_only
+notes:
+  - Raw source snapshots are not committed; only original bilingual summaries and retrieval metadata are distributed.
+  - SHA256 values identify the exact HTTP response bytes used during source checking.
+  - APHIS survey statistics retain their original United States study period and are not treatment guidance.
+sources:
+  - source_id: umn_preweaning_calf_health
+    source_uri: https://extension.umn.edu/agriculture/animals-and-livestock/dairy/pre-weaning-calf-health
+    media_type: text/html
+    response_bytes: 90387
+    source_sha256: 0bf96d0db818ffbabce5aa32612ccc29cfdad05035861c2f1fa366bfe6f35301
+  - source_id: uga_raising_dairy_heifers
+    source_uri: https://fieldreport.caes.uga.edu/publications/B1500/calf-health-basics/
+    media_type: text/html
+    response_bytes: 295799
+    source_sha256: 866b838dec6ca82dcb11a75a50e50445678d55e352947c41c3149feb181dea2a
+  - source_id: usda_aphis_heifer_calf_health_2007
+    source_uri: https://www.aphis.usda.gov/sites/default/files/dairy07_ir_CalfHealth_1.pdf
+    media_type: application/pdf
+    response_bytes: 1789090
+    source_sha256: b1c697d587e5564862ad6411cec940d921aa82d52a2a70515cb7493ac9a6e5ae
+  - source_id: usda_aphis_preweaned_calf_management
+    source_uri: https://www.aphis.usda.gov/sites/default/files/dairy14_dr_parti_1.pdf
+    media_type: application/pdf
+    response_bytes: 4151126
+    source_sha256: 2a5e54827ed240ec2fecdfb6c3093086cd2fd4cc2caf09f4fe00ec0c941e72ae
+  - source_id: penn_state_biosecurity_prevention
+    source_uri: https://extension.psu.edu/biosecurity-the-ounce-of-prevention
+    media_type: text/html
+    response_bytes: 380622
+    source_sha256: bf47713e55ff69b6eabcbdf671c2f37bdebf3d7a1fe358917503ab68064c0368
+  - source_id: penn_state_monitoring_dairy_heifer_growth
+    source_uri: https://extension.psu.edu/monitoring-dairy-heifer-growth
+    media_type: text/html
+    response_bytes: 397351
+    source_sha256: 49787c7a2e8ef6e2aa40d0800922f3222c5187fb75ac6184a331b90e363d4b0f
+  - source_id: wisconsin_water_for_dairy_calves
+    source_uri: https://dairy.extension.wisc.edu/articles/the-importance-of-water-for-dairy-calves/
+    media_type: text/html
+    response_bytes: 114656
+    source_sha256: 8c6d7479f51b6e1bfeeeb96b79903012dad003b3808c5443a49c1406f0562018
+  - source_id: wisconsin_air_quality_for_calves
+    source_uri: https://dairy.extension.wisc.edu/articles/air-quality-in-calf-housing/
+    media_type: text/html
+    response_bytes: 127507
+    source_sha256: db5676d35fd0e1102f18508119bfc1cf63f5f14c7dc4022581f75ec0a2d92391
+  - source_id: wisconsin_cold_stress_calves
+    source_uri: https://dairy.extension.wisc.edu/articles/cold-stress-in-dairy-calves/
+    media_type: text/html
+    response_bytes: 108544
+    source_sha256: 2a68e1678416235511815709ac92def1bd70d5df74b85dbd69b3bdfe07e83c75
+  - source_id: cfsph_biosecurity_resources
+    source_uri: https://www.cfsph.iastate.edu/biosecurity/
+    media_type: text/html
+    response_bytes: 201045
+    source_sha256: af2faf6ff7da70413171e7b8763b765f5e322779b8169dcf9c9181d190881e0e

@@ -14,6 +14,8 @@ from scripts.check_rag_corpus import (
     validate_local_corpus_files,
 )
 
+ROOT = Path(__file__).resolve().parents[2]
+
 
 def _tmp_root() -> Path:
     root = Path(".tmp_tests") / uuid4().hex
@@ -148,6 +150,7 @@ def test_check_rag_corpus_batch_dry_run_cli_outputs_batch_plan() -> None:
     assert "DRY-RUN" in completed.stdout
     assert "batch_002" in completed.stdout
     assert "source_id=umn_preweaning_calf_health" in completed.stdout
+    assert str(ROOT / "docs" / "rag_corpus" / "content" / "batch_002") in completed.stdout
     assert '--collection "livestock_v4_2"' in completed.stdout
     assert "API_KEY" not in completed.stdout
 

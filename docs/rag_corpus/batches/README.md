@@ -11,6 +11,7 @@
 
 ## 执行边界
 
-- batch 文件只记录本地文件路径，不提交版权受限全文。
+- batch 可以引用仓库内可分发的原创摘要，但不提交版权受限全文或原始网页/PDF 快照。
+- `local_file` 使用仓库相对路径时，dry-run 会输出绝对路径，确保命令可在 sibling RAG-SERVER 工作目录执行。
 - `scripts/check_v4_2.py --stage batch` 会校验 batch schema 和 manifest 对齐。
 - `scripts/check_rag_corpus.py --batch <path> --dry-run` 用于生成 RAG-SERVER 入库命令，不默认执行。

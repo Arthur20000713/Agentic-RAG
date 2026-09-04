@@ -1,0 +1,26 @@
+Heifer Calf Health and Management Practices on U.S. Dairy Operations, 2007 | USDA APHIS NAHMS
+
+Source ID: usda_aphis_heifer_calf_health_2007
+Source URL: https://www.aphis.usda.gov/sites/default/files/dairy07_ir_CalfHealth_1.pdf
+Retrieved: 2026-09-04
+Source snapshot SHA256: b1c697d587e5564862ad6411cec940d921aa82d52a2a70515cb7493ac9a6e5ae
+Review status: machine-assisted summary checked against the cited report; human sign-off pending.
+Topics: historical survey, calf mortality, scours, respiratory disease, colostrum, isolation
+
+English summary
+
+This NAHMS report describes U.S. dairy calf health and management practices observed in the 2007 study. It is historical population evidence, not a current treatment protocol. The report states that 7.8 percent of preweaned heifers and 1.8 percent of weaned heifers died during 2006 in the surveyed population. Scours, diarrhea, or other digestive problems accounted for 56.5 percent of preweaned heifer deaths, while respiratory disease was the largest single cause of weaned-heifer deaths at 46.5 percent.
+
+The study also documented colostrum timing and delivery, passive transfer, weaning age and weight, contact between preweaned calves and older cattle, morbidity, preventive practices, and housing. These measures show why a farm should track digestive and respiratory illness, mortality, colostrum management, calf contact patterns, and growth as linked management indicators.
+
+中文摘要
+
+该 NAHMS 报告描述的是美国 2007 年奶牛场研究中的犊牛健康与管理实践，属于历史群体统计证据，不是当前治疗方案。报告称，在调查所覆盖的 2006 年期间，断奶前后备母牛死亡率为 7.8%，断奶后后备母牛为 1.8%；腹泻或其他消化问题占断奶前死亡的 56.5%，呼吸道疾病占断奶后后备母牛死亡原因的 46.5%。
+
+研究还记录了初乳饲喂时机和方式、被动免疫转移、断奶日龄与体重、断奶前犊牛和成年牛接触、发病、预防措施和圈舍情况。这些指标说明牛场应把消化道和呼吸道疾病、死亡、初乳管理、接触模式和生长记录作为相互关联的管理信号。
+
+Scope and safety / 适用范围与安全边界
+
+The percentages describe a defined U.S. survey and must not be generalized to every farm, country, or current year. They cannot select a drug, dose, withdrawal period, or diagnosis for an individual calf.
+
+上述比例只代表特定年份和美国调查样本，不能直接外推到所有牛场、国家或当前年份，也不能据此为个体犊牛决定药物、剂量、休药期或诊断。

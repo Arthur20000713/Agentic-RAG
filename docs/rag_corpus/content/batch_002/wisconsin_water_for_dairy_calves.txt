@@ -1,0 +1,26 @@
+The Importance of Water for Dairy Calves | University of Wisconsin-Madison Extension
+
+Source ID: wisconsin_water_for_dairy_calves
+Source URL: https://dairy.extension.wisc.edu/articles/the-importance-of-water-for-dairy-calves/
+Retrieved: 2026-09-04
+Source snapshot SHA256: 8c6d7479f51b6e1bfeeeb96b79903012dad003b3808c5443a49c1406f0562018
+Review status: machine-assisted summary checked against the cited source; human sign-off pending.
+Topics: calf water, starter intake, rumen development, cold weather, bucket hygiene
+
+English summary
+
+Water is a required nutrient even while calves receive milk or milk replacer. The source links reliable access to clean, fresh water with rumen development, starter intake, weight gain, and growth. It presents a practical relationship of roughly four units of water for each unit of dry-matter intake, while actual demand changes with age, weather, diet, health, and environment.
+
+Water containers should be easy for calves to reach, inspected frequently, and cleaned so feed, manure, biofilm, or ice does not restrict intake. In cold weather, offering warm water and preventing freezing can support intake and avoid forcing a calf to warm very cold water. Diarrhea is not a reason to remove normal drinking-water access; suspected dehydration or illness requires prompt assessment and a veterinarian-guided plan.
+
+中文摘要
+
+即使犊牛正在饮用牛奶或代乳粉，饮水仍是必需营养来源。资料把持续获得清洁、新鲜饮水与瘤胃发育、开食料采食、增重和生长联系起来，并给出“饮水量约为干物质采食量四倍”的实用关系；实际需要会随日龄、天气、日粮、健康和环境改变。
+
+水桶或饮水器应方便犊牛接触，经常检查并清洗，避免饲料、粪污、生物膜或结冰限制饮水。寒冷天气可提供温水并防止结冰，以支持采食并减少犊牛加热过冷饮水所需的能量。腹泻不是撤掉正常饮水的理由；怀疑脱水或疾病时，需要及时评估并按兽医指导处理。
+
+Safety boundary / 安全边界
+
+General water-access guidance does not replace a dehydration assessment or prescribe oral or intravenous fluid therapy.
+
+一般饮水管理建议不能替代脱水程度评估，也不能据此决定口服或静脉补液方案。

@@ -1,0 +1,30 @@
+Dairy 2014: Dairy Cattle Management Practices in the United States | USDA APHIS NAHMS
+
+Source ID: usda_aphis_preweaned_calf_management
+Source URL: https://www.aphis.usda.gov/sites/default/files/dairy14_dr_parti_1.pdf
+Retrieved: 2026-09-04
+Source snapshot SHA256: 2a5e54827ed240ec2fecdfb6c3093086cd2fd4cc2caf09f4fe00ec0c941e72ae
+Review status: machine-assisted summary checked against the cited report; human sign-off pending.
+Topics: preweaned heifer management, colostrum, housing, milk feeding, starter intake, weaning, records
+
+English summary
+
+The Dairy 2014 report is a historical U.S. survey of dairy management practices. Its preweaned-heifer sections cover calving areas, births and stillbirths, colostrum, housing, nutrition, weaning, vaccination, and other preventive practices. The report also documents individual-animal identification and record systems used for health, production, breeding, antibiotic use, and withdrawal times.
+
+For colostrum programs, the report links earlier and adequate feeding with better transfer of immunity and discusses monitoring serum total protein in young calves as a program-level check. Most surveyed operations housed preweaned heifers individually to reduce disease spread and make intake easier to monitor. Feeding records should capture the liquid diet, frequency and amount offered, water and starter access, appetite, refusals, growth, and changes in health.
+
+The report identifies sustained starter consumption as a more informative weaning criterion than age alone. It reports a commonly used benchmark of about 2 pounds of starter daily for three consecutive days, while emphasizing that observed farm practices varied. Abrupt decisions based only on age or one day's intake can miss readiness.
+
+中文摘要
+
+Dairy 2014 是美国奶牛管理实践的历史调查。其断奶前后备母牛部分覆盖产犊区、出生与死产、初乳、圈舍、营养、断奶、免疫和其他预防管理；报告也记录了个体标识，以及用于健康、生产、繁殖、抗菌药使用和休药期管理的记录系统。
+
+初乳管理方面，报告把更早且足量的饲喂与更好的被动免疫转移联系起来，并讨论用幼龄犊牛血清总蛋白监测整个初乳项目。调查中多数牛场采用个体圈舍，以减少疾病传播并便于观察采食。饲喂记录应包括液体日粮、频次和供应量、饮水和开食料、食欲与剩料、生长以及健康变化。
+
+报告把持续的开食料采食量作为比单纯日龄更有信息量的断奶条件，并记录了“连续三天每日约 2 磅开食料”这一常用参考值，但各牛场实践存在差异。不能只根据日龄或一天的采食量仓促断奶。
+
+Scope and safety / 适用范围与安全边界
+
+Survey results describe U.S. operations in the study period. Farm protocols, vaccination, medication, and withdrawal-time decisions require current local rules and a veterinarian.
+
+调查结果只描述研究时期的美国牛场。牛场流程、免疫、用药和休药期决策必须结合现行当地法规并由兽医参与。

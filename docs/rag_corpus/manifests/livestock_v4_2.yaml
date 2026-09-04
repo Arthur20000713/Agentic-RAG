@@ -3,27 +3,27 @@ collection: livestock_v4_2
 sources:
   - source_id: umn_preweaning_calf_health
     title: Pre-weaning calf health
-    source_uri: https://extension.umn.edu/dairy-youngstock/pre-weaning-calf-health
+    source_uri: https://extension.umn.edu/agriculture/animals-and-livestock/dairy/pre-weaning-calf-health
     language: EN
     organization: University of Minnesota Extension
     source_type: university_extension
     topics: [calf_health, diarrhea, respiratory, observation]
     usage: [knowledge_base, eval]
     ingestion_status: approved_summary_only
-    license_note: "教育网页；仅入库人工摘要、关键事实和链接，不复制全文。"
-    reviewed_by: human
+    license_note: "教育网页；仅分发逐源核对的机器辅助摘要、关键事实和链接，不复制全文；待人工签字。"
+    reviewed_by: codex_source_audit_pending_human_signoff
 
   - source_id: uga_raising_dairy_heifers
-    title: Raising dairy heifers from birth to weaning
-    source_uri: https://extension.uga.edu/publications/detail.html?number=B1500
+    title: Calf Health Basics
+    source_uri: https://fieldreport.caes.uga.edu/publications/B1500/calf-health-basics/
     language: EN
     organization: University of Georgia Extension
     source_type: university_extension
-    topics: [calf_feeding, colostrum, weaning, records]
+    topics: [calf_health, observation, hydration, respiratory, records]
     usage: [knowledge_base, eval]
     ingestion_status: approved_summary_only
-    license_note: "Extension 资料；仅入库人工摘要、关键事实和链接。"
-    reviewed_by: human
+    license_note: "Extension 资料；仅分发逐源核对的机器辅助摘要、关键事实和链接；待人工签字。"
+    reviewed_by: codex_source_audit_pending_human_signoff
 
   - source_id: usda_aphis_scours_dairy_calves
     title: Scours in dairy calves
@@ -33,21 +33,33 @@ sources:
     source_type: government_report
     topics: [diarrhea, epidemiology, calf_health]
     usage: [knowledge_base, eval]
+    ingestion_status: blocked
+    license_note: "原 PDF 已于 2026-09-04 验证为 404；不得继续入库或作为当前质量门禁证据。"
+    reviewed_by: historical_metadata_unverified
+
+  - source_id: usda_aphis_heifer_calf_health_2007
+    title: Heifer Calf Health and Management Practices on U.S. Dairy Operations, 2007
+    source_uri: https://www.aphis.usda.gov/sites/default/files/dairy07_ir_CalfHealth_1.pdf
+    language: EN
+    organization: USDA APHIS NAHMS
+    source_type: government_report
+    topics: [diarrhea, epidemiology, calf_health, respiratory, colostrum]
+    usage: [knowledge_base, eval]
     ingestion_status: approved_summary_only
-    license_note: "政府报告；用于统计事实和人工摘要，避免复制大段 PDF 原文。"
-    reviewed_by: human
+    license_note: "美国政府历史调查；仅分发逐源核对的机器辅助摘要、统计事实和链接；保留 2007 年语境，待人工签字。"
+    reviewed_by: codex_source_audit_pending_human_signoff
 
   - source_id: usda_aphis_preweaned_calf_management
     title: Dairy heifer raiser, preweaned calf management
-    source_uri: https://www.aphis.usda.gov/animal_health/nahms/dairy/downloads/dairy14/Dairy14_dr_PartI_1.pdf
+    source_uri: https://www.aphis.usda.gov/sites/default/files/dairy14_dr_parti_1.pdf
     language: EN
     organization: USDA APHIS NAHMS
     source_type: government_report
     topics: [preweaned_calf, feeding, health_records, management]
     usage: [knowledge_base, eval]
     ingestion_status: approved_summary_only
-    license_note: "政府报告；用于统计事实和人工摘要，避免复制大段 PDF 原文。"
-    reviewed_by: human
+    license_note: "美国政府历史调查；仅分发逐源核对的机器辅助摘要、统计事实和链接；待人工签字。"
+    reviewed_by: codex_source_audit_pending_human_signoff
 
   - source_id: penn_state_biosecurity_cattle_farms
     title: Biosecurity for dairy and beef cattle farms
@@ -57,9 +69,21 @@ sources:
     source_type: university_extension
     topics: [biosecurity, isolation, visitors, cattle_farms]
     usage: [knowledge_base, eval, redteam]
+    ingestion_status: blocked
+    license_note: "原页面已于 2026-09-04 验证为 404；不得继续入库或作为当前质量门禁证据。"
+    reviewed_by: historical_metadata_unverified
+
+  - source_id: penn_state_biosecurity_prevention
+    title: "Biosecurity: The Ounce of Prevention"
+    source_uri: https://extension.psu.edu/biosecurity-the-ounce-of-prevention
+    language: EN
+    organization: Penn State Extension
+    source_type: university_extension
+    topics: [biosecurity, isolation, visitors, cattle_farms]
+    usage: [knowledge_base, eval, redteam]
     ingestion_status: approved_summary_only
-    license_note: "Extension 网页；仅入库人工摘要、关键事实和链接。"
-    reviewed_by: human
+    license_note: "Extension 网页；仅分发逐源核对的机器辅助摘要、关键事实和链接；待人工签字。"
+    reviewed_by: codex_source_audit_pending_human_signoff
 
   - source_id: penn_state_monitoring_dairy_heifer_growth
     title: Monitoring dairy heifer growth
@@ -70,44 +94,44 @@ sources:
     topics: [growth_monitoring, body_weight, withers_height, records]
     usage: [knowledge_base, eval]
     ingestion_status: approved_summary_only
-    license_note: "Extension 网页；仅入库人工摘要、关键事实和链接，不复制图表。"
-    reviewed_by: human
+    license_note: "Extension 网页；仅分发逐源核对的机器辅助摘要、关键事实和链接，不复制图表；待人工签字。"
+    reviewed_by: codex_source_audit_pending_human_signoff
 
   - source_id: wisconsin_water_for_dairy_calves
-    title: Water for dairy calves
-    source_uri: https://dairy.extension.wisc.edu/articles/water-for-dairy-calves/
+    title: The importance of water for dairy calves
+    source_uri: https://dairy.extension.wisc.edu/articles/the-importance-of-water-for-dairy-calves/
     language: EN
     organization: University of Wisconsin Extension
     source_type: university_extension
     topics: [water, calf_feeding, intake]
     usage: [knowledge_base, eval]
     ingestion_status: approved_summary_only
-    license_note: "Extension 网页；仅入库人工摘要、关键事实和链接。"
-    reviewed_by: human
+    license_note: "Extension 网页；旧链接已失效，使用现行页面；仅分发逐源核对的机器辅助摘要、关键事实和链接；待人工签字。"
+    reviewed_by: codex_source_audit_pending_human_signoff
 
   - source_id: wisconsin_air_quality_for_calves
-    title: Air quality for calves
-    source_uri: https://dairy.extension.wisc.edu/articles/air-quality-for-calves/
+    title: Air Quality in Calf Housing
+    source_uri: https://dairy.extension.wisc.edu/articles/air-quality-in-calf-housing/
     language: EN
     organization: University of Wisconsin Extension
     source_type: university_extension
     topics: [air_quality, ventilation, respiratory_health, housing]
     usage: [knowledge_base, eval]
     ingestion_status: approved_summary_only
-    license_note: "Extension 网页；仅入库人工摘要、关键事实和链接。"
-    reviewed_by: human
+    license_note: "Extension 网页；旧链接已失效，使用现行页面；仅分发逐源核对的机器辅助摘要、关键事实和链接；待人工签字。"
+    reviewed_by: codex_source_audit_pending_human_signoff
 
   - source_id: wisconsin_cold_stress_calves
-    title: Cold stress in calves
-    source_uri: https://dairy.extension.wisc.edu/articles/cold-stress-in-calves/
+    title: Cold stress in dairy calves
+    source_uri: https://dairy.extension.wisc.edu/articles/cold-stress-in-dairy-calves/
     language: EN
     organization: University of Wisconsin Extension
     source_type: university_extension
     topics: [cold_stress, calf_feeding, environment, health_observation]
     usage: [knowledge_base, eval]
     ingestion_status: approved_summary_only
-    license_note: "Extension 网页；仅入库人工摘要、关键事实和链接。"
-    reviewed_by: human
+    license_note: "Extension 网页；旧链接已失效，使用现行页面；仅分发逐源核对的机器辅助摘要、关键事实和链接；待人工签字。"
+    reviewed_by: codex_source_audit_pending_human_signoff
 
   - source_id: fda_judicious_antimicrobial_use_209
     title: FDA Guidance #209
@@ -166,8 +190,8 @@ sources:
     topics: [biosecurity, disease_prevention, farm_protocols]
     usage: [knowledge_base, eval, reference]
     ingestion_status: approved_summary_only
-    license_note: "教育资源入口；仅入库人工摘要、清单化事实和链接，逐项复核子页面许可。"
-    reviewed_by: human
+    license_note: "教育资源入口；仅分发逐源核对的机器辅助入口摘要、清单化事实和链接，不复制子页面；待人工签字。"
+    reviewed_by: codex_source_audit_pending_human_signoff
 
   - source_id: national_dairy_farm_everyday_biosecurity
     title: National Dairy FARM Everyday Biosecurity

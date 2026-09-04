@@ -90,10 +90,13 @@ def build_ingest_plan(batch: CorpusBatch, *, collection_override: str | None = N
     for source in batch.sources:
         if not source.source_id or not source.local_file or not source.ingestion_mode:
             continue
+        path = Path(source.local_file)
+        if not path.is_absolute():
+            path = ROOT / path
         commands.append(
             IngestCommand(
                 source_id=source.source_id,
-                path=Path(source.local_file),
+                path=path,
                 collection=collection,
                 ingestion_mode=source.ingestion_mode,
             )
