@@ -73,7 +73,11 @@ def test_ollama_backend_builds_json_generation_payload() -> None:
     assert "Return exactly one JSON object" in captured["payload"]["system"]
     assert captured["payload"]["stream"] is False
     assert captured["payload"]["format"] == "json"
-    assert captured["payload"]["options"] == {"temperature": 0.0, "num_predict": 96}
+    assert captured["payload"]["options"] == {
+        "seed": 0,
+        "temperature": 0.0,
+        "num_predict": 96,
+    }
     assert response.status == "success"
     assert response.fallback_required is False
     assert response.content["normalized_query"] == "weaning feed"

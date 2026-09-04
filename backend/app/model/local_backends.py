@@ -347,7 +347,7 @@ def _latency_ms(started: float) -> int:
 
 
 def _ollama_options(options: dict[str, Any]) -> dict[str, Any]:
-    mapped: dict[str, Any] = {}
+    mapped: dict[str, Any] = {"seed": 0}
     if "temperature" in options:
         mapped["temperature"] = options["temperature"]
     if "max_new_tokens" in options:
