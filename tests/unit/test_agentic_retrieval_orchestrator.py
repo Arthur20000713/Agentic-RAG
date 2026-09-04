@@ -147,6 +147,19 @@ def test_orchestrator_returns_sufficient_canonical_result_in_one_call() -> None:
     assert outcome.state.attempts[0].operation_key.endswith(":r1:q_primary_1")
 
 
+def test_orchestrator_uses_the_configured_real_rag_score_scale() -> None:
+    queries = [_query(1, "health")]
+    client = ScriptedRagClient(
+        {"query 1": _result("query 1", "health", score=0.0328)}
+    )
+
+    outcome = _run(client, queries)
+
+    assert outcome.result.status == "success"
+    assert outcome.state.grades[0].relevance == 0.0328
+    assert outcome.state.rag_call_count == 1
+
+
 def test_orchestrator_aggregates_two_primary_queries_without_secondary() -> None:
     queries = [_query(1, "feeding"), _query(2, "water")]
     client = ScriptedRagClient(

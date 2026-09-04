@@ -69,6 +69,11 @@ class EvidenceAggregator:
 
 
 class EvidenceGrader:
+    def __init__(self, *, relevance_threshold: float = _RELEVANCE_THRESHOLD) -> None:
+        if not 0.0 <= relevance_threshold <= 1.0:
+            raise ValueError("relevance threshold must be between 0 and 1")
+        self.relevance_threshold = relevance_threshold
+
     def grade(
         self,
         *,
@@ -97,7 +102,7 @@ class EvidenceGrader:
 
         if not evidence.hits:
             reason_codes.append("no_evidence")
-        if relevance < _RELEVANCE_THRESHOLD:
+        if relevance < self.relevance_threshold:
             reason_codes.append("relevance_below_threshold")
         if coverage < _COVERAGE_THRESHOLD:
             reason_codes.append("coverage_below_threshold")

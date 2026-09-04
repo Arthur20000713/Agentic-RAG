@@ -61,7 +61,9 @@ class AgenticRetrievalOrchestrator:
             primary_llm_client=primary_llm_client,
         )
         self.aggregator = aggregator or EvidenceAggregator()
-        self.grader = grader or EvidenceGrader()
+        self.grader = grader or EvidenceGrader(
+            relevance_threshold=app_settings.rag_server.min_mapped_score,
+        )
         self.top_k = max(1, min(int(top_k), 20))
         self.collection = collection
 

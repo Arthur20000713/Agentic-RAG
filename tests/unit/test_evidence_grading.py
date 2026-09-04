@@ -117,6 +117,30 @@ def test_grader_accepts_complete_relevant_and_traceable_evidence() -> None:
     assert grade.conflicts == []
 
 
+def test_grader_uses_configured_rag_score_scale() -> None:
+    queries = [_query("q_health", "calf health", "health")]
+    evidence = EvidenceAggregator().aggregate(
+        [
+            (
+                "q_health",
+                _result(
+                    "calf health",
+                    _hit("health", source_uri="rag://kb/health", score=0.0328),
+                ),
+            )
+        ]
+    )
+
+    grade = EvidenceGrader(relevance_threshold=0.03).grade(
+        round=1,
+        queries=queries,
+        evidence=evidence,
+    )
+
+    assert grade.decision == "sufficient"
+    assert grade.relevance == 0.0328
+
+
 def test_grader_refines_once_then_returns_no_answer_for_missing_coverage() -> None:
     queries = [
         _query("q_feed", "calf feeding", "feeding"),
